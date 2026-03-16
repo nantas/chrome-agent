@@ -1,0 +1,15 @@
+{
+  "name": "chrome-agent",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Repo-local browser tooling for codex-agent runs",
+  "scripts": {
+    "devtools-cli": "chrome-devtools",
+    "devtools-mcp": "chrome-devtools-mcp",
+    "chrome-cdp": "node node_modules/pi-chrome-cdp/skills/chrome-cdp/scripts/cdp.mjs"
+  },
+  "devDependencies": {
+    "chrome-devtools-mcp": "0.20.0",
+    "pi-chrome-cdp": "github:pasky/chrome-cdp-skill#7c2940af8dbe12745f24845f352e7555baed0304"
+  }
+}
