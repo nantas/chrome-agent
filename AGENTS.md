@@ -119,6 +119,32 @@ If both kinds of signals appear, prefer `Platform/Page Analysis`.
 - Treat authenticated live tabs as part of the same specialist trigger, but keep those runs read-only unless the user explicitly broadens scope.
 - If a live-session task is known up front and still needs MCP-native diagnostics, prefer starting with `chrome-devtools-mcp --autoConnect` or `--wsEndpoint` instead of changing tools mid-run.
 
+## `chrome-cdp-skill` Usage Boundary
+
+`chrome-cdp-skill` should be treated as a live-session handoff tool, not as the default browser automation path.
+
+Use it when:
+
+- the user has already opened the target website in their normal Chrome session
+- the task depends on the current logged-in state, open tabs, or the exact in-progress browsing context
+- the goal is for the agent to take over from the user's already-open browser session and continue the visit
+
+Do not prefer it when:
+
+- the task needs a reproducible isolated browser session
+- the task needs an explicit browser URL, explicit debug port, or explicit Chrome profile
+- the task should run against a dedicated test profile or a custom `user-data-dir`
+
+Current limitation:
+
+- the pinned `chrome-cdp-skill` setup reads Chrome debugging state from the default Chrome profile location
+- it does not currently provide a stable explicit entrypoint for custom profiles or custom browser endpoints in this repo
+
+Working rule for this repository:
+
+- If the user wants the agent to continue from a website they already opened manually, `chrome-cdp-skill` is the correct supplemental path.
+- If the task should start cleanly, run repeatably, or be isolated from the user's everyday browser state, use `chrome-devtools-mcp` instead.
+
 ## Reporting Requirements
 
 Each completed browser task should capture at least:
