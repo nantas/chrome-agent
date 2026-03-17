@@ -72,6 +72,16 @@ Use this matrix when the evaluation depends on an existing browser session or sh
 | light switching across 3-5 tabs | Measures practical overhead and reliability for short tab-hopping workflows. | tab sequence log and one successful action per tab |
 | comparing first connection versus follow-up actions | Separates initial attach/setup cost from repeated operational cost in the same session. | timing or step-count notes for first connection and follow-up actions |
 
+### Authenticated Read-Only Guidance
+
+When evaluating authenticated pages in a real user session:
+
+- require explicit user approval for the exact target page URL before running either tool
+- default to read-only actions only (`title`, `url`, excerpt, snapshot, screenshot, timing), unless the user explicitly broadens scope
+- avoid interacting with unrelated tabs; if discovery requires `list`/`list_pages`, act only on the approved target once identified
+- record one authentication-state clue in evidence (for example: account handle visible, signed-in nav element present, or stable authenticated URL context)
+- immediately stop and record failure if the flow triggers unexpected logout, redirect, write action risk, or scope drift
+
 ## Scenario: <name>
 
 - Scoring (Capability Completion, State Fidelity, Diagnostic Depth, Operational Friction):

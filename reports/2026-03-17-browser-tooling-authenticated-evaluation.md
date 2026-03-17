@@ -90,8 +90,18 @@
 
 ## Cross-Scenario Comparison (Authenticated Only)
 
-To be filled during execution.
+Observed pattern from this authenticated run:
+
+- `Capability Completion`: tied; both tools completed read-only attach, extraction, and screenshot capture on the approved authenticated page.
+- `State Fidelity`: tied; both tools stayed on `https://atomgit.com/nantas1/game-design-patterns`, preserved `scrollY: 0`, and kept `authClue: true` across repeated reads.
+- `Diagnostic Depth`: `chrome-devtools-mcp` led slightly because `take_snapshot` yielded stronger structural evidence (`RootWebArea`, `nantas1`, and repository link nodes) in the same flow.
+- `Operational Friction`: near tie in steady state; `chrome-cdp` had faster repeated eval timings once permission was granted, while `chrome-devtools-mcp --autoConnect` attached cleanly without needing a fallback path.
 
 ## Preliminary Readout
 
-To be filled during execution.
+This authenticated-only run supports keeping the current workflow unchanged:
+
+- `chrome-devtools-mcp` remains the default path for browser work that benefits from structured diagnostics and repeatable evidence capture.
+- `chrome-cdp` remains the specialist path when the current agent session must immediately continue on an already-open authenticated live tab.
+
+The authenticated-only scenario is now covered and no longer undecided. Remaining uncertainty is limited to multi-tab (`3-5` tabs) live-session stability and longer-running repeated-session comparisons.
