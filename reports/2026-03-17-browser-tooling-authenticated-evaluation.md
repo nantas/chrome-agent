@@ -7,8 +7,8 @@
 
 ## Setup Assumptions And Limits
 
-- Target page: `https://atomgit.com/nantas1/game-design-patterns`
-- Interaction policy: read-only inspection only; no navigation, edits, or writes
+- The approved page is already open in the user's logged-in live Chrome session.
+- Tool-specific attach assumptions and observed limits will be filled during execution.
 
 ## Scenario Findings
 
