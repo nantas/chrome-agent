@@ -5,27 +5,34 @@
 Its purpose is to provide a stable place to:
 
 - run browser-based tasks through `codex-agent`
-- connect Chrome tooling such as `chrome-devtools-mcp` and `chrome-cdp-skill`
+- connect Chrome tooling such as `chrome-devtools-mcp` and the repo-local `chrome-cdp` skill
 - accumulate reports, playbooks, and site-specific experience
 
 ## Current Status
 
-The repository is in bootstrap stage with project-scoped Chrome MCP configuration in place.
+The repository now has a research-backed browser tooling workflow with project-scoped Chrome MCP configuration, a repo-local `chrome-cdp` skill, and comparison reports under `reports/`.
 
 The current milestone is:
 
 1. establish the repository skeleton
-2. define the high-level workflow in `AGENTS.md`
-3. add project-scoped `chrome-devtools-mcp` config for `codex` and `opencode`
-4. use that shared setup for future browser tasks and reports
+2. verify the default vs specialist tooling split with public-site and live-session evidence
+3. document the workflow decision in `AGENTS.md`, `README.md`, and `docs/decisions/`
+4. use the resulting playbooks and reports for future browser tasks
 
 ## Principles
 
 - Entry point: `codex-agent`
 - Workflow style: `AGENTS.md + skills`
-- Default tooling direction: `chrome-devtools-mcp`
-- Supplemental tooling direction: `chrome-cdp-skill`
+- Default tooling direction: `chrome-devtools-mcp` in a managed browser context
+- Specialist tooling direction: repo-local `chrome-cdp` for immediate continuation on an already-open live Chrome tab
+- Advanced live-session option: `chrome-devtools-mcp --autoConnect` or `--wsEndpoint` when starting a fresh live-attached MCP session is acceptable
 - Credentials are intentionally out of scope for v1
+
+Workflow labels used across the repository:
+
+- Default path: `chrome-devtools-mcp` in a managed browser context
+- Specialist path: repo-local `chrome-cdp` for immediate continuation on an already-open live Chrome tab
+- Switching triggers: use `chrome-cdp` when the current session must continue on a real live tab immediately; otherwise stay on `chrome-devtools-mcp` unless a fresh live-attached MCP session is planned up front
 
 ## Top-Level Layout
 
@@ -37,8 +44,12 @@ The current milestone is:
 - `reports/`: execution reports
 - `sites/`: reusable site-specific experience
 
-## Next Step
+## Working Rule
 
-Use the project-scoped MCP setup described in `docs/setup/chrome-tooling.md` for future runs.
+Start with the project-scoped `chrome-devtools-mcp` setup described in `docs/setup/chrome-tooling.md`.
 
-Both `codex` and `opencode` now launch `chrome-devtools-mcp` with the official recommended `npx chrome-devtools-mcp@latest` command from this repository.
+If a task explicitly depends on the user's already-open live Chrome session and the current agent session is not already attached to it, use the repo-local `chrome-cdp` skill first.
+
+If a live-session task is known up front and still needs MCP-native diagnostics, launch `chrome-devtools-mcp` in an explicit live-attach mode instead of changing the default repository config.
+
+The current evidence-backed workflow decision is recorded in `docs/decisions/2026-03-17-browser-tooling-workflow.md`.

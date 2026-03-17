@@ -23,15 +23,17 @@ This repository is a browser-agent workspace for website access, debugging, evid
 
 1. Understand the task, target site, and expected output first
 2. Decide whether the task is primarily access/collection or debugging/inspection
-3. Prefer `chrome-devtools-mcp` as the default browser tooling path
-4. Consider `chrome-cdp-skill` when the task depends on reusing the current live Chrome session
-5. Record the execution result in `reports/`
-6. If the task reveals reusable site knowledge, update `sites/` or `docs/playbooks/`
+3. Start with `chrome-devtools-mcp` for new, repeatable, or diagnostics-heavy browser work
+4. Use the repo-local `chrome-cdp` skill when the current agent session must continue on an already-open live Chrome tab immediately
+5. Only use `chrome-devtools-mcp` live-attach modes such as `--autoConnect` or `--wsEndpoint` when the task explicitly needs the real Chrome session and starting with that mode is acceptable
+6. Record the execution result in `reports/`
+7. If the task reveals reusable site knowledge, update `sites/` or `docs/playbooks/`
 
 ## Tooling Strategy
 
-- Default path: `chrome-devtools-mcp`
-- Supplemental path: `chrome-cdp-skill`
+- Default path: `chrome-devtools-mcp` in its managed browser context
+- Specialist path: repo-local `chrome-cdp` for immediate continuation on an existing live Chrome tab
+- Advanced live-session mode: `chrome-devtools-mcp --autoConnect` or `--wsEndpoint` when a fresh live-attached MCP session is worth the setup
 - Do not assume both are required for every task
 - Let real tasks drive how skills, configs, and playbooks evolve
 
