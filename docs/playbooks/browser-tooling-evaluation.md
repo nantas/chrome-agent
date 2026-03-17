@@ -60,13 +60,26 @@ Archetype definitions (for consistent tagging):
 - Complete a short interaction flow
   - Expected evidence: before/after state note and one screenshot or DOM/state excerpt.
 
+## Live-Session and Light-Stability Matrix
+
+Use this matrix when the evaluation depends on an existing browser session or short, repeated follow-up actions.
+
+| Scenario | Why it matters | Minimum evidence |
+| --- | --- | --- |
+| continuing on an already-open tab | Validates whether the tool can attach to and act on an existing tab without resetting context. | tab identity note, URL, and one state-preserving action result |
+| reading a logged-in page | Confirms whether authenticated content can be read from an existing signed-in session. | page URL, key content excerpt, and authentication-state note |
+| preserving UI state such as expanded panels, scroll position, or unsaved input | Checks state fidelity when the page has in-progress UI context that must not be lost. | before/after state notes and one screenshot or state excerpt |
+| light switching across 3-5 tabs | Measures practical overhead and reliability for short tab-hopping workflows. | tab sequence log and one successful action per tab |
+| comparing first connection versus follow-up actions | Separates initial attach/setup cost from repeated operational cost in the same session. | timing or step-count notes for first connection and follow-up actions |
+
 ## Scenario: <name>
 
+- Scoring (Capability Completion, State Fidelity, Diagnostic Depth, Operational Friction):
 - Goal:
 - Archetype (matrix row):
 - Context:
 - Tool:
 - Steps:
 - Result:
-- Evidence:
+- Evidence (must satisfy Per-Scenario Success Criteria and relevant matrix minimum evidence):
 - Notes:
