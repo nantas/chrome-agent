@@ -12,7 +12,40 @@
 
 ## Scenario Findings
 
-To be filled during execution.
+### 1) Authenticated Page Attach And Follow-Up Reads (`chrome-cdp`)
+
+**Outcome**
+- `chrome-cdp`: Success
+
+**Evidence**
+- Target ID: `5337A811`
+- Page identity from both reads:
+  - title: `game-design-patterns - AtomGit | GitCode`
+  - url: `https://atomgit.com/nantas1/game-design-patterns`
+- Content excerpt from page main/body (first and second read):
+  - `G nantas1 / game-design-patterns ... docs: add first-pass awesome-game-design postmortems ...`
+- State signal:
+  - `scrollY: 0` on both reads
+  - `authClue: true` from `document.body.innerText.includes("nantas1")` on both reads
+- Screenshot:
+  - [browser-tooling-authenticated-cdp-atomgit.png](./browser-tooling-authenticated-cdp-atomgit.png)
+
+**First vs Follow-Up Timing Notes**
+- First read-only eval: about `0.07s` (`real`)
+- Second read-only eval: about `0.05s` (`real`)
+
+**Friction Notes**
+- This run succeeded after the user accepted Chrome's remote debugging `Allow` prompt.
+- Once permission was active, repeated read-only access was direct with no additional page interaction.
+- No page navigation, mutation, or visible state reset was observed.
+
+**Scores**
+| Tool | Capability Completion | State Fidelity | Diagnostic Depth | Operational Friction |
+|---|---:|---:|---:|---:|
+| chrome-cdp | 5 | 5 | 4 | 4 |
+
+**Score Rationale (State Fidelity / Operational Friction)**
+- `chrome-cdp`: `5 / 4` because both reads stayed on the authenticated target page and preserved visible state, with low follow-up overhead after one-time permission acceptance.
 
 ## Cross-Scenario Comparison (Authenticated Only)
 
