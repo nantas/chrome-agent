@@ -47,6 +47,47 @@
 **Score Rationale (State Fidelity / Operational Friction)**
 - `chrome-cdp`: `5 / 4` because both reads stayed on the authenticated target page and preserved visible state, with low follow-up overhead after one-time permission acceptance.
 
+### 2) Authenticated Page Attach And Follow-Up Reads (`chrome-devtools-mcp`)
+
+**Outcome**
+- `chrome-devtools-mcp`: Success
+
+**Attach Method**
+- `--autoConnect --no-usage-statistics`
+
+**Evidence**
+- Page identifier from `list_pages`: page `1` (`https://atomgit.com/nantas1/game-design-patterns`) and selected before reads.
+- Page identity from both reads:
+  - title: `game-design-patterns - AtomGit | GitCode`
+  - url: `https://atomgit.com/nantas1/game-design-patterns`
+- Content excerpt from page main/body (first and second read):
+  - `G nantas1 / game-design-patterns ... docs: add first-pass awesome-game-design postmortems ...`
+- State signal:
+  - `scrollY: 0` on both reads
+  - `authClue: true` from `document.body.innerText.includes('nantas1')` on both reads
+- Structure excerpt from `take_snapshot`:
+  - `RootWebArea "game-design-patterns - AtomGit | GitCode"`
+  - link `nantas1` and link `game-design-patterns` both present
+- Screenshot:
+  - [browser-tooling-authenticated-devtools-atomgit.png](./browser-tooling-authenticated-devtools-atomgit.png)
+
+**First vs Follow-Up Timing Notes**
+- First read-only eval: about `804ms`
+- Second read-only eval: about `207ms`
+
+**Friction Notes**
+- `--autoConnect` found the approved authenticated page directly in this run.
+- No fallback to `--wsEndpoint` was required.
+- No page navigation, mutation, or visible state reset was observed.
+
+**Scores**
+| Tool | Capability Completion | State Fidelity | Diagnostic Depth | Operational Friction |
+|---|---:|---:|---:|---:|
+| chrome-devtools-mcp | 5 | 5 | 5 | 4 |
+
+**Score Rationale (State Fidelity / Operational Friction)**
+- `chrome-devtools-mcp`: `5 / 4` because both reads stayed on the authenticated target and preserved visible state, with low follow-up overhead after attach.
+
 ## Cross-Scenario Comparison (Authenticated Only)
 
 To be filled during execution.
