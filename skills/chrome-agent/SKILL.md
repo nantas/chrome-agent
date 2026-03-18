@@ -88,6 +88,8 @@ artifacts:
 next_action: Set CHROME_AGENT_REPO to the local chrome-agent repository path and retry.
 ```
 
+Do not treat the current working directory as an implicit fallback for `CHROME_AGENT_REPO`. If the environment variable is missing or invalid, stop.
+
 ### Step 3: Forward the task
 
 Forward the user's request into `CHROME_AGENT_REPO` and require the downstream agent to:
@@ -119,6 +121,8 @@ artifacts:
 next_action: none
 ```
 
+The required result block must be the last block in the downstream response so the parent session can parse it reliably even if the downstream agent emits intermediate logs earlier in the run.
+
 ### Step 5: Return to the parent session
 
 Pass through the downstream result when it is already clear and complete.
@@ -142,6 +146,8 @@ summary: <brief result summary>
 artifacts:
 - <absolute path>
 next_action: <none or recommended next step>
+
+Make this result block the final block in the response. Do not append extra commentary after it.
 ```
 
 ## Notes
