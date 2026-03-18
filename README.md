@@ -42,6 +42,7 @@ Workflow labels used across the repository:
 - `docs/`: setup notes, decisions, and playbooks
 - `opencode.json`: project-scoped OpenCode configuration
 - `reports/`: execution reports
+- `skills/`: repository-owned global skill sources
 - `sites/`: reusable site-specific experience
 
 ## Workflow
@@ -122,3 +123,15 @@ If a task explicitly depends on the user's already-open live Chrome session and 
 If a live-session task is known up front and still needs MCP-native diagnostics, launch `chrome-devtools-mcp` in an explicit live-attach mode instead of changing the default repository config.
 
 The current evidence-backed workflow decision is recorded in `docs/decisions/2026-03-17-browser-tooling-workflow.md`.
+
+## Global Skill Source
+
+This repository now also serves as the source of truth for a globally installable `chrome-agent` skill.
+
+- source path: `skills/chrome-agent/`
+- global install path: `~/.agents/skills/chrome-agent/`
+- repository locator env var: `CHROME_AGENT_REPO`
+
+The global skill is a thin dispatcher. It validates the global dispatcher skills, resolves `CHROME_AGENT_REPO`, and forwards webpage extraction requests into this repository so the repo workflow in `AGENTS.md` stays authoritative.
+
+See `docs/setup/chrome-tooling.md` for the install contract and `docs/playbooks/chrome-agent-global-install.md` for the operator workflow.
