@@ -152,6 +152,11 @@ Run the minimum safe dry-run invocation for both dispatchers against the current
 
 Tighten `skills/chrome-agent/SKILL.md` if either dispatcher returns output that is too loose to summarize reliably.
 
+If refinement is needed after verification, update the contract to:
+
+- require the final result block to be the last block in the response
+- forbid implicit current-directory fallback when `CHROME_AGENT_REPO` is missing or invalid
+
 **Step 4: Save verification notes**
 
 Record:
