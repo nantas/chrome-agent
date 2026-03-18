@@ -157,6 +157,8 @@ At invocation time, the global skill should:
 
 Use `codex-agent` when available. If not, use `repo-agent`.
 
+`CHROME_AGENT_REPO` is mandatory. The dispatcher should not infer the repository from the current working directory when the environment variable is missing or invalid.
+
 The forwarded instruction should explicitly require the downstream session to:
 
 - read the target repository `AGENTS.md`
@@ -190,6 +192,8 @@ artifacts:
 - /abs/path/to/output/article.md
 next_action: none
 ```
+
+The required result block should appear at the end of the downstream response so the parent session can parse it reliably even if earlier execution logs are present.
 
 If the downstream agent is ambiguous, the global skill may summarize the output, but it must not fabricate success.
 
