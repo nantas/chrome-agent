@@ -135,3 +135,9 @@ This repository now also serves as the source of truth for a globally installabl
 The global skill is a thin dispatcher. It validates the global dispatcher skills, resolves `CHROME_AGENT_REPO`, and forwards webpage extraction requests into this repository so the repo workflow in `AGENTS.md` stays authoritative.
 
 See `docs/setup/chrome-tooling.md` for the install contract and `docs/playbooks/chrome-agent-global-install.md` for the operator workflow.
+
+You can start installation from a single prompt, but any persistent change still requires preflight checks and explicit confirmation when:
+
+- `~/.agents/skills/chrome-agent/` already exists
+- `CHROME_AGENT_REPO` already exists with a different value
+- the install needs to append shell configuration

@@ -115,3 +115,44 @@ For the isolated verification run on 2026-03-16, the tool was validated against 
 ## First Real Task
 
 See `reports/2026-03-16-example-com-verification.md` for the exact commands, evidence, and residual blocker notes from the first public-page validation.
+
+## Global `chrome-agent` Skill
+
+This repository is also the source of truth for a globally installable `chrome-agent` dispatcher skill.
+
+### Locations
+
+- source directory: `skills/chrome-agent/`
+- global install directory: `~/.agents/skills/chrome-agent/`
+- repository environment variable: `CHROME_AGENT_REPO`
+
+### Runtime Contract
+
+The global skill should:
+
+- prefer `~/.agents/skills/codex-agent/`
+- fall back to `~/.agents/skills/repo-agent/`
+- stop if neither dispatcher skill is installed
+- resolve `CHROME_AGENT_REPO` to locate this repository
+- fail if `CHROME_AGENT_REPO` is missing, invalid, or does not contain `AGENTS.md`
+
+### Install Preflight
+
+Before copying the global skill or writing shell configuration:
+
+- check whether `~/.agents/skills/chrome-agent/` already exists
+- check whether `CHROME_AGENT_REPO` is already defined
+- if the existing environment variable value differs from the current repository path, treat it as a conflict
+- do not overwrite the existing skill or conflicting environment variable silently
+- ask for explicit confirmation before any persistent write
+
+### One-Line Install Entry
+
+The intended user experience is that installation can start from a single prompt. That does not remove the conflict checks above. A one-line install still must:
+
+- inspect existing global skill state
+- inspect existing `CHROME_AGENT_REPO` state
+- ask before replacing an installed skill
+- ask before replacing or appending shell configuration
+
+See `docs/playbooks/chrome-agent-global-install.md` for the operator workflow.
