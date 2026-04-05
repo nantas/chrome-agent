@@ -1,0 +1,42 @@
+name: orbitos-change-v1
+description: OrbitOS 主 change schema source bundle
+version: 1
+artifacts:
+  - id: proposal
+    path: proposal.md
+    generates: proposal.md
+    description: 记录 change 的问题定义、范围边界与治理入口
+    template: templates/proposal.md
+  - id: requirements
+    path: requirements.md
+    generates: requirements.md
+    description: 记录需求与场景约束
+    template: templates/requirement.md
+    requires: [proposal]
+  - id: design-spec
+    path: design-spec.md
+    generates: design-spec.md
+    description: 记录设计决策、非目标与迁移风险
+    template: templates/design-spec.md
+    requires: [proposal, requirements]
+  - id: tasks
+    path: tasks.md
+    generates: tasks.md
+    description: 记录执行绑定与任务分解
+    template: templates/tasks.md
+    requires: [design-spec]
+  - id: verification
+    path: verification.md
+    generates: verification.md
+    description: 记录验证结论与证据映射
+    template: templates/verification.md
+    requires: [tasks]
+  - id: writeback
+    path: writeback.md
+    generates: writeback.md
+    description: 记录治理摘要与回写目标
+    template: templates/writeback.md
+    requires: [verification]
+apply:
+  requires: [tasks]
+  tracks: tasks.md
