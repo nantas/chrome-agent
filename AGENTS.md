@@ -19,18 +19,49 @@ This repository is a browser-agent workspace for website access, debugging, evid
   - A large automation framework
   - Hard-coding detailed skill or config structures before real usage validates them
 
-## Workflow
+## Default Web Grabbing Flow
 
-1. Understand the task, target site, and expected output first
-2. Classify prompt intent before choosing workflow depth
-3. Route the task into either `Content Retrieval` or `Platform/Page Analysis`
-4. Decide whether the task is primarily public/repeatable browsing or live-session continuation
-5. Start with `chrome-devtools-mcp` for new, repeatable, or diagnostics-heavy browser work
-6. Use the repo-local `chrome-cdp` skill when the current agent session must continue on an already-open live Chrome tab immediately, including authenticated live tabs
-7. Only use `chrome-devtools-mcp` live-attach modes such as `--autoConnect` or `--wsEndpoint` when the task explicitly needs the real Chrome session and starting with that mode is acceptable
-8. Do not switch tools just because both can complete the task; switch only when session context, state-access needs, or diagnostic needs materially change
-9. Capture evidence and write outputs at the depth required by the selected workflow
-10. If the task reveals reusable site knowledge, update `sites/` or `docs/playbooks/`
+Use one operator flow for ordinary webpage grabbing work:
+
+1. Understand the task, target site, and expected output first.
+2. Route the task into either `Content Retrieval` or `Platform/Page Analysis`.
+3. Decide whether the task is normal public/repeatable grabbing or approved live-session continuity.
+4. Start with Scrapling unless a live-session continuity trigger is already known up front.
+5. Stop on Scrapling if the result satisfies the task.
+6. Escalate to `chrome-devtools-mcp` only when diagnostic or evidence triggers are present.
+7. Escalate to repo-local `chrome-cdp` only when the current agent session must continue immediately on an already-open real Chrome tab.
+8. Capture evidence and write outputs at the depth required by the selected workflow.
+9. If the task reveals reusable site knowledge, update `sites/` or `docs/playbooks/`.
+
+### Route First
+
+- `Content Retrieval`: the user mainly wants page content, article body text, or a concise failure reason.
+- `Platform/Page Analysis`: the user mainly wants debugging, structure analysis, evidence collection, extraction-rule analysis, or a reusable report.
+
+### Scrapling-First Path
+
+- `get`: default for static pages and article-style extraction where body order and inline images matter.
+- `fetch`: default for SPA pages, dynamic lists, pagination, or other rendered flows that need client-side state.
+- `stealthy-fetch`: default for protected pages, challenge pages, or anti-bot-sensitive targets.
+- bulk variants: use only when the task really is a batch grab across multiple URLs.
+- session variants: use only when repeated related reads benefit from one Scrapling browser session, or when an authenticated task has an explicit user-approved read-only target and session reuse is worth attempting.
+- If Scrapling returns content that satisfies the task, stay on Scrapling. Do not switch tools just because another browser tool could also complete the task.
+
+### Fallback Boundaries
+
+- `chrome-devtools-mcp`: the diagnostic and evidence path. Use it when Scrapling output is incomplete, visually suspect, blocked, or when the task needs screenshots, DOM or accessibility inspection, network evidence, console evidence, performance evidence, or interaction debugging.
+- repo-local `chrome-cdp`: the live-session continuity path. Use it when the current agent session must continue immediately on an already-open real Chrome tab, including approved authenticated tabs whose current state should not be recreated elsewhere.
+- `chrome-devtools-mcp --autoConnect` or `--wsEndpoint`: use these live-attach modes only when the task is known up front to need the real Chrome session and starting with MCP-native diagnostics is acceptable.
+- Do not switch between fallback tools just because both are technically capable. Choose by diagnostic-evidence needs versus live-tab continuity needs.
+
+### Authenticated Read-Only Boundary
+
+- Authenticated or logged-in work requires an explicit user-approved target page or tab before either Scrapling session reuse or `chrome-cdp` continuation is attempted.
+- Authenticated runs are read-only by default unless the user explicitly broadens scope.
+- Scrapling-first still applies to approved authenticated work when session reuse is worth trying.
+- If Scrapling session reuse redirects to login, resets the page, loses the approved context, or creates logout/write-action risk, stop that Scrapling path and record failure instead of pushing through.
+- If an approved live tab exists after that failure, switch to repo-local `chrome-cdp` as the live-session continuity fallback.
+- Treat the current `x.com` result as the verified example for this rule: Scrapling-first remains the opening move, but current-session continuity can require immediate `chrome-cdp` fallback after session reuse fails.
 
 ## Workflow Types
 
@@ -52,7 +83,7 @@ Default deliverable:
 
 Default operating style:
 
-- prefer the shortest reliable extraction path
+- prefer the shortest reliable extraction path, starting with Scrapling `get`, `fetch`, `stealthy-fetch`, or their bulk/session variants
 - keep verification lightweight
 - avoid full evidence collection unless the page blocks extraction or the user asks for it
 - avoid mandatory `reports/` output unless the user requests a saved artifact, the failure is worth preserving, or reusable knowledge is discovered
@@ -75,7 +106,7 @@ Default deliverable:
 
 Default operating style:
 
-- collect stronger evidence
+- collect stronger evidence, usually by escalating from Scrapling to `chrome-devtools-mcp`
 - preserve structural clues
 - save the run under `reports/`
 - update `sites/` or `docs/playbooks/` when the task yields reusable knowledge
@@ -105,18 +136,22 @@ If both kinds of signals appear, prefer `Platform/Page Analysis`.
 
 ## Tooling Strategy
 
-- Default path: `chrome-devtools-mcp` in its managed browser context
-- Specialist path: repo-local `chrome-cdp` for immediate continuation on an existing live Chrome tab, including authenticated read-only tabs
+- Default path: Scrapling in a dedicated Python `>=3.10` environment
+- Default route order: route the task, check live-session continuity needs, then stay Scrapling-first unless a defined fallback trigger is present
+- Diagnostic fallback: `chrome-devtools-mcp` in its managed browser context
+- Live-session continuity fallback: repo-local `chrome-cdp` for immediate continuation on an existing live Chrome tab, including approved authenticated read-only tabs
 - Advanced live-session mode: `chrome-devtools-mcp --autoConnect` or `--wsEndpoint` when a fresh live-attached MCP session is worth the setup
-- Do not assume both are required for every task
+- Do not assume all three are required for every task
 - Let real tasks drive how skills, configs, and playbooks evolve
 
 ## Selection Rules
 
-- Default to `chrome-devtools-mcp` when the task is public, repeatable, or benefits from structured diagnostics such as snapshot, network, console, or performance evidence.
-- Stay on `chrome-devtools-mcp` if both tools succeed and there is no clear specialist advantage.
-- Switch to `chrome-cdp` when the user explicitly approves using the current live Chrome session and the current agent session must continue on that already-open tab immediately.
-- Treat authenticated live tabs as part of the same specialist trigger, but keep those runs read-only unless the user explicitly broadens scope.
+- Default to Scrapling for public, repeatable, dynamic, protected, article, and batch grabbing tasks.
+- Stay on Scrapling if the output satisfies the task without extra diagnostics.
+- Switch to `chrome-devtools-mcp` when the task needs structured diagnostics such as snapshot, DOM, accessibility, network, console, screenshot, performance, or interaction evidence.
+- Switch to repo-local `chrome-cdp` when the user explicitly approves using the current live Chrome session and the existing agent session must continue on that already-open tab immediately.
+- Treat authenticated live tabs as part of the same live-session continuity trigger, but keep those runs read-only unless the user explicitly broadens scope.
+- If approved Scrapling session reuse fails to preserve authenticated context, stop that path and use the approved live tab fallback instead of retrying blindly.
 - If a live-session task is known up front and still needs MCP-native diagnostics, prefer starting with `chrome-devtools-mcp --autoConnect` or `--wsEndpoint` instead of changing tools mid-run.
 
 ## `chrome-cdp-skill` Usage Boundary
@@ -143,7 +178,7 @@ Current limitation:
 Working rule for this repository:
 
 - If the user wants the agent to continue from a website they already opened manually, `chrome-cdp-skill` is the correct supplemental path.
-- If the task should start cleanly, run repeatably, or be isolated from the user's everyday browser state, use `chrome-devtools-mcp` instead.
+- If the task should start cleanly, run repeatably, or be isolated from the user's everyday browser state, stay on Scrapling first and use `chrome-devtools-mcp` only when diagnostics are required.
 
 ## Reporting Requirements
 
@@ -159,6 +194,7 @@ Each completed browser task should capture at least:
 For `Content Retrieval` tasks:
 
 - direct user output is the default deliverable
+- include the Scrapling fetcher path when used
 - create a `reports/` artifact only when the user asks for it, the failure should be preserved, or the task reveals reusable knowledge
 
 For `Platform/Page Analysis` tasks:
@@ -178,6 +214,7 @@ For article-style extraction tasks in either workflow, generated正文 must pres
 For `Content Retrieval` tasks, capture at least:
 
 - page title and URL
+- the Scrapling fetcher path or explicit fallback path
 - extracted main content, or a precise failure reason
 - one lightweight evidence point when needed to trust the result
 

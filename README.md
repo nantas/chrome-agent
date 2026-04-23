@@ -5,17 +5,18 @@
 Its purpose is to provide a stable place to:
 
 - run browser-based tasks through `codex-agent`
-- connect Chrome tooling such as `chrome-devtools-mcp` and the repo-local `chrome-cdp` skill
+- run Scrapling-first webpage grabbing through the repo workflow
+- connect Chrome tooling such as `chrome-devtools-mcp` and the repo-local `chrome-cdp` skill when fallback evidence or live-session continuation is needed
 - accumulate reports, playbooks, and site-specific experience
 
 ## Current Status
 
-The repository now has a research-backed browser tooling workflow with project-scoped Chrome MCP configuration, a repo-local `chrome-cdp` skill, and comparison reports under `reports/`.
+The repository now has a research-backed browser workflow with project-scoped MCP configuration, a Scrapling-first grabbing path, a repo-local `chrome-cdp` skill, and comparison reports under `reports/`.
 
 The current milestone is:
 
 1. establish the repository skeleton
-2. verify the default vs specialist tooling split with public-site and live-session evidence
+2. verify the Scrapling-first vs fallback tooling split with public-site, protected-page, and article evidence
 3. document the workflow decision in `AGENTS.md`, `README.md`, and `docs/decisions/`
 4. use the resulting playbooks and reports for future browser tasks
 
@@ -23,16 +24,18 @@ The current milestone is:
 
 - Entry point: `codex-agent`
 - Workflow style: `AGENTS.md + skills`
-- Default tooling direction: `chrome-devtools-mcp` in a managed browser context
+- Default tooling direction: Scrapling in a dedicated Python `>=3.10` environment
+- Diagnostic fallback: `chrome-devtools-mcp` in a managed browser context
 - Specialist tooling direction: repo-local `chrome-cdp` for immediate continuation on an already-open live Chrome tab
 - Advanced live-session option: `chrome-devtools-mcp --autoConnect` or `--wsEndpoint` when starting a fresh live-attached MCP session is acceptable
 - Credentials are intentionally out of scope for v1
 
 Workflow labels used across the repository:
 
-- Default path: `chrome-devtools-mcp` in a managed browser context
+- Default path: Scrapling first
+- Diagnostic fallback: `chrome-devtools-mcp` in a managed browser context
 - Specialist path: repo-local `chrome-cdp` for immediate continuation on an already-open live Chrome tab
-- Switching triggers: use `chrome-cdp` when the current session must continue on a real live tab immediately; otherwise stay on `chrome-devtools-mcp` unless a fresh live-attached MCP session is planned up front
+- Switching triggers: use `chrome-cdp` when the current session must continue on a real live tab immediately; otherwise stay on Scrapling unless browser diagnostics are required
 
 ## Top-Level Layout
 
@@ -49,9 +52,10 @@ Workflow labels used across the repository:
 
 Use this repository with one clear default:
 
-- Start with `chrome-devtools-mcp` for public pages, repeatable interaction flows, and tasks that need structured diagnostics such as snapshots, network evidence, or performance tooling.
+- Start with Scrapling for public pages, repeatable interaction flows, dynamic pages, protected pages, and article extraction.
+- Switch to `chrome-devtools-mcp` when you need structured diagnostics such as snapshots, network evidence, or performance tooling.
 - Switch to the repo-local `chrome-cdp` skill only when the current agent session must immediately continue on a tab the user already has open in real Chrome.
-- Treat authenticated live tabs the same way: `chrome-cdp` is the specialist path when immediate continuation matters, but the default remains `chrome-devtools-mcp`.
+- Treat authenticated live tabs the same way: `chrome-cdp` is the specialist path when immediate continuation matters, but the default remains Scrapling unless browser diagnostics are required.
 - If a live-session task is known up front and still needs MCP-native diagnostics, launch `chrome-devtools-mcp` in an explicit live-attach mode (`--autoConnect` or `--wsEndpoint`) rather than changing the repository default configuration.
 
 ## Verification Baseline
@@ -71,11 +75,14 @@ Public-site baseline:
 - Modern SPA: `https://todomvc.com/examples/react/dist/`
 - Dynamic list/pagination page: `https://news.ycombinator.com/news`
 - Standard form page: `https://httpbin.org/forms/post`
+- Protected page: `https://wiki.supercombo.gg/w/Street_Fighter_6`
+- Article page: `https://mp.weixin.qq.com/s/kPEyL3NDPAQYp7sFl5eE4w?scene=1`
 
 Minimum evidence for public/repeatable runs:
 
 - page title and URL
 - one key content excerpt
+- Scrapling fetcher path and output mode
 - one screenshot
 - one structure clue such as DOM or accessibility snapshot
 - one interaction result if the task includes a flow
@@ -105,24 +112,28 @@ Completed reports:
 
 Current evidence-backed conclusion:
 
-- `chrome-devtools-mcp` remains the default path.
+- Scrapling is the default grabbing path.
+- `chrome-devtools-mcp` remains the diagnostic fallback path.
 - `chrome-cdp` remains the specialist path for immediate continuation on already-open live or authenticated tabs.
-- Authenticated read-only workflows are now covered by evidence and are no longer an open decision.
+- Authenticated read-only workflows remain covered by the existing live-session evidence, while Scrapling-first handling is still being expanded.
 
 Open gaps still worth future research:
 
 - light live-session stability across `3-5` real tabs
 - longer-running comparisons between `chrome-devtools-mcp --autoConnect` and `chrome-cdp` in repeated live-session work
+- login-state reuse quality for Scrapling session-based runs
 
 ## Working Rule
 
-Start with the project-scoped `chrome-devtools-mcp` setup described in `docs/setup/chrome-tooling.md`.
+Start with the project-scoped Scrapling setup described in `docs/setup/scrapling-first-workflow.md`.
+
+Use `docs/setup/chrome-tooling.md` for the Chrome diagnostics and live-session fallback paths.
 
 If a task explicitly depends on the user's already-open live Chrome session and the current agent session is not already attached to it, use the repo-local `chrome-cdp` skill first.
 
 If a live-session task is known up front and still needs MCP-native diagnostics, launch `chrome-devtools-mcp` in an explicit live-attach mode instead of changing the default repository config.
 
-The current evidence-backed workflow decision is recorded in `docs/decisions/2026-03-17-browser-tooling-workflow.md`.
+The current evidence-backed workflow decision is recorded in `docs/decisions/2026-04-23-scrapling-first-workflow.md`.
 
 ## Global Skill Source
 

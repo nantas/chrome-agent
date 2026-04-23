@@ -1,6 +1,8 @@
 # Chrome Tooling Setup
 
-This repository uses project-scoped MCP configuration instead of repo-local binaries.
+This repository uses project-scoped MCP configuration for Chrome diagnostics and live-session fallback paths.
+
+Scrapling-first setup lives in `docs/setup/scrapling-first-workflow.md`.
 
 ## Official Launcher
 
@@ -36,7 +38,7 @@ args = ["chrome-devtools-mcp@latest"]
 
 ## Client Notes
 
-- `chrome-devtools-mcp` is the default browser tooling path for this repo.
+- `chrome-devtools-mcp` is the diagnostic fallback browser tooling path for this repo.
 - No `package.json`, lockfile, or repo-local `node_modules` installation is required.
 - `codex` only loads `.codex/config.toml` for trusted projects.
 - `opencode` looks for `opencode.json` in the current project and parent directories.
@@ -57,7 +59,7 @@ opencode mcp list
 
 ## Tool Roles
 
-- `chrome-devtools-mcp` is the default path for browser-driven tasks in this repo.
+- `chrome-devtools-mcp` is the structured diagnostics fallback when Scrapling needs browser evidence or interaction inspection.
 - `chrome-cdp-skill` is the supplemental path when the task must reuse a live Chrome session you already have open.
 
 ## Recommended Usage Split

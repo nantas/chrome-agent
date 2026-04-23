@@ -4,6 +4,10 @@
     "chrome-devtools": {
       "type": "local",
       "command": ["npx", "chrome-devtools-mcp@latest"]
+    },
+    "scrapling": {
+      "type": "local",
+      "command": ["/Users/nantasmac/.cache/chrome-agent-scrapling/bin/scrapling", "mcp"]
     }
   }
 }

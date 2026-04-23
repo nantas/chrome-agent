@@ -133,3 +133,11 @@ Observed on the validated article run:
 - `#js_content` contained text and inline images
 - image URLs were available from article image elements and could be preserved in Markdown output
 - `innerText` alone was insufficient because it dropped image links from the final正文
+
+## Notes From The Scrapling Run
+
+Observed on the Scrapling smoke check:
+
+- `scrapling extract get ... --ai-targeted` successfully returned the article title and inline image URL
+- the Markdown output still included some lead-in promotional fragments, so the existing cleanup guidance remains necessary
+- the extracted image URL order was preserved well enough for the repo's current article-grabbing contract

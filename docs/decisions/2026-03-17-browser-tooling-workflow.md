@@ -2,11 +2,13 @@
 
 ## Decision
 
-Use `chrome-devtools-mcp` as the repository default browser tooling path.
+This decision is historical.
 
-Keep the repo-local `chrome-cdp` skill as a specialist path for immediate continuation on an already-open live Chrome tab when the current agent session is not already attached to that live browser.
+The repository now uses Scrapling as the first webpage grabbing path. Keep this document as the evidence record for the Chrome fallback split:
 
-Do not change the repository's default MCP configuration to auto-attach to the user's real browser by default. Live-session attach modes for `chrome-devtools-mcp` remain opt-in.
+- `chrome-devtools-mcp` remains the structured diagnostics fallback
+- `chrome-cdp` remains the specialist path for immediate continuation on an already-open live Chrome tab
+- live-session attach modes for `chrome-devtools-mcp` remain opt-in
 
 ## Evidence Summary
 
@@ -18,9 +20,9 @@ Do not change the repository's default MCP configuration to auto-attach to the u
 
 ## Default path
 
-- Start with `chrome-devtools-mcp` for new browser work, especially public-site access, repeatable interaction flows, debugging, and cases where structured tools such as snapshots, network inspection, or performance analysis matter.
-- Treat the repository's default `chrome-devtools-mcp` config as a managed browser context, not as an always-on bridge into the user's real Chrome session.
-- If both tools can complete the task and no clear specialist advantage appears, stay on `chrome-devtools-mcp`.
+- Start with Scrapling for public-site access, repeatable content extraction, dynamic pages, protected pages, and article extraction.
+- Treat `chrome-devtools-mcp` as the managed browser diagnostics path, not as the first grabbing path.
+- If Scrapling can complete the task without browser diagnostics, stay on Scrapling.
 
 ## Specialist path
 
@@ -31,8 +33,10 @@ Do not change the repository's default MCP configuration to auto-attach to the u
 
 ## Switching triggers
 
-- Start with `chrome-devtools-mcp` when the task is public, repeatable, or diagnostic-heavy.
+- Start with Scrapling for public, repeatable, dynamic, protected, and article-oriented grabbing work.
+- Escalate to `chrome-devtools-mcp` only when structured browser diagnostics or evidence are required.
 - Switch to `chrome-cdp` when the user explicitly approves using the current live Chrome session and the existing agent session needs to continue on that browser immediately.
+- If approved Scrapling session reuse fails to preserve authenticated context, stop that path and use the approved live tab fallback instead of retrying blindly.
 - Stay with `chrome-devtools-mcp` if live-session access can be planned up front by launching the MCP server in an explicit live-attach mode and the task needs its structured inspection tools.
 - Do not switch tooling just because both tools overlap. Switch only when the task context changes operational friction, state-access needs, or diagnostic requirements.
 

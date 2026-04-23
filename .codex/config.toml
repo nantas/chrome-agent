@@ -1,3 +1,7 @@
 [mcp_servers."chrome-devtools"]
 command = "npx"
 args = ["chrome-devtools-mcp@latest"]
+
+[mcp_servers."scrapling"]
+command = "/Users/nantasmac/.cache/chrome-agent-scrapling/bin/scrapling"
+args = ["mcp"]
