@@ -1,12 +1,15 @@
----
-execution_mode: external
-spec_host_repo: repo://chrome-agent
-spec_standard_ref: repo://orbitos/99_系统/Harness/OrbitOS_Spec_Standard/OrbitOS_Spec_Standard_v0.3.md
-orbit_project_ref: repo://orbitos/20_项目/OrbitOS/OrbitOS.md
----
-
 # Verification
 
 ## 验证结论
 
-## 证据映射
+## Spec-to-Implementation Coverage
+
+## Task-to-Evidence Coverage
+
+## 关键证据入口
+
+| 证据类型 | 证据路径/链接 | 对应 requirement/task |
+| --- | --- | --- |
+|  |  |  |
+
+## 缺口与阻塞项
