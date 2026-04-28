@@ -147,7 +147,35 @@
 - 项目页面（Obsidian）不替代 spec delta 作为实现与验证依据
 - 回写只同步结论、状态、摘要与链接，不复制整份 spec/design/tasks
 
-## 7. Reference Index（参考索引）
+## 7. 策略库治理（Strategy Library Governance）
+
+### 目录结构
+
+```
+sites/
+├── anti-crawl/                # 反爬策略（按保护机制命名）
+│   ├── default.md             #   默认 Scrapling-first 策略
+│   ├── <mechanism>.md         #   具体反爬策略
+│   └── registry.json          #   索引
+└── strategies/                # 站点策略（按域名文件夹组织）
+    ├── <domain>/
+    │   ├── strategy.md        #   站点策略（YAML frontmatter + body）
+    │   └── _attachments/      #   操作附件（可选）
+    └── registry.json          #   索引
+```
+
+### 治理约束
+
+- **frontmatter 为权威来源**：`registry.json` 仅为索引摘要，不一致时以 frontmatter 为准
+- **新增策略需更新 registry.json**：每次添加或修改策略文件必须同步更新对应的 `registry.json`
+- **反爬策略按机制命名**：文件名匹配保护机制（如 `cloudflare-turnstile.md`），而非来源站点
+- **站点策略按域名组织**：文件夹名匹配 `domain` 字段，策略文件必须为 `strategy.md`
+- **操作内容分离**：脚本、配置等操作内容放入 `_attachments/`，不混入 `strategy.md`
+- **受控词汇表**：`protection_level`、`page_type`、`protection_type` 的枚举值定义在各自的 spec 中，新增值需通过 openspec change
+
+更多细节参见 `sites/README.md`。
+
+## 8. Reference Index（参考索引）
 
 | 文档 | 位置 | 用途 |
 |------|------|------|

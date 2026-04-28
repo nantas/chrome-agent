@@ -1,0 +1,44 @@
+{
+  "entries": [
+    {
+      "id": "default",
+      "protection_type": "none",
+      "sites": [],
+      "detection_summary": "No known protection signals; fallback for unmatched URLs",
+      "primary_engine": "scrapling-get",
+      "file": "default.md"
+    },
+    {
+      "id": "cloudflare-turnstile",
+      "protection_type": "cloudflare_turnstile",
+      "sites": ["wiki.supercombo.gg"],
+      "detection_summary": "HTTP 403, page title 'Just a moment...', cf-turnstile DOM markers",
+      "primary_engine": "scrapling-stealthy-fetch",
+      "file": "cloudflare-turnstile.md"
+    },
+    {
+      "id": "login-wall-redirect",
+      "protection_type": "login_wall",
+      "sites": ["x.com"],
+      "detection_summary": "Redirect to /i/flow/login, login page title, empty tweet entities in __INITIAL_STATE__",
+      "primary_engine": "scrapling-fetch",
+      "file": "login-wall-redirect.md"
+    },
+    {
+      "id": "cookie-auth-session",
+      "protection_type": "cookie_auth",
+      "sites": ["fanbox.cc"],
+      "detection_summary": "Redirect to /email/reactivate, missing FANBOXSESSID cookie, isMailAddressOutdated flag",
+      "primary_engine": "chrome-cdp",
+      "file": "cookie-auth-session.md"
+    },
+    {
+      "id": "rate-limit-api",
+      "protection_type": "rate_limit",
+      "sites": ["fanbox.cc"],
+      "detection_summary": "TypeError: Failed to fetch on API calls, no HTTP response, ~2.5h cooldown",
+      "primary_engine": "scrapling-fetch",
+      "file": "rate-limit-api.md"
+    }
+  ]
+}

@@ -128,8 +128,8 @@
 
 | 属性 | 内容 |
 |------|------|
-| **范围** | site-strategy & anti-crawl-strategy 结构化存储 |
-| **交付物** | 策略 schema、策略注册与查询、默认策略 |
+| **范围** | site-strategy & anti-crawl-strategy 结构化存储，5 个现有站点文件迁移 |
+| **交付物** | `site-strategy-schema` spec（YAML frontmatter 字段定义、structure 页面层级、page_type 词汇表、pagination 模式、registry.json 格式、_attachments 目录用途、protection_level 词汇表）、`anti-crawl-schema` spec（frontmatter 字段定义、protection_type 词汇表、detection 信号结构、engine_sequence 规则、success/failure signals、registry.json 格式）、两层目录结构（`sites/anti-crawl/` + `sites/strategies/<domain>/`）、5 个反爬策略（default、cloudflare-turnstile、login-wall-redirect、cookie-auth-session、rate-limit-api）、4 个站点策略（mp.weixin.qq.com、x.com、wiki.supercombo.gg、fanbox.cc）、两个 registry.json 索引、sites/README.md 重写、AGENTS.md 追加策略库治理约束 |
 | **需要的 specs** | `site-strategy-schema`、`anti-crawl-schema` |
 | **排他边界** | 不涉及引擎调度、不涉及策略自动匹配 |
 

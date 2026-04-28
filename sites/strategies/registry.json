@@ -1,0 +1,44 @@
+{
+  "entries": [
+    {
+      "domain": "mp.weixin.qq.com",
+      "description": "Publicly accessible WeChat article detail pages",
+      "protection_level": "low",
+      "page_types": ["static_article"],
+      "pagination": ["none"],
+      "entry_points": ["public_article"],
+      "anti_crawl_refs": [],
+      "file": "mp.weixin.qq.com/strategy.md"
+    },
+    {
+      "domain": "x.com",
+      "description": "Public tweet detail and hashtag/search pages",
+      "protection_level": "variable",
+      "page_types": ["dynamic_content", "search_results"],
+      "pagination": ["none", "scroll_infinite"],
+      "entry_points": ["public_tweet", "hashtag_search"],
+      "anti_crawl_refs": ["login-wall-redirect"],
+      "file": "x.com/strategy.md"
+    },
+    {
+      "domain": "wiki.supercombo.gg",
+      "description": "Fighting game wiki pages with Cloudflare Turnstile protection",
+      "protection_level": "high",
+      "page_types": ["static_article"],
+      "pagination": ["none"],
+      "entry_points": ["wiki_article"],
+      "anti_crawl_refs": ["cloudflare-turnstile"],
+      "file": "wiki.supercombo.gg/strategy.md"
+    },
+    {
+      "domain": "fanbox.cc",
+      "description": "pixivFANBOX authenticated content retrieval and file download",
+      "protection_level": "authenticated",
+      "page_types": ["dynamic_list", "dynamic_content", "binary_file"],
+      "pagination": ["url_parameter"],
+      "entry_points": ["creator_post_list"],
+      "anti_crawl_refs": ["cookie-auth-session", "rate-limit-api"],
+      "file": "fanbox.cc/strategy.md"
+    }
+  ]
+}
