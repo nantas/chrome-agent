@@ -1,71 +1,43 @@
-# master-plan — Spec
+# Specification Delta
 
-## Purpose
+## Capability 对齐（已确认）
 
-Define the repository-wide planning document, public README framing, and phase boundaries for the chrome-agent service roadmap.
+- Capability: `master-plan`
+- 来源: `proposal.md` / 已确认 capabilities
+- 变更类型: `modified`
+- 用户确认摘要: 用户确认需要把 Phase 5 从“安装链与清理闭环”重写为“全局 capability CLI”，其中 install-chain 与 output-lifecycle 保留但降级为支撑能力
 
-## Requirements
+## 规范真源声明
 
-### Requirement: Master planning document
+- 本文件是该 capability 在本次 change 中的行为规范真源
+- design / tasks / verification 必须引用本文件
+- 项目页面回写不得替代本文件
 
-The system SHALL produce a master planning document at `docs/governance-and-capability-plan.md` that defines the full project landscape without diving into per-capability implementation details.
-
-#### Scenario: Document structure
-
-- **WHEN** the document is generated
-- **THEN** it SHALL contain the following sections:
-  - 项目目标与服务身份声明（仓库作为"跨仓库网页抓取服务"）
-  - 当前状态摘要（已验证的能力、现有结构）
-  - 能力全景图（对外: explore/fetch/crawl；对内: site-strategy/anti-crawl-strategy/engine-registry/output-lifecycle）
-  - 阶段划分与交付边界（Phase 1–5 描述+各阶段输出物）
-  - 依赖关系（哪个阶段前置哪个）
-  - 技术栈与工具链说明（当前引擎 + 扩展方向）
-  - 治理约束（repo:// 语义、binding 引用、决策记录索引）
-
-#### Scenario: Phase boundary definition
-
-- **WHEN** each phase is described
-- **THEN** the phase entry SHALL include: phase name, scope, deliverables, required specs/contracts to create, and a clear exclusion boundary
+## MODIFIED Requirements
 
 ### Requirement: 能力全景图
-
 The system SHALL define Phase 5 as the stage that formalizes the global entry contract for the repository's external capabilities.
 
 The capability map SHALL continue to list `explore`, `fetch`, and `crawl` as external capabilities, but Phase 5 SHALL be the stage that gives them a formal global CLI surface.
 
 #### Scenario: Phase 5 capability framing
-
 - **WHEN** the master plan describes the external capability progression
 - **THEN** Phase 5 SHALL be framed around a repo-backed global CLI for `explore`, `fetch`, `crawl`, `doctor`, and `clean`
 - **AND** it SHALL not be framed only as an installation and cleanup closure stage
 
 ### Requirement: 阶段划分
-
 The system SHALL redefine the Phase 5 stage goal to "全局 capability CLI" while keeping install-chain and output-lifecycle as support planes.
 
 #### Scenario: Phase 5 summary
-
 - **WHEN** the master plan lists Phase 5 scope, deliverables, and boundaries
 - **THEN** the scope SHALL describe global CLI formalization, repo-registry-first repository resolution, strategy-guided crawl formalization, and supporting install/output capabilities
 - **AND** the deliverables SHALL include a CLI capability contract in addition to install-chain and output-lifecycle specs
 - **AND** the phase boundary SHALL exclude open-ended spidering, pure deterministic runtime reimplementation, runtime monitoring, and remote orchestration
 
 ### Requirement: 依赖关系
-
 The system SHALL keep Phase 5 dependent on the stable outputs of Phase 4 while clarifying the new dependency purpose.
 
 #### Scenario: Phase dependency wording
-
 - **WHEN** the plan explains `Phase 5 ← Phase 4`
 - **THEN** it SHALL state that the global CLI depends on stable engine, strategy, and extension governance contracts inside the repository
 - **AND** it SHALL explain that Phase 5 uses those contracts as the repo-local execution authority rather than replacing them
-
-### Requirement: README rewrite
-
-The system SHALL rewrite `README.md` to reflect the project's "cross-repo web scraping service" identity, replace the old "browser workstation" language, and serve as the repository's public-facing entry point.
-
-#### Scenario: README content
-
-- **WHEN** the README is rewritten
-- **THEN** it SHALL include: project identity, capability overview, directory structure, quick start, and a reference to the master planning document for the full roadmap
-- **THEN** it SHALL NOT contain operational how-to details (these belong in AGENTS.md and playbooks)

@@ -32,7 +32,7 @@
 | `chrome-cdp` — 实时会话延续 | ✅ 已验证 | 实时会话对比报告 |
 | 工作流路由（Content Retrieval / Platform Analysis） | ✅ 已验证 | AGENTS.md 路由定义 |
 | 文章式正文提取（DOM 顺序 + 内联图片） | ✅ 已验证 | 微信文章测试 |
-| 全局 skill 分发 | ✅ 已验证 | 安装与调度验证 |
+| repo-backed 全局 CLI 分发 | ✅ 已实现 | launcher + doctor + dispatch 验证 |
 
 ### 现有结构
 
@@ -60,7 +60,7 @@
 - 能力契约未冻结（各引擎的输入/输出/错误没有统一规范）
 - 策略库未标准化（站点策略、反爬策略以经验和报告存在，未结构化）
 - 没有引擎注册/发现机制
-- 没有输出物生命周期管理
+- 需要把 output-lifecycle、install-chain 和 bounded crawl 收敛到正式 CLI 契约
 
 ---
 
@@ -78,10 +78,14 @@
     │    ├── fetch         SPA / 动态页面 / 需 JS 渲染
     │    └── stealthy-fetch  受保护页面 / Cloudflare / WAF
     │
-    └─ crawl ────→ 多页面遍历与批量抓取（未来）
-         ├── pagination    分页 / 列表
-         ├── bulk          批量 URL
-         └── deep-crawl    递归遍历（未来）
+    ├─ crawl ────→ strategy-guided bounded traversal
+    │    ├── entry_points  声明式入口
+    │    ├── links_to      声明式页面连接
+    │    └── pagination    声明式分页推进
+    │
+    ├─ doctor ───→ launcher / repo 解析 / preflight 自检
+    │
+    └─ clean ────→ disposable outputs 清理（默认安全）
 ```
 
 ### 对内能力（维护与扩展）
@@ -91,7 +95,7 @@
 | **site-strategy** | 站点结构描述（DOM 特征、分页模式、反爬等级） | ❌ 未结构化 |
 | **anti-crawl-strategy** | 反爬策略配置（代理、延迟、指纹、挑战处理） | ❌ 未结构化 |
 | **engine-registry** | 引擎注册与发现（get/fetch/stealthy-fetch + 扩展） | ✅ 已规范 |
-| **output-lifecycle** | 输出物管理（格式、存储、清理） | ❌ 未实现 |
+| **output-lifecycle** | 输出物管理（格式、存储、清理） | ✅ 已实现 |
 
 ### 治理能力
 
@@ -142,14 +146,14 @@
 | **需要的 specs** | `engine-registry`、`extension-api`、`scrapling-bulk-fetch-contract` |
 | **排他边界** | 不包含策略自动选择、不包含编排层 |
 
-### Phase 5: 安装链与清理闭环
+### Phase 5: 全局 Capability CLI
 
 | 属性 | 内容 |
 |------|------|
-| **范围** | 输出生命周期、安装验证、清理机制 |
-| **交付物** | output-lifecycle spec、`clean` workflow、安装链验收 |
-| **需要的 specs** | `output-lifecycle`、`install-chain` |
-| **排他边界** | 不涉及运行时监控、不涉及远程调度 |
+| **范围** | repo-backed global CLI、repo-registry-first 解析、strategy-guided crawl、install/output 支撑面 |
+| **交付物** | `global-capability-cli` spec、`install-chain` spec、`output-lifecycle` spec、`strategy-guided-crawl` spec、全局 launcher、`doctor`、`clean`、bounded `crawl` |
+| **需要的 specs** | `global-capability-cli`、`install-chain`、`output-lifecycle`、`strategy-guided-crawl` |
+| **排他边界** | 不涉及开放式 spider、不重写仓库工作流为纯 deterministic runtime、不涉及运行时监控、不涉及远程调度 |
 
 ---
 
@@ -174,7 +178,7 @@ Phase 5: 安装链与清理闭环
 - **Phase 3 ← Phase 1**: 策略 schema 依赖治理层定义的目录结构
 - **Phase 3 ← Phase 2**: 策略库中的字段类型和错误码依赖冻结的契约
 - **Phase 4 ← Phase 2 + Phase 3**: 引擎扩展需要已冻结的契约和已标准化的策略库
-- **Phase 5 ← Phase 4**: 安装链依赖引擎扩展 API 的稳定
+- **Phase 5 ← Phase 4**: 全局 CLI 依赖稳定的引擎、策略与扩展治理契约，并把这些仓内契约作为执行权威而不是替代它们
 
 ---
 

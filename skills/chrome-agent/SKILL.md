@@ -1,9 +1,11 @@
 ---
 name: chrome-agent
-description: Dispatch webpage extraction requests into the local chrome-agent repository through codex-agent first and repo-agent second, then report result status and artifact paths back to the parent session.
+description: Historical dispatcher skill for chrome-agent. Superseded by the global `chrome-agent` CLI as the formal primary entrypoint.
 ---
 
 # Chrome Agent Global Skill
+
+> Status: superseded by the repo-backed global `chrome-agent` CLI. Keep this file only as a historical compatibility artifact, not as the primary install path.
 
 ## Purpose
 
