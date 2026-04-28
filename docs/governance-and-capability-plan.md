@@ -120,9 +120,9 @@
 | 属性 | 内容 |
 |------|------|
 | **范围** | 所有现有能力的接口契约定义为规范 |
-| **交付物** | 每个引擎的 input/output/error spec、契约一致性测试 |
-| **需要的 specs** | `engine-contracts`、`error-handling` |
-| **排他边界** | 不修改引擎实现、不扩展新能力 |
+| **交付物** | 5 个引擎契约 spec（input/output/error 三维 + smoke-check scenario）、`engine-contracts` 聚合索引（引擎类型映射、错误矩阵、smoke-check 清单）、契约一致性验证 |
+| **需要的 specs** | `scrapling-get-contract`、`scrapling-fetch-contract`、`scrapling-stealthy-fetch-contract`、`chrome-devtools-mcp-contract`、`chrome-cdp-contract`、`engine-contracts`（聚合索引） |
+| **排他边界** | 不修改引擎实现、不扩展新能力；不创建独立的 `error-handling` spec（error 维度融入各引擎契约） |
 
 ### Phase 3: 策略库标准化
 
