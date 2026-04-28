@@ -3,5 +3,5 @@ command = "npx"
 args = ["chrome-devtools-mcp@latest"]
 
 [mcp_servers."scrapling"]
-command = "/Users/nantasmac/.cache/chrome-agent-scrapling/bin/scrapling"
-args = ["mcp"]
+command = "/bin/sh"
+args = ["-lc", "repo_root=$(git rev-parse --show-toplevel 2>/dev/null || pwd); launcher=\"$repo_root/scripts/scrapling-cli.sh\"; if [ ! -x \"$launcher\" ]; then echo \"scrapling MCP launcher missing: $launcher\" >&2; exit 1; fi; exec \"$launcher\" mcp"]

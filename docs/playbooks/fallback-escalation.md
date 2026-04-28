@@ -32,9 +32,12 @@
 ## 切换流程
 
 ```
-Scrapling 执行
+Scrapling CLI preflight
+  ↓ 成功
+  ↓ Scrapling 执行
   ↓ 成功 → 停止
-  ↓ 失败/不完整
+  ↓ preflight 失败 → 先安装保障；仍失败则停止并报告
+  ↓ 抓取失败/不完整
   ↓ 需要哪种 fallback？
   ↓
   诊断证据需要？ → chrome-devtools-mcp

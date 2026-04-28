@@ -6,19 +6,19 @@ This change writes back into the repository itself so the Scrapling-first workfl
 
 ## Writeback Targets
 
-- `/Users/nantasmac/projects/agentic/chrome-agent/AGENTS.md`
-- `/Users/nantasmac/projects/agentic/chrome-agent/README.md`
-- `/Users/nantasmac/projects/agentic/chrome-agent/docs/setup/chrome-tooling.md`
-- `/Users/nantasmac/projects/agentic/chrome-agent/docs/setup/scrapling-first-workflow.md`
-- `/Users/nantasmac/projects/agentic/chrome-agent/docs/decisions/2026-03-17-browser-tooling-workflow.md`
-- `/Users/nantasmac/projects/agentic/chrome-agent/docs/decisions/2026-04-23-scrapling-first-workflow.md`
-- `/Users/nantasmac/projects/agentic/chrome-agent/docs/decisions/README.md`
-- `/Users/nantasmac/projects/agentic/chrome-agent/docs/playbooks/browser-tooling-evaluation.md`
-- `/Users/nantasmac/projects/agentic/chrome-agent/.codex/config.toml`
-- `/Users/nantasmac/projects/agentic/chrome-agent/opencode.json`
-- `/Users/nantasmac/projects/agentic/chrome-agent/sites/x.com-public-hashtag-search-login-gate.md`
-- `/Users/nantasmac/projects/agentic/chrome-agent/sites/README.md`
-- `/Users/nantasmac/projects/agentic/chrome-agent/reports/2026-04-23-x-sf6-ingrid-authenticated-evaluation.md`
+- `AGENTS.md`
+- `README.md`
+- `docs/setup/chrome-tooling.md`
+- `docs/setup/scrapling-first-workflow.md`
+- `docs/decisions/2026-03-17-browser-tooling-workflow.md`
+- `docs/decisions/2026-04-23-scrapling-first-workflow.md`
+- `docs/decisions/README.md`
+- `docs/playbooks/browser-tooling-evaluation.md`
+- `.codex/config.toml`
+- `opencode.json`
+- `sites/x.com-public-hashtag-search-login-gate.md`
+- `sites/README.md`
+- `reports/2026-04-23-x-sf6-ingrid-authenticated-evaluation.md`
 
 ## Field Mapping
 
@@ -31,13 +31,13 @@ This change writes back into the repository itself so the Scrapling-first workfl
 
 ## Preconditions
 
-- Scrapling environment verified at `/Users/nantasmac/.cache/chrome-agent-scrapling/bin/scrapling`
+- Scrapling environment verified at the managed cache executable represented by `SCRAPLING_CLI_PATH`
 - Scrapling MCP server confirmed by both `codex` and `opencode`
 - browser smoke checks completed for representative static, dynamic, article, and protected pages
 
 ## Execution Evidence
 
-- `codex -C /Users/nantasmac/projects/agentic/chrome-agent mcp get scrapling`
+- `codex ... mcp get scrapling`
 - `opencode mcp list`
 - `scrapling --help`
 - `scrapling extract get https://example.com ... --ai-targeted`

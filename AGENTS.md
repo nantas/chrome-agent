@@ -56,7 +56,11 @@
 
 路由信号：默认走 Content Retrieval；prompt 包含 `分析、调试、证据、总结经验、平台、结构、抓取规则、复现` 等信号时走 Platform/Page Analysis；两种信号同时出现时优先 Platform/Page Analysis。
 
-操作流程详见[docs/playbooks/scrapling-fetchers.md](docs/playbooks/scrapling-fetchers.md)。
+所有以 Scrapling 为起点的路径在真正执行前都必须先做 Scrapling CLI preflight：先检查 `SCRAPLING_CLI_PATH`，再检查默认受管安装 `$HOME/.cache/chrome-agent-scrapling/bin/scrapling`，仍缺失时先执行安装保障；只有 preflight 成功后，才能进入 fetcher 选择或 MCP 启动。
+
+若 preflight 无法恢复 CLI，可报告安装/配置失败，但不得伪装成已经进入 Scrapling-first 工作流。
+
+操作流程详见 [docs/playbooks/scrapling-cli-preflight.md](docs/playbooks/scrapling-cli-preflight.md) 与 [docs/playbooks/scrapling-fetchers.md](docs/playbooks/scrapling-fetchers.md)。
 
 ### 引擎选择策略
 
@@ -66,6 +70,8 @@
 - 受保护页面 → `stealthy-fetch`
 - 批量 URL → bulk variants
 - 已登录会话 → session variants
+
+fetcher 选择的前提是 preflight 已成功；不可把 CLI 安装失败误判为 fetcher 或 fallback 问题。
 
 **诊断 fallback：chrome-devtools-mcp**
 当 Scrapling 输出不完整、被阻断、视觉存疑，或需要 DOM/网络/控制台/截图/交互证据时使用。
@@ -82,6 +88,7 @@
 - 已登录/认证的工作需要用户明确批准目标页面或标签页
 - 认证运行默认为只读，除非用户明确扩大范围
 - 仍走 Scrapling-first，但 Scrapling 会话复用失败时切换到 chrome-cdp 实时标签页
+- 若工作流建议把 `SCRAPLING_CLI_PATH` 写入 `/Users/nantas-agent/.zshenv`，必须先征求用户确认；已有正确值不重写，冲突值不静默覆盖
 - 遇到重定向到登录、页面重置、登出或写操作风险时，停止并记录失败
 
 认证会话规则详见[docs/playbooks/authenticated-sessions.md](docs/playbooks/authenticated-sessions.md)。
@@ -182,6 +189,7 @@ sites/
 | 总体规划 | `docs/governance-and-capability-plan.md` | 项目路线图与阶段定义 |
 | 决策记录 | `docs/decisions/` | 架构决策索引 |
 | 操作手册 | `docs/playbooks/` | Scrapling 使用、fallback、证据收集、认证会话 |
+| Scrapling CLI preflight | `docs/playbooks/scrapling-cli-preflight.md` | 工作流前的安装保障与 `.zshenv` 确认边界 |
 | Scrapling fetcher 指南 | `docs/playbooks/scrapling-fetchers.md` | fetcher 选型与参数参考 |
 | Fallback 切换逻辑 | `docs/playbooks/fallback-escalation.md` | 何时升到 DevTools 或 chrome-cdp |
 | 证据收集方法 | `docs/playbooks/evidence-collection.md` | 截图/DOM/网络等收集步骤 |

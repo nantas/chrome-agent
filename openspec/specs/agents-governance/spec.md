@@ -1,20 +1,9 @@
-# Specification Delta
+# agents-governance Specification
 
-## Capability 对齐（已确认）
+## Purpose
 
-- Capability: `agents-governance`
-- 来源: `proposal.md`
-- 变更类型: new
-- 用户确认摘要: 对话中确认——AGENTS.md 转为纯治理文档，覆盖 7 个治理维度，操作流程下沉到 playbooks
-
-## 规范真源声明
-
-- 本文件是该 capability 在本次 change 中的行为规范真源
-- design / tasks / verification 必须引用本文件
-- 项目页面回写不得替代本文件
-
-## ADDED Requirements
-
+Define the governance contract for the repository entry document, workflow routing, engine boundaries, reporting expectations, directory rules, decision records, and the relationship between active workflow governance and superseded historical specs.
+## Requirements
 ### Requirement: AGENTS.md 结构与强制内容
 
 The system SHALL rewrite AGENTS.md as a pure governance document with the following mandatory sections, ordered as specified:
@@ -59,51 +48,57 @@ The system SHALL declare chrome-agent as a cross-repo web scraping service with 
 
 ### Requirement: 工作流路由规则
 
-The system SHALL document the two primary workflow types (Content Retrieval and Platform/Page Analysis) and their routing triggers in AGENTS.md.
+The system SHALL document the two primary workflow types (Content Retrieval and Platform/Page Analysis), their routing triggers, and the mandatory Scrapling preflight that occurs before a Scrapling-first workflow begins execution.
+
+For any workflow path that depends on Scrapling as the first engine family, the system SHALL check Scrapling CLI availability before attempting fetcher selection or content retrieval.
 
 #### Scenario: Content Retrieval routing
 
 - **WHEN** the user gives only a URL, asks to get/read/fetch/extract page content, or wants a concise failure explanation
 - **THEN** the workflow SHALL default to Content Retrieval with Scrapling-first path and lightweight verification
+- **AND** Scrapling CLI availability SHALL be checked before the first Scrapling step executes
 
 #### Scenario: Platform/Page Analysis routing
 
 - **WHEN** the user prompt contains signals such as 分析, 调试, 证据, 总结经验, 平台, 结构, 抓取规则, or 复现
 - **THEN** the workflow SHALL route to Platform/Page Analysis with deeper evidence collection and fallback escalation
+- **AND** if the chosen analysis path still starts with Scrapling, the same Scrapling CLI preflight SHALL run before execution
 
 #### Scenario: Mixed signals
 
 - **WHEN** both Content Retrieval and Platform/Page Analysis signals appear
 - **THEN** the workflow SHALL prefer Platform/Page Analysis
 
+#### Scenario: Preflight install assurance
+
+- **WHEN** the workflow requires Scrapling and the Scrapling CLI is not available
+- **THEN** the system SHALL first ensure the CLI is installed or restored according to the `scrapling-cli-environment` capability
+- **AND** it SHALL resume the requested workflow only after CLI availability is re-verified
+
 ### Requirement: 引擎选择策略
 
-The system SHALL define a Scrapling-first engine selection strategy with explicit fallback boundaries in AGENTS.md.
+The system SHALL define a Scrapling-first engine selection strategy with explicit fallback boundaries in AGENTS.md, and that strategy SHALL run only after Scrapling preflight has succeeded or been explicitly declared unavailable.
 
 #### Scenario: Default Scrapling path
 
-- **WHEN** a webpage grabbing task is initiated
-- **THEN** the workflow SHALL start with Scrapling, selecting the appropriate fetcher (get for static, fetch for SPA, stealthy-fetch for protected pages) unless a live-session continuity trigger is already known
+- **WHEN** a webpage grabbing task is initiated and Scrapling preflight succeeds
+- **THEN** the workflow SHALL start with Scrapling, selecting the appropriate fetcher (`get` for static, `fetch` for SPA, `stealthy-fetch` for protected pages) unless a live-session continuity trigger is already known
 
-#### Scenario: Stop on Scrapling success
+#### Scenario: Stop on unresolved preflight failure
 
-- **WHEN** Scrapling produces content that satisfies the task
-- **THEN** the workflow SHALL stop on Scrapling and not escalate solely because another tool could also complete the task
+- **WHEN** Scrapling preflight cannot make the CLI available
+- **THEN** the workflow SHALL stop before claiming it is executing the Scrapling-first path
+- **AND** it SHALL report the installation or configuration failure instead of silently falling through to unrelated tools
 
 #### Scenario: Diagnostic fallback to chrome-devtools-mcp
 
-- **WHEN** Scrapling output is incomplete, blocked, visually suspect, or requires DOM/network/console/screenshot/interaction evidence
+- **WHEN** Scrapling output is incomplete, blocked, visually suspect, or requires DOM/network/console/screenshot/interaction evidence after a successful preflight and Scrapling attempt
 - **THEN** the workflow SHALL escalate to chrome-devtools-mcp as the diagnostic and evidence path
 
 #### Scenario: Live-session continuity fallback to chrome-cdp
 
-- **WHEN** the task must continue immediately on an already-open real Chrome tab, or an approved authenticated state cannot be preserved through Scrapling
+- **WHEN** the task must continue immediately on an already-open real Chrome tab, or an approved authenticated state cannot be preserved through Scrapling after a successful preflight and Scrapling attempt
 - **THEN** the workflow SHALL escalate to repo-local chrome-cdp as the live-session continuity path
-
-#### Scenario: No interchangeable fallback switching
-
-- **WHEN** both fallback tools appear technically capable
-- **THEN** the workflow SHALL choose between them by session continuity needs versus diagnostic evidence needs, not by tool duplication alone
 
 ### Requirement: 报告产出规范
 
@@ -172,3 +167,14 @@ The system SHALL mark the existing `scrapling-first-browser-workflow` spec as su
 - **WHEN** agents-governance defines workflow routing and engine selection
 - **THEN** the superseded spec SHALL NOT be referenced as active behavioral authority
 - **AND** design and tasks artifacts SHALL reference agents-governance for routing rules, not the superseded spec
+
+### Requirement: Persistent shell change approval
+
+The system SHALL treat persistent shell-environment changes as user-approved actions, not as implicit workflow side effects.
+
+#### Scenario: Request to persist Scrapling CLI path
+
+- **WHEN** the workflow determines that adding `SCRAPLING_CLI_PATH` to `/Users/nantas-agent/.zshenv` would improve future runs
+- **THEN** it SHALL ask the user for confirmation before writing
+- **AND** it SHALL continue without persistent shell modification if the user declines
+

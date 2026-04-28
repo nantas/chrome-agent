@@ -3,8 +3,8 @@
 ## 标准与项目页面绑定
 
 - `spec_standard_ref`: `repo://orbitos/99_系统/Harness/OpenSpec_Schema_Source/orbitos-change-v1`
-- `project_page_ref`: `/Users/nantasmac/projects/agentic/chrome-agent/AGENTS.md`
-- `additional_context_refs`: `/Users/nantasmac/projects/agentic/chrome-agent/README.md`, `/Users/nantasmac/projects/agentic/chrome-agent/openspec/changes/integrate-scrapling-first-workflow/specs/scrapling-first-browser-workflow/spec.md`, `/Users/nantasmac/projects/agentic/chrome-agent/openspec/changes/integrate-scrapling-first-workflow/verification.md`, `/Users/nantasmac/projects/agentic/chrome-agent/sites/x.com-public-hashtag-search-login-gate.md`
+- `project_page_ref`: `AGENTS.md`
+- `additional_context_refs`: `README.md`, `openspec/changes/integrate-scrapling-first-workflow/specs/scrapling-first-browser-workflow/spec.md`, `openspec/changes/integrate-scrapling-first-workflow/verification.md`, `sites/x.com-public-hashtag-search-login-gate.md`
 
 ## Source of Truth
 
@@ -14,7 +14,7 @@
 
 ## 回写目标
 
-- `writeback_targets`: `/Users/nantasmac/projects/agentic/chrome-agent/AGENTS.md`, `/Users/nantasmac/projects/agentic/chrome-agent/README.md`, `/Users/nantasmac/projects/agentic/chrome-agent/docs/decisions/`, `/Users/nantasmac/projects/agentic/chrome-agent/docs/playbooks/`
+- `writeback_targets`: `AGENTS.md`, `README.md`, `docs/decisions/`, `docs/playbooks/`
 - `writeback_owner`: current repository maintainer operating through Codex/OpenSpec
 - `writeback_timing`: after implementation and verification confirm the reordered default workflow wording in `AGENTS.md`
 

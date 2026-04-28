@@ -4,6 +4,14 @@
 
 Scrapling 是本仓库的默认抓取引擎，支持多种模式的 fetcher 以适应不同的页面类型和保护级别。
 
+在选择任何 fetcher 之前，先执行 Scrapling CLI preflight：
+
+```bash
+./scripts/scrapling-cli.sh preflight
+```
+
+只有当 CLI 可用后，才进入 `get` / `fetch` / `stealthy-fetch` 选型。
+
 ## Fetcher 选型
 
 ### `get` — 静态页面

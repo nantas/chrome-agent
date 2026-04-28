@@ -7,9 +7,7 @@
 ## Purpose
 
 Define the repository's default webpage grabbing workflow around a Scrapling-first path, explicit fallback boundaries, authenticated read-only constraints, and the documentation and verification rules that keep the workflow auditable.
-
 ## Requirements
-
 ### Requirement: Scrapling-first routing
 
 The system SHALL treat Scrapling as the first tool path for webpage grabbing tasks, including public content retrieval, JavaScript-rendered pages, protected-page attempts, batch URL grabs, and read-only logged-in/session experiments when the user has approved the target scope.
@@ -36,22 +34,24 @@ The system SHALL treat Scrapling as the first tool path for webpage grabbing tas
 
 ### Requirement: Default workflow ordering
 
-The system SHALL express the default webpage grabbing workflow as one explicit operator flow that starts with task routing, defaults to Scrapling, and escalates only when verified fallback triggers are present.
+The system SHALL express the default webpage grabbing workflow as one explicit operator flow that starts with task routing, performs Scrapling CLI preflight, defaults to Scrapling, and escalates only when verified fallback triggers are present.
 
 #### Scenario: Default content retrieval
 
-- **WHEN** the operator reads `AGENTS.md` for a normal webpage grabbing task
-- **THEN** the documented flow first routes between `Content Retrieval` and `Platform/Page Analysis`, and then starts with Scrapling as the default grabbing path
+- **WHEN** the operator reads repository workflow documentation for a normal webpage grabbing task
+- **THEN** the documented flow SHALL first route between `Content Retrieval` and `Platform/Page Analysis`
+- **AND** it SHALL check Scrapling CLI availability before the first Scrapling fetcher or session mode is invoked
 
 #### Scenario: Scrapling path selection
 
-- **WHEN** the task is already on the Scrapling path
-- **THEN** the documented default flow maps common cases to the matching first fetcher or mode, including `get` for static or article pages, `fetch` for SPA or dynamic pages, `stealthy-fetch` for protected pages, and bulk or session variants only when those scopes are actually needed
+- **WHEN** the task is already on the Scrapling path and preflight succeeds
+- **THEN** the documented default flow SHALL map common cases to the matching first fetcher or mode, including `get` for static or article pages, `fetch` for SPA or dynamic pages, `stealthy-fetch` for protected pages, and bulk or session variants only when those scopes are actually needed
 
-#### Scenario: Stop without unnecessary escalation
+#### Scenario: Preflight blocks execution
 
-- **WHEN** Scrapling produces content that satisfies the task
-- **THEN** the workflow stops on Scrapling and does not escalate only because another browser tool could also complete the task
+- **WHEN** Scrapling CLI preflight fails and install assurance does not restore availability
+- **THEN** the workflow SHALL stop before attempting Scrapling execution
+- **AND** it SHALL report the unmet setup prerequisite
 
 ### Requirement: Fallback boundaries
 
@@ -93,17 +93,26 @@ The system SHALL document authenticated and live-session runs as explicitly appr
 
 ### Requirement: Environment contract
 
-The system SHALL document and verify the runtime requirements needed to use Scrapling from this repository.
+The system SHALL document and verify the runtime requirements needed to use Scrapling from this repository without embedding host-specific absolute paths in git-tracked files.
+
+Setup guidance and project-scoped MCP configuration SHALL use `SCRAPLING_CLI_PATH` or an equivalent environment-variable-resolving launcher as the canonical reference to the Scrapling executable.
 
 #### Scenario: Local setup
 
 - **WHEN** Scrapling-first workflow is installed or verified
-- **THEN** the repository documents a Python `>=3.10` environment, Scrapling package installation, browser dependency installation, CLI smoke checks, and MCP server configuration
+- **THEN** the repository SHALL document a Python `>=3.10` environment, Scrapling package installation, browser dependency installation, CLI smoke checks, and MCP server configuration
+- **AND** the documented Scrapling executable reference SHALL be environment-variable-based instead of a host-specific absolute path
 
 #### Scenario: Unsupported local Python
 
 - **WHEN** the system Python is below Scrapling's supported version
-- **THEN** the setup guidance uses an isolated environment such as `uv` instead of relying on the system Python
+- **THEN** the setup guidance SHALL use an isolated environment such as `uv` instead of relying on the system Python
+
+#### Scenario: Project-scoped MCP launch configuration
+
+- **WHEN** project-scoped MCP configuration is documented or maintained for Scrapling
+- **THEN** the tracked configuration SHALL resolve the executable from `SCRAPLING_CLI_PATH` or an equivalent launcher
+- **AND** it SHALL NOT require editing git-tracked files merely because the host username or home path changes
 
 ### Requirement: Verification baseline
 
@@ -131,17 +140,17 @@ The system SHALL extend the browser-task verification baseline to measure Scrapl
 
 ### Requirement: Documentation and site knowledge
 
-The system SHALL keep workflow documentation, decision records, playbooks, and site notes aligned with the Scrapling-first routing model.
+The system SHALL keep workflow documentation, decision records, playbooks, and site notes aligned with the Scrapling-first routing model and the environment-variable-based install contract.
 
 #### Scenario: Workflow documentation update
 
 - **WHEN** the change is implemented
-- **THEN** `AGENTS.md`, `README.md`, setup docs, decision docs, and evaluation playbooks describe Scrapling as the first path and define fallback boundaries
+- **THEN** `AGENTS.md`, `README.md`, setup docs, and related playbooks SHALL describe Scrapling as the first path, define fallback boundaries, and explain the preflight/install-confirmation flow
 
-#### Scenario: Reusable site learning
+#### Scenario: No stale absolute-path guidance
 
-- **WHEN** a Scrapling run validates or changes reusable knowledge for a site
-- **THEN** the workflow records that learning under `sites/` or a report according to the existing Content Retrieval vs Platform/Page Analysis reporting rules
+- **WHEN** setup docs or project-scoped config examples are updated
+- **THEN** they SHALL no longer instruct operators to copy a user-specific absolute Scrapling path into tracked files
 
 ### Requirement: Verification-aligned documentation
 
@@ -156,3 +165,4 @@ The system SHALL keep `AGENTS.md` aligned with the verified operating results al
 
 - **WHEN** the workflow text is reorganized
 - **THEN** the document no longer leaves any stale wording that implies `chrome-devtools-mcp` or `chrome-cdp` is the default first path for ordinary webpage grabbing
+

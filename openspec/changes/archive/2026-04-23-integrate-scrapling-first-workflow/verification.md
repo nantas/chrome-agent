@@ -16,10 +16,10 @@ This verification covers the Scrapling-first workflow change and the in-repo wri
 
 ### Completed evidence
 
-- Python `3.11.14` virtual environment created at `/Users/nantasmac/.cache/chrome-agent-scrapling`
+- Python `3.11.14` virtual environment created at the managed cache root `$HOME/.cache/chrome-agent-scrapling`
 - `scrapling[ai]` installed successfully with `uv`
 - `scrapling install` completed and installed browser dependencies
-- `codex -C /Users/nantasmac/projects/agentic/chrome-agent mcp get scrapling` confirmed the Scrapling MCP server registration
+- `codex ... mcp get scrapling` confirmed the Scrapling MCP server registration
 - `opencode mcp list` showed both `chrome-devtools` and `scrapling` as connected servers
 - `scrapling extract get https://example.com ... --ai-targeted` succeeded
 - `scrapling extract fetch https://todomvc.com/examples/react/dist/ ... --ai-targeted --network-idle` succeeded
@@ -27,7 +27,7 @@ This verification covers the Scrapling-first workflow change and the in-repo wri
 - `scrapling extract stealthy-fetch https://wiki.supercombo.gg/w/Street_Fighter_6 ... --ai-targeted --solve-cloudflare` succeeded and solved the Cloudflare challenge
 - Scrapling CDP-attached session attempt on `https://x.com/search?q=%23sf6_ingrid&src=typed_query` redirected to `/i/flow/login?...` instead of preserving the authenticated search page
 - `chrome-cdp` read-only fallback on the approved live tab confirmed title `(4) #sf6_ingrid - Search / X`, stable URL, visible results, and account marker `Wang Nan @nantas`
-- authenticated evaluation report added at `/Users/nantasmac/projects/agentic/chrome-agent/reports/2026-04-23-x-sf6-ingrid-authenticated-evaluation.md`
+- authenticated evaluation report added under `reports/2026-04-23-x-sf6-ingrid-authenticated-evaluation.md`
 
 ## Result
 
@@ -39,4 +39,4 @@ This verification covers the Scrapling-first workflow change and the in-repo wri
 ## Notes
 
 - The old Chrome-only decision record is now historical and retained as fallback evidence.
-- The Scrapling executable path currently used by the repo is `/Users/nantasmac/.cache/chrome-agent-scrapling/bin/scrapling`.
+- The Scrapling executable path used by the repo was the managed cache executable now represented by the `SCRAPLING_CLI_PATH` contract.

@@ -13,7 +13,7 @@ Do not change the repository to auto-attach Chrome by default. Live-session atta
 ## Evidence Summary
 
 - Local environment verification found system Python `3.9.6`, so Scrapling had to be installed in an isolated Python `3.11.14` environment.
-- `scrapling install` completed successfully and installed browser dependencies.
+- `scrapling install` completed successfully in the managed cache environment and installed browser dependencies.
 - Public-site smoke checks succeeded on `https://example.com` and `https://todomvc.com/examples/react/dist/`.
 - Article smoke check succeeded on `https://mp.weixin.qq.com/s/kPEyL3NDPAQYp7sFl5eE4w?scene=1`, including inline image URLs in Markdown output.
 - Protected-page smoke check succeeded on `https://wiki.supercombo.gg/w/Street_Fighter_6` with Cloudflare challenge solving.
