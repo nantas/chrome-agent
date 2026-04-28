@@ -11,6 +11,9 @@ structure:
       url_pattern: /:user/status/:id
       url_example: https://x.com/username/status/123456789
       type: dynamic_content
+      engine_preference:
+        preferred: scrapling-fetch
+        reason: Public tweet detail pages are already validated on the lighter Scrapling fetch path
       content_type: article_with_attachments
       pagination: none
       links_to: []
@@ -20,6 +23,9 @@ structure:
       url_pattern: /hashtag/:tag
       url_example: https://x.com/hashtag/StreetFighter6
       type: search_results
+      engine_preference:
+        preferred: chrome-cdp
+        reason: Hashtag and search pages often require authenticated live-session continuity after login-wall detection
       content_type: search_results
       pagination:
         mechanism: scroll_infinite
@@ -71,6 +77,7 @@ x.com has two structurally different page types under the same domain. Public tw
 - If x.com frontend changes, extraction behavior may change.
 - Authenticated-only content (e.g., followed users only) requires `chrome-cdp` with approved session.
 - The `login-wall-redirect` anti-crawl strategy handles login gate detection signals.
+- `engine_preference` is intentionally split per page type: public tweet detail keeps the lighter Scrapling path, while authenticated search prefers `chrome-cdp`.
 
 ## Evidence
 

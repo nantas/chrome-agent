@@ -14,14 +14,14 @@ detection:
       - cf-turnstile
       - "#challenge-form"
     has_content: false
-engine_sequence:
+engine_priority:
   - engine: scrapling-stealthy-fetch
+    rank: 1
     config:
       solve_cloudflare: true
       network_idle: true
-    purpose: primary
   - engine: chrome-devtools-mcp
-    purpose: diagnostic
+    rank: 2
 success_signals:
   page_content:
     has_content: true
@@ -40,7 +40,7 @@ failure_signals:
 
 Cloudflare Turnstile is an anti-bot challenge that presents a checkbox or invisible verification widget. When triggered, the page returns HTTP 403 with a minimal challenge shell — the real content is only accessible after passing the challenge.
 
-## Engine Sequence Rationale
+## Engine Priority Rationale
 
 - Starts with `scrapling-stealthy-fetch` because `scrapling-get` and `scrapling-fetch` cannot solve Turnstile challenges. The stealthy fetcher's browser fingerprint spoofing and `solve_cloudflare` option are required.
 - `chrome-devtools-mcp` is the diagnostic fallback when stealthy-fetch cannot complete the challenge, providing screenshot and DOM evidence for manual analysis.

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines the structured schema for site strategy files: YAML frontmatter fields (domain, description, protection_level, anti_crawl_refs, structure, extraction), page hierarchy with per-page anti_crawl_refs, controlled vocabularies for page_type and protection_level, pagination patterns, registry.json index format, _attachments directory usage, and governance constraints.
+Defines the structured schema for site strategy files: YAML frontmatter fields (domain, description, protection_level, anti_crawl_refs, engine_preference, structure, extraction), page hierarchy with per-page anti_crawl_refs and per-page engine_preference, controlled vocabularies for page_type and protection_level, pagination patterns, registry.json index format, _attachments directory usage, and governance constraints.
 
 ## Requirements
 
@@ -38,6 +38,7 @@ Each `strategy.md` SHALL include the following fields in its YAML frontmatter:
 | `description` | string | yes | One-sentence summary of scraping scope |
 | `protection_level` | enum | yes | `low`, `medium`, `high`, `authenticated`, or `variable` |
 | `anti_crawl_refs` | string[] | yes | References to `anti-crawl/` strategy IDs; empty array if none |
+| `engine_preference` | object | no | Optional engine preference for this site; contains `preferred` (string) and optional `reason` (string) |
 | `structure` | object | yes | Page hierarchy and connectivity (see Structure requirement) |
 | `extraction` | object | no | Globally useful selectors, image handling, and cleanup rules |
 
@@ -65,6 +66,7 @@ The `structure` object SHALL contain:
   - `url_example`: concrete example URL used for validation
   - `type`: page type from the controlled vocabulary (see Page Type Vocabulary)
   - `anti_crawl_refs`: optional override of per-file `anti_crawl_refs` for this page only; when absent, inherits from file-level `anti_crawl_refs`
+  - `engine_preference`: optional per-page engine preference override; same structure as file-level `engine_preference`
   - `content_type`: what content this page produces (`post_card`, `article_body`, `article_with_attachments`, `search_results`, `binary_file`, `list`, `auth_gate`)
   - `pagination`: pagination configuration (see Pagination requirement)
   - `links_to`: array of navigation targets reachable from this page
@@ -90,6 +92,62 @@ The `structure` object SHALL contain:
 - **THEN** `structure.pages` SHALL list both page types
 - **AND** `entry_points` SHALL list all valid starting pages
 - **AND** per-page `anti_crawl_refs` SHALL differentiate protection per entry point when applicable
+
+### Requirement: Engine Preference 引擎偏好
+
+The system SHALL define an optional `engine_preference` field for site strategy YAML frontmatter.
+
+The `engine_preference` object SHALL contain:
+- `preferred` (required, string): Canonical engine identifier from `configs/engine-registry.json` that should be tried first for this site
+- `reason` (optional, string): Human-readable justification for the preference (e.g., "All pages require JS rendering")
+
+`engine_preference` MAY be specified at two levels:
+
+1. **File level**: In the top-level YAML frontmatter, applies to all pages in the site unless overridden per-page
+2. **Per-page level**: In `structure.pages[].engine_preference`, overrides the file-level preference for a specific page type
+
+#### Scenario: 文件级别引擎偏好
+
+- **WHEN** a site strategy specifies file-level `engine_preference`:
+  ```yaml
+  domain: x.com
+  engine_preference:
+    preferred: scrapling-fetch
+    reason: "All pages require JS rendering for content"
+  ```
+- **THEN** `scrapling-fetch` SHALL be tried before any other engine for all pages in this site
+- **AND** the engine's `default_rank` from `configs/engine-registry.json` SHALL be overridden for this site
+
+#### Scenario: Per-page 引擎偏好覆盖
+
+- **WHEN** a site has multiple page types with different engine needs:
+  ```yaml
+  structure:
+    pages:
+      - id: public_tweet
+        type: dynamic_content
+        engine_preference:
+          preferred: scrapling-fetch
+      - id: hashtag_search
+        type: search_results
+        engine_preference:
+          preferred: scrapling-stealthy-fetch
+  ```
+- **THEN** `public_tweet` pages SHALL use `scrapling-fetch` first
+- **AND** `hashtag_search` pages SHALL use `scrapling-stealthy-fetch` first
+- **AND** pages without per-page `engine_preference` SHALL fall back to: (1) file-level preference, (2) anti-crawl strategy `engine_priority`, (3) engine `default_rank`
+
+#### Scenario: 引擎偏好必须引用有效引擎
+
+- **WHEN** `engine_preference.preferred` is specified
+- **THEN** the value SHALL match an engine `id` in `configs/engine-registry.json`
+- **AND** a reference to a non-existent engine SHALL be treated as a validation error
+
+#### Scenario: 无引擎偏好
+
+- **WHEN** a site strategy does not specify `engine_preference`
+- **THEN** engine selection SHALL fall back to: (1) matching anti-crawl strategy `engine_priority`, (2) engine `default_rank`
+- **AND** the site strategy is still valid and complete without this field
 
 ### Requirement: Page Type 受控词汇表
 

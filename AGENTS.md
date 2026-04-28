@@ -39,7 +39,7 @@
 |------|------|------|
 | **site-strategy** | 站点结构描述（DOM 特征、分页模式、反爬等级） | 未结构化 |
 | **anti-crawl-strategy** | 反爬策略配置（代理、延迟、指纹、挑战处理） | 未结构化 |
-| **engine-registry** | 引擎注册与发现 | 未实现 |
+| **engine-registry** | 引擎注册与发现 | 已规范 |
 | **output-lifecycle** | 输出物管理（格式、暂存、清理） | 未实现 |
 
 能力全景详见[总体规划文档](docs/governance-and-capability-plan.md#3-能力全景图)。
@@ -182,7 +182,15 @@ sites/
 
 更多细节参见 `sites/README.md`。
 
-## 8. Reference Index（参考索引）
+## 8. 引擎扩展治理（Engine Extension Governance）
+
+- **新引擎必须通过 openspec change 接入**：不得绕过 `openspec/changes/` 工作流直接新增或替换引擎能力。
+- **注册索引必须同步更新**：新增、修改或 supersede 任一引擎时，必须同步更新 `configs/engine-registry.json`，并以对应 contract spec 为权威来源。
+- **artifact checklist 以 spec 为准**：接入时必须遵循 `openspec/specs/extension-api/spec.md` 中定义的 artifact checklist、验证条件与命名规范。
+- **注册格式以 spec 为准**：引擎条目的字段结构、特性评分、`composite_score`、`default_rank` 与生命周期状态由 `openspec/specs/engine-registry/spec.md` 约束。
+- **聚合索引只保留跨引擎关注点**：`openspec/specs/engine-contracts/spec.md` 负责错误矩阵、选择映射、smoke-check 聚合；具体引擎清单不再内联维护。
+
+## 9. Reference Index（参考索引）
 
 | 文档 | 位置 | 用途 |
 |------|------|------|

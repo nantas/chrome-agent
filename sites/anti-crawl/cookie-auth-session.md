@@ -14,15 +14,9 @@ detection:
     url_patterns:
       - "/email/reactivate"
     has_content: false
-engine_sequence:
-  - engine: scrapling-fetch
-    config:
-      network_idle: true
-    purpose: primary
-  - engine: chrome-devtools-mcp
-    purpose: diagnostic
+engine_priority:
   - engine: chrome-cdp
-    purpose: primary
+    rank: 1
 success_signals:
   page_content:
     has_content: true
@@ -43,10 +37,8 @@ failure_signals:
 
 Cookie-based authentication requires a valid session cookie (e.g., `FANBOXSESSID`) to access protected content. Without the cookie, requests may redirect to login or show a shell page.
 
-## Engine Sequence Rationale
+## Engine Priority Rationale
 
-- `scrapling-fetch` with session reuse may work if cookies are available.
-- `chrome-devtools-mcp` provides diagnostic evidence (cookie state, redirect behavior).
 - `chrome-cdp` is the primary path for authenticated sessions — it reuses the user's live browser session with valid cookies.
 
 ## Known Quirks

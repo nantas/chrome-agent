@@ -1,0 +1,142 @@
+{
+  "engines": [
+    {
+      "id": "scrapling-get",
+      "type": "http",
+      "characteristics": {
+        "efficiency": {
+          "score": 0.95,
+          "note": "HTTP-only fetch path with no browser launch overhead."
+        },
+        "stability": {
+          "score": 0.9,
+          "note": "Well-validated for static pages and article extraction."
+        },
+        "adaptability": {
+          "score": 0.3,
+          "note": "Limited to simple pages that do not require JS rendering or challenge handling."
+        }
+      },
+      "composite_score": 61,
+      "default_rank": 1,
+      "best_for": ["static_page", "static_article"],
+      "contract_spec": "scrapling-get-contract",
+      "status": "frozen"
+    },
+    {
+      "id": "scrapling-fetch",
+      "type": "playwright",
+      "characteristics": {
+        "efficiency": {
+          "score": 0.6,
+          "note": "Browser startup adds cost but remains acceptable for default JS-rendered paths."
+        },
+        "stability": {
+          "score": 0.8,
+          "note": "Stable for SPA rendering and dynamic content with existing smoke checks."
+        },
+        "adaptability": {
+          "score": 0.6,
+          "note": "Covers a broad middle tier of dynamic pages without stealth requirements."
+        }
+      },
+      "composite_score": 66,
+      "default_rank": 2,
+      "best_for": ["dynamic_content", "dynamic_list", "search_results"],
+      "contract_spec": "scrapling-fetch-contract",
+      "status": "frozen"
+    },
+    {
+      "id": "scrapling-stealthy-fetch",
+      "type": "playwright_stealth",
+      "characteristics": {
+        "efficiency": {
+          "score": 0.4,
+          "note": "Heavier browser path because stealth and challenge solving increase runtime cost."
+        },
+        "stability": {
+          "score": 0.85,
+          "note": "Reliable for validated protected-page scenarios once escalation is justified."
+        },
+        "adaptability": {
+          "score": 0.9,
+          "note": "Handles high-protection targets and challenge flows beyond standard fetch."
+        }
+      },
+      "composite_score": 79,
+      "default_rank": 3,
+      "best_for": ["high_protection"],
+      "contract_spec": "scrapling-stealthy-fetch-contract",
+      "status": "frozen"
+    },
+    {
+      "id": "scrapling-bulk-fetch",
+      "type": "playwright_bulk",
+      "characteristics": {
+        "efficiency": {
+          "score": 0.55,
+          "note": "Amortizes browser setup across multiple URLs but remains heavier than single-page get."
+        },
+        "stability": {
+          "score": 0.75,
+          "note": "Expected to be stable for repeated dynamic fetches once smoke-checked."
+        },
+        "adaptability": {
+          "score": 0.55,
+          "note": "Extends batch coverage for the same scenarios as fetch without stealth."
+        }
+      },
+      "composite_score": 61,
+      "default_rank": 3,
+      "best_for": ["bulk_operations"],
+      "contract_spec": "scrapling-bulk-fetch-contract",
+      "status": "frozen"
+    },
+    {
+      "id": "chrome-devtools-mcp",
+      "type": "cdp_managed",
+      "characteristics": {
+        "efficiency": {
+          "score": 0.3,
+          "note": "Managed browser diagnostics are slower and more operator-intensive than Scrapling."
+        },
+        "stability": {
+          "score": 0.7,
+          "note": "Stable for evidence collection but not the default extraction engine."
+        },
+        "adaptability": {
+          "score": 0.95,
+          "note": "Covers DOM, network, console, and screenshot diagnostics across many edge cases."
+        }
+      },
+      "composite_score": 75,
+      "default_rank": 4,
+      "best_for": ["diagnostic"],
+      "contract_spec": "chrome-devtools-mcp-contract",
+      "status": "frozen"
+    },
+    {
+      "id": "chrome-cdp",
+      "type": "cdp_live",
+      "characteristics": {
+        "efficiency": {
+          "score": 0.2,
+          "note": "Depends on a live browser tab and is the heaviest operational path."
+        },
+        "stability": {
+          "score": 0.6,
+          "note": "Useful when a real session exists, but continuity depends on the active tab state."
+        },
+        "adaptability": {
+          "score": 0.85,
+          "note": "Best for authenticated continuity and real-session takeovers that other engines cannot preserve."
+        }
+      },
+      "composite_score": 65,
+      "default_rank": 5,
+      "best_for": ["authenticated"],
+      "contract_spec": "chrome-cdp-contract",
+      "status": "frozen"
+    }
+  ]
+}

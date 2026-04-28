@@ -17,19 +17,13 @@ detection:
       - 'a[href="/login"]'
   network:
     empty_api_entities: "window.__INITIAL_STATE__.tweets.entities"
-engine_sequence:
+engine_priority:
   - engine: scrapling-fetch
+    rank: 1
     config:
       network_idle: true
-    purpose: primary
-  - engine: scrapling-stealthy-fetch
-    config:
-      network_idle: true
-    purpose: fallback
   - engine: chrome-devtools-mcp
-    purpose: diagnostic
-  - engine: chrome-cdp
-    purpose: fallback
+    rank: 2
 success_signals:
   page_content:
     has_content: true
@@ -47,11 +41,10 @@ failure_signals:
 
 Login wall redirect is a protection mechanism where unauthenticated users are redirected to a login page. The HTTP response returns 200 but the DOM is replaced with a login form or signup prompt.
 
-## Engine Sequence Rationale
+## Engine Priority Rationale
 
 - Starts with `scrapling-fetch` (or session reuse) since some pages may load content without redirect if the session is recognized.
 - Falls back to `chrome-devtools-mcp` for diagnostic evidence (screenshot, network redirect, DOM snapshot).
-- `chrome-cdp` is the live-session fallback when an already-authenticated tab is available and user has approved read-only access.
 
 ## Known Quirks
 
@@ -64,4 +57,4 @@ Login wall redirect is a protection mechanism where unauthenticated users are re
 
 - Validated on x.com hashtag search (`/hashtag/StreetFighter6`, 2026-03-21).
 - See `reports/2026-03-21-sf6-x-shell-signals.txt` for shell detection evidence.
-- Authenticated run (2026-04-23) confirmed that `chrome-cdp` can access content with approved session.
+- Authenticated run (2026-04-23) confirmed that live-session continuation remains possible, but that path is governed outside this anti-crawl priority file.

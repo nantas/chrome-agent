@@ -7,17 +7,17 @@ detection:
     status_codes: []
   page_content:
     has_content: true
-engine_sequence:
+engine_priority:
   - engine: scrapling-get
-    purpose: primary
+    rank: 1
   - engine: scrapling-fetch
-    purpose: primary
+    rank: 2
     config:
       network_idle: true
   - engine: scrapling-stealthy-fetch
-    purpose: fallback
+    rank: 3
   - engine: chrome-devtools-mcp
-    purpose: diagnostic
+    rank: 4
 success_signals:
   page_content:
     has_content: true
@@ -32,7 +32,7 @@ failure_signals:
 
 The default strategy is used when no known protection signals are detected and no site strategy matches. It encodes the canonical Scrapling-first escalation chain for simple, unprotected pages.
 
-## Engine Sequence Rationale
+## Engine Priority Rationale
 
 - `scrapling-get` is tried first since there are no known protection signals and the page is expected to be simple static HTML.
 - `scrapling-fetch` is the first fallback when JS rendering is needed.

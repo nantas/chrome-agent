@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines the structured schema for anti-crawl strategy files: YAML frontmatter fields (id, protection_type, sites, detection, engine_sequence, success_signals, failure_signals), detection signal structure, engine sequence rules, default strategy definition, success/failure signals, registry.json index format, and governance constraints.
+Defines the structured schema for anti-crawl strategy files: YAML frontmatter fields (id, protection_type, sites, detection, engine_priority, success_signals, failure_signals), detection signal structure, engine priority rules, default strategy definition, success/failure signals, registry.json index format, and governance constraints.
 
 ## Requirements
 
@@ -39,15 +39,16 @@ Each anti-crawl file SHALL include the following fields in its YAML frontmatter:
 | `protection_type` | enum | yes | From the controlled vocabulary (see Protection Type Vocabulary) |
 | `sites` | string[] | yes | Domains where this protection has been observed; empty array for `default` |
 | `detection` | object | yes | Detection signals that identify this protection (see Detection requirement) |
-| `engine_sequence` | array | yes | Ordered list of engines to try, each with optional config (see Engine Sequence requirement) |
+| `engine_priority` | array | yes | Ordered list of engines to try, each with `rank`, `engine`, and optional `config` (see Engine Priority requirement) |
 | `success_signals` | object | yes | Conditions indicating the protection was bypassed |
 | `failure_signals` | object | yes | Conditions indicating the bypass attempt failed |
 
 #### Scenario: 必填字段完整性
 
-- **WHEN** an anti-crawl strategy file is created
+- **WHEN** an anti-crawl strategy file is created or updated
 - **THEN** it SHALL contain all required frontmatter fields
 - **AND** `id` SHALL match the filename stem (e.g., `cloudflare-turnstile.md` → `id: cloudflare-turnstile`)
+- **AND** `engine_priority` SHALL replace the deprecated `engine_sequence` field; `engine_sequence` SHALL NOT be used in new or updated strategy files
 
 #### Scenario: 默认策略 sites 字段
 
@@ -105,26 +106,55 @@ The `detection` object SHALL contain:
 - **THEN** the `login-wall-redirect` anti-crawl strategy SHALL be a candidate
 - **AND** `detection.page_content.has_content` SHOULD be `false`
 
-### Requirement: Engine Sequence 引擎序列
+### Requirement: Engine Priority 引擎优先级
 
-The system SHALL define the `engine_sequence` field as an ordered list of engines to try for this protection, with optional per-engine configuration.
+The system SHALL define the `engine_priority` field as an ordered list of engines to try for this protection, with optional per-engine configuration and rank.
 
-Each entry in `engine_sequence` SHALL contain:
-- `engine`: engine identifier from the canonical engine list (must match values in `engine-contracts` spec: `scrapling-get`, `scrapling-fetch`, `scrapling-stealthy-fetch`, `chrome-devtools-mcp`, `chrome-cdp`)
+Each entry in `engine_priority` SHALL contain:
+- `engine`: engine identifier from `configs/engine-registry.json` (e.g., `scrapling-stealthy-fetch`)
+- `rank` (required): integer starting from 1, indicating execution priority order. 1 = first engine to try, 2 = second, etc. Ranks SHALL be contiguous (no gaps) and start at 1.
 - `config` (optional): engine-specific configuration override (e.g., `solve_cloudflare: true`, `network_idle: true`, `timeout: 60000`)
-- `purpose` (optional): one of `primary`, `fallback`, `diagnostic`
 
-#### Scenario: 引擎序列必须尊重 canonical chain
+The `rank` field replaces the deprecated `purpose` field (which used enum values: `primary`, `fallback`, `diagnostic`).
 
-- **WHEN** an `engine_sequence` is defined
+#### Scenario: 引擎优先级排序表达
+
+- **WHEN** a Cloudflare Turnstile protection is detected and the anti-crawl strategy specifies:
+  ```yaml
+  engine_priority:
+    - engine: scrapling-stealthy-fetch
+      rank: 1
+      config: { solve_cloudflare: true }
+    - engine: chrome-devtools-mcp
+      rank: 2
+  ```
+- **THEN** `scrapling-stealthy-fetch` SHALL be tried first (rank: 1)
+- **AND** `chrome-devtools-mcp` SHALL be tried second (rank: 2) if the first engine fails
+
+#### Scenario: 引擎优先级必须尊重 canonical chain
+
+- **WHEN** an `engine_priority` is defined
 - **THEN** the engines SHALL appear in the same order as the canonical escalation chain: `scrapling-get` → `scrapling-fetch` → `scrapling-stealthy-fetch` → `chrome-devtools-mcp` → `chrome-cdp`
 - **AND** entries MAY be skipped (e.g., start at `scrapling-stealthy-fetch` for Cloudflare) but SHALL NOT be reordered
+- **AND** `rank` values SHALL increase monotonically in canonical chain order
 
-#### Scenario: Cloudflare 引擎序列
+#### Scenario: 连续 rank 值
 
-- **WHEN** a Cloudflare Turnstile protection is detected
-- **THEN** `engine_sequence` SHALL start with `scrapling-stealthy-fetch` (skipping `scrapling-get` and `scrapling-fetch` which are ineffective)
-- **AND** `chrome-devtools-mcp` SHALL follow as a diagnostic fallback with `purpose: diagnostic`
+- **WHEN** an `engine_priority` has three entries
+- **THEN** their `rank` values SHALL be 1, 2, 3 (contiguous, no gaps)
+- **AND** rank values with gaps (e.g., 1, 3, 4) SHALL be treated as a schema violation
+
+#### Scenario: 最少一个引擎
+
+- **WHEN** an `engine_priority` is specified
+- **THEN** it SHALL contain at least one entry
+- **AND** an empty `engine_priority` SHALL be treated as a schema violation
+
+#### Scenario: 引擎标识符必须存在于注册表
+
+- **WHEN** `engine_priority` references an engine identifier
+- **THEN** that identifier SHALL exist in `configs/engine-registry.json`
+- **AND** a reference to a non-existent engine SHALL be treated as a validation error
 
 ### Requirement: Default 默认策略
 
@@ -133,14 +163,25 @@ The system SHALL define a `default.md` anti-crawl strategy that serves as the fa
 `default.md` SHALL:
 - Have `id: default` and `protection_type: none`
 - Have `sites: []` (not bound to any specific domain)
-- Encode the Scrapling-first escalation chain: `scrapling-get` → `scrapling-fetch` → `scrapling-stealthy-fetch` → `chrome-devtools-mcp` (diagnostic)
+- Encode the Scrapling-first escalation chain using `engine_priority`:
+  ```yaml
+  engine_priority:
+    - engine: scrapling-get
+      rank: 1
+    - engine: scrapling-fetch
+      rank: 2
+    - engine: scrapling-stealthy-fetch
+      rank: 3
+    - engine: chrome-devtools-mcp
+      rank: 4
+  ```
 - Serve as the behavior for simple, unprotected pages with no known site strategy
 
 #### Scenario: 无匹配策略
 
 - **WHEN** an agent encounters a URL with no matching site strategy and no detection signals match any anti-crawl strategy
 - **THEN** the agent SHALL use the `default` strategy
-- **AND** the default strategy SHALL try engines in Scrapling-first escalation order
+- **AND** the default strategy SHALL try engines in rank order (1 → 2 → 3 → 4)
 
 #### Scenario: 默认策略失败
 
@@ -168,9 +209,9 @@ The system SHALL define success and failure signal schemas for anti-crawl strate
 
 #### Scenario: Cloudflare 失败信号
 
-- **WHEN** after the engine sequence the page still shows "Just a moment" or cf-turnstile elements
+- **WHEN** after the engine priority chain the page still shows "Just a moment" or cf-turnstile elements
 - **THEN** the bypass SHALL be considered failed
-- **AND** the agent SHALL escalate to the next engine in the sequence or enter analysis flow
+- **AND** the agent SHALL escalate to the next engine in the priority chain or enter analysis flow
 
 ### Requirement: Markdown body 推荐章节
 
@@ -178,7 +219,7 @@ The system SHALL recommend the following Markdown body sections for anti-crawl s
 
 Recommended sections:
 1. **Overview** — what this protection looks like, when it triggers
-2. **Engine Sequence Rationale** — why this engine order, what each contributes
+2. **Engine Priority Rationale** — why this engine order, what each contributes
 3. **Known Quirks** — edge cases, things that were tried and failed
 4. **Evidence** — links to reports and validated runs
 
@@ -200,7 +241,7 @@ The system SHALL maintain a `sites/anti-crawl/registry.json` index for fast mach
 | `protection_type` | string | From controlled vocabulary |
 | `sites` | string[] | Domains where observed |
 | `detection_summary` | string | Human-readable summary of key detection signals |
-| `primary_engine` | string | First engine in `engine_sequence` |
+| `primary_engine` | string | Engine with `rank: 1` from `engine_priority` |
 | `file` | string | Relative path to the anti-crawl file |
 
 #### Scenario: Registry 可查询

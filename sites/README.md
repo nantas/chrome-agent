@@ -33,13 +33,14 @@ sites/
 
 ### 反爬策略 (`sites/anti-crawl/<mechanism>.md`)
 
-- **frontmatter 必填字段**: `id`, `protection_type`, `sites`, `detection`, `engine_sequence`, `success_signals`, `failure_signals`
+- **frontmatter 必填字段**: `id`, `protection_type`, `sites`, `detection`, `engine_priority`, `success_signals`, `failure_signals`
 - **命名**: 按保护机制命名（如 `cloudflare-turnstile.md`），而非站点名
 - **引用**: 站点策略通过 `anti_crawl_refs` 引用反爬策略的 `id`
 
 ### 站点策略 (`sites/strategies/<domain>/strategy.md`)
 
 - **frontmatter 必填字段**: `domain`, `description`, `protection_level`, `anti_crawl_refs`, `structure`, `extraction` (可省略)
+- **可选字段**: `engine_preference`，可在文件级或 `structure.pages[]` 级别声明首选引擎
 - **命名**: 按域名文件夹组织（如 `x.com/strategy.md`）
 - **附件**: `_attachments/` 目录存放脚本、配置等操作内容
 

@@ -12,13 +12,13 @@ detection:
     has_content: false
   network:
     empty_api_entities: ""
-engine_sequence:
+engine_priority:
   - engine: scrapling-fetch
+    rank: 1
     config:
       network_idle: true
-    purpose: primary
   - engine: chrome-devtools-mcp
-    purpose: diagnostic
+    rank: 2
 success_signals:
   page_content:
     has_content: true
@@ -33,7 +33,7 @@ failure_signals:
 
 API rate limiting limits the number of requests within a time window. When triggered, browser `fetch()` API calls return `TypeError: Failed to fetch` with no HTTP response. Retries will not help until the cooldown period expires.
 
-## Engine Sequence Rationale
+## Engine Priority Rationale
 
 - `scrapling-fetch` is the primary engine since rate-limited content requires browser rendering.
 - `chrome-devtools-mcp` is the diagnostic fallback to confirm rate limiting via network panel evidence.
