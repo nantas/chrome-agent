@@ -25,6 +25,8 @@ Commands:
 Command options:
   --entry-point <id>     Crawl from a specific declared entry point.
   --max-pages <n>        Maximum pages to traverse in crawl. Default: 3.
+  --report               Force durable report emission to reports/.
+  --no-report            Disable durable report emission for this run.
   --scope <scope>        Clean scope: disposable (default) or all.
   --format <mode>        Output mode: json or text. Default: text.
   -h, --help             Show this message.
@@ -62,6 +64,7 @@ function parseArgs(argv) {
   let scope = "disposable";
   let entryPoint = null;
   let maxPages = 3;
+  let report = null;
   const positionals = [];
 
   for (let i = 0; i < passthrough.length; i += 1) {
@@ -111,6 +114,14 @@ function parseArgs(argv) {
       maxPages = Number.parseInt(value.slice("--max-pages=".length), 10);
       continue;
     }
+    if (value === "--report") {
+      report = true;
+      continue;
+    }
+    if (value === "--no-report") {
+      report = false;
+      continue;
+    }
     if (!value.startsWith("-")) {
       positionals.push(value);
     }
@@ -122,6 +133,7 @@ function parseArgs(argv) {
     scope,
     entryPoint,
     maxPages: Number.isFinite(maxPages) && maxPages > 0 ? maxPages : 3,
+    report,
     command: positionals[0] ?? null,
     target: positionals[1] ?? null,
     internal,
@@ -367,6 +379,16 @@ function buildRunPaths(repoRoot, command, targetUrl) {
   return { runDir, reportPath, stamp, date, slug };
 }
 
+function shouldEmitReport(command, reportOverride) {
+  if (reportOverride === true) {
+    return true;
+  }
+  if (reportOverride === false) {
+    return false;
+  }
+  return command === "explore";
+}
+
 function buildExploreReport({ targetUrl, strategy, matchingPage, repoRef, resolutionMode, preflight }) {
   const lines = [
     `# Explore Report`,
@@ -409,7 +431,7 @@ function makeResult(command, target, repoRef, summary, artifacts, nextAction, re
   };
 }
 
-function runExplore(repoRoot, repoRef, resolutionMode, targetUrl) {
+function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride) {
   const { reportPath } = buildRunPaths(repoRoot, "explore", targetUrl);
   const { strategy } = findStrategy(repoRoot, targetUrl);
   const matchingPage = strategy ? findMatchingPage(strategy.document, targetUrl) : null;
@@ -422,15 +444,20 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl) {
     resolutionMode,
     preflight,
   });
-  writeTextFile(reportPath, report);
-
-  const artifacts = [absoluteArtifact(reportPath, "durable", "Explore report")];
+  const emitReport = shouldEmitReport("explore", reportOverride);
+  const artifacts = [];
+  if (emitReport) {
+    writeTextFile(reportPath, report);
+    artifacts.push(absoluteArtifact(reportPath, "durable", "Explore report"));
+  }
   if (!strategy) {
     return makeResult(
       "explore",
       targetUrl,
       repoRef,
-      "No matching site strategy exists yet; explore identified a strategy gap and saved a durable report.",
+      emitReport
+        ? "No matching site strategy exists yet; explore identified a strategy gap and saved a durable report."
+        : "No matching site strategy exists yet; explore identified a strategy gap.",
       artifacts,
       `Create or refine a site strategy for ${new URL(targetUrl).hostname}, then retry fetch or crawl.`,
       "partial_success",
@@ -484,7 +511,7 @@ function buildFetchReport({
   return `${lines.join("\n")}\n`;
 }
 
-function runFetch(repoRoot, repoRef, resolutionMode, targetUrl) {
+function runFetch(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride) {
   const { runDir, reportPath } = buildRunPaths(repoRoot, "fetch", targetUrl);
   ensureDir(runDir);
   const outputPath = path.join(runDir, "content.md");
@@ -499,17 +526,20 @@ function runFetch(repoRoot, repoRef, resolutionMode, targetUrl) {
     writeTextFile(logPath, fetchResult.stderr);
   }
 
-  const report = buildFetchReport({
-    targetUrl,
-    repoRef,
-    resolutionMode,
-    strategy,
-    matchingPage,
-    fetcher,
-    fetchResult,
-    outputPath,
-  });
-  writeTextFile(reportPath, report);
+  const emitReport = shouldEmitReport("fetch", reportOverride);
+  if (emitReport) {
+    const report = buildFetchReport({
+      targetUrl,
+      repoRef,
+      resolutionMode,
+      strategy,
+      matchingPage,
+      fetcher,
+      fetchResult,
+      outputPath,
+    });
+    writeTextFile(reportPath, report);
+  }
 
   const manifest = {
     command: "fetch",
@@ -524,10 +554,10 @@ function runFetch(repoRoot, repoRef, resolutionMode, targetUrl) {
   };
   writeTextFile(manifestPath, JSON.stringify(manifest, null, 2));
 
-  const artifacts = [
-    absoluteArtifact(reportPath, "durable", "Fetch report"),
-    absoluteArtifact(manifestPath, "disposable", "Run manifest"),
-  ];
+  const artifacts = [absoluteArtifact(manifestPath, "disposable", "Run manifest")];
+  if (emitReport) {
+    artifacts.unshift(absoluteArtifact(reportPath, "durable", "Fetch report"));
+  }
   if (fs.existsSync(outputPath)) {
     artifacts.push(absoluteArtifact(outputPath, "disposable", "Extracted content"));
   }
@@ -542,7 +572,9 @@ function runFetch(repoRoot, repoRef, resolutionMode, targetUrl) {
       repoRef,
       `Fetch failed after ${fetcher} dispatch.`,
       artifacts,
-      "Inspect the durable fetch report, adjust strategy or fetcher selection, then retry.",
+      emitReport
+        ? "Inspect the durable fetch report, adjust strategy or fetcher selection, then retry."
+        : "Inspect disposable artifacts (manifest/stderr), adjust strategy or fetcher selection, then retry.",
       "failure",
     );
   }
@@ -621,28 +653,35 @@ function buildCrawlReport({ targetUrl, repoRef, resolutionMode, strategy, events
   return `${lines.join("\n")}\n`;
 }
 
-function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, entryPointOverride, maxPages) {
+function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, entryPointOverride, maxPages, reportOverride) {
   const { runDir, reportPath } = buildRunPaths(repoRoot, "crawl", targetUrl);
   ensureDir(runDir);
   const manifestPath = path.join(runDir, "manifest.json");
+  const emitReport = shouldEmitReport("crawl", reportOverride);
   const { strategy } = findStrategy(repoRoot, targetUrl);
 
   if (!strategy) {
-    const report = buildCrawlReport({
-      targetUrl,
-      repoRef,
-      resolutionMode,
-      strategy: null,
-      events: ["No matching site strategy exists, so crawl was refused before traversal started."],
-      result: "failure",
-    });
-    writeTextFile(reportPath, report);
+    if (emitReport) {
+      const report = buildCrawlReport({
+        targetUrl,
+        repoRef,
+        resolutionMode,
+        strategy: null,
+        events: ["No matching site strategy exists, so crawl was refused before traversal started."],
+        result: "failure",
+      });
+      writeTextFile(reportPath, report);
+    }
+    const artifacts = [];
+    if (emitReport) {
+      artifacts.push(absoluteArtifact(reportPath, "durable", "Crawl refusal report"));
+    }
     return makeResult(
       "crawl",
       targetUrl,
       repoRef,
       "Crawl refused because no matching site strategy exists.",
-      [absoluteArtifact(reportPath, "durable", "Crawl refusal report")],
+      artifacts,
       `Run chrome-agent explore ${targetUrl} first to create or refine a site strategy.`,
       "failure",
     );
@@ -659,21 +698,27 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, entryPointOverri
     null;
 
   if (!startPage) {
-    const report = buildCrawlReport({
-      targetUrl,
-      repoRef,
-      resolutionMode,
-      strategy,
-      events: ["Strategy exists but no usable entry point could be resolved."],
-      result: "failure",
-    });
-    writeTextFile(reportPath, report);
+    if (emitReport) {
+      const report = buildCrawlReport({
+        targetUrl,
+        repoRef,
+        resolutionMode,
+        strategy,
+        events: ["Strategy exists but no usable entry point could be resolved."],
+        result: "failure",
+      });
+      writeTextFile(reportPath, report);
+    }
+    const artifacts = [];
+    if (emitReport) {
+      artifacts.push(absoluteArtifact(reportPath, "durable", "Crawl failure report"));
+    }
     return makeResult(
       "crawl",
       targetUrl,
       repoRef,
       "Crawl could not resolve a declared entry point.",
-      [absoluteArtifact(reportPath, "durable", "Crawl failure report")],
+      artifacts,
       `Update ${path.relative(repoRoot, strategy.path)} so the crawl can start from a declared entry point.`,
       "failure",
     );
@@ -681,21 +726,27 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, entryPointOverri
 
   const preflight = runScraplingPreflight(repoRoot, true);
   if (!preflight.ok) {
-    const report = buildCrawlReport({
-      targetUrl,
-      repoRef,
-      resolutionMode,
-      strategy,
-      events: ["Scrapling CLI preflight failed before crawl traversal."],
-      result: "failure",
-    });
-    writeTextFile(reportPath, report);
+    if (emitReport) {
+      const report = buildCrawlReport({
+        targetUrl,
+        repoRef,
+        resolutionMode,
+        strategy,
+        events: ["Scrapling CLI preflight failed before crawl traversal."],
+        result: "failure",
+      });
+      writeTextFile(reportPath, report);
+    }
+    const artifacts = [];
+    if (emitReport) {
+      artifacts.push(absoluteArtifact(reportPath, "durable", "Crawl preflight report"));
+    }
     return makeResult(
       "crawl",
       targetUrl,
       repoRef,
       "Crawl stopped because Scrapling CLI preflight failed.",
-      [absoluteArtifact(reportPath, "durable", "Crawl preflight report")],
+      artifacts,
       "Repair the Scrapling CLI environment, then retry crawl.",
       "failure",
     );
@@ -783,16 +834,18 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, entryPointOverri
   artifacts.push(absoluteArtifact(manifestPath, "disposable", "Crawl manifest"));
 
   const resultState = failures > 0 && visited.size > failures ? "partial_success" : failures > 0 ? "failure" : "success";
-  const report = buildCrawlReport({
-    targetUrl,
-    repoRef,
-    resolutionMode,
-    strategy,
-    events,
-    result: resultState,
-  });
-  writeTextFile(reportPath, report);
-  artifacts.unshift(absoluteArtifact(reportPath, "durable", "Crawl report"));
+  if (emitReport) {
+    const report = buildCrawlReport({
+      targetUrl,
+      repoRef,
+      resolutionMode,
+      strategy,
+      events,
+      result: resultState,
+    });
+    writeTextFile(reportPath, report);
+    artifacts.unshift(absoluteArtifact(reportPath, "durable", "Crawl report"));
+  }
 
   const summary =
     resultState === "success"
@@ -928,19 +981,19 @@ function main() {
         if (!parsed.target) {
           throw new Error("explore requires a target URL.");
         }
-        result = runExplore(repoRoot, repoRef, resolutionMode, parsed.target);
+        result = runExplore(repoRoot, repoRef, resolutionMode, parsed.target, parsed.report);
         break;
       case "fetch":
         if (!parsed.target) {
           throw new Error("fetch requires a target URL.");
         }
-        result = runFetch(repoRoot, repoRef, resolutionMode, parsed.target);
+        result = runFetch(repoRoot, repoRef, resolutionMode, parsed.target, parsed.report);
         break;
       case "crawl":
         if (!parsed.target) {
           throw new Error("crawl requires a target URL.");
         }
-        result = runCrawl(repoRoot, repoRef, resolutionMode, parsed.target, parsed.entryPoint, parsed.maxPages);
+        result = runCrawl(repoRoot, repoRef, resolutionMode, parsed.target, parsed.entryPoint, parsed.maxPages, parsed.report);
         break;
       case "doctor":
         result = runDoctor(repoRoot, repoRef, resolutionMode);

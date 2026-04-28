@@ -69,6 +69,7 @@ chrome-agent crawl https://www.fanbox.cc/@atdfb/posts --max-pages 2
 - `SCRAPLING_CLI_PATH` 是本仓库识别 Scrapling CLI 的唯一环境变量
 - 默认受管安装位置是 `$HOME/.cache/chrome-agent-scrapling/bin/scrapling`
 - 不需要修改受 git 跟踪文件来适配本机用户名
+- `explore` 默认产出 durable `reports/`；`fetch`/`crawl` 默认不产出 durable report，可通过 `--report` 显式开启
 
 ## 工作流
 
