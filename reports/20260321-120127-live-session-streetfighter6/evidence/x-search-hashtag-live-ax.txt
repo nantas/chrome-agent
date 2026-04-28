@@ -1,0 +1,203 @@
+[RootWebArea] (2) #StreetFighter6 - Search / X
+            [heading] To view keyboard shortcuts, press question mark View keyboard shortcuts
+                [StaticText] To view keyboard shortcuts, press question mark
+              [link] View keyboard shortcuts
+                [StaticText] View keyboard shortcuts
+              [button] Skip to home timeline
+              [button] Skip to trending
+                    [heading] X
+                    [link] X
+                    [navigation] Primary
+                    [link] Home
+                    [link] Search and explore
+                    [link] Notifications (2 unread notifications)
+                    [StaticText] 2
+                    [link] Direct Messages
+                    [link] Grok
+                    [link] Bookmarks
+                    [link] Creator Studio
+                    [link] Premium
+                    [link] Profile
+                    [button] More menu items
+                    [link] Post
+                    [button] Account menu
+                    [image] Wang Nan
+                    [button] Back
+                    [search] Search
+                    [combobox] Search query = "#StreetFighter6"
+                    [StaticText] #StreetFighter6
+                    [button] More
+                    [button] Previous
+                    [tab] Top
+                    [StaticText] Top
+                    [tab] Latest
+                    [StaticText] Latest
+                    [tab] People
+                    [StaticText] People
+                    [tab] Media
+                    [StaticText] Media
+                    [tab] Lists
+                    [StaticText] Lists
+                    [button] Next
+                    [region] Search timeline
+                    [heading] Search timeline
+                    [StaticText] Search timeline
+                    [article] MAMAレモン。 マンガ・アニメ・ゲーム用アカウント @MAMALEMON_CAG 10 minutes ago 中山さん！ アレクとパトリシアの結婚の件で早く声明を出してください！T_T お願いしますッ！ m(_ _)m #StreetFighter6 #スト6 Quote TAKA-nakayama Verified account @takaNakayama Mar 17 かわよいー 👍 👍 👍 ぬいぐるみ エド&ジュリ 腕も動きます 🫡 e-capcom.com/shop/g/gC00009 Image Image Image
+                    [link] MAMAレモン。 マンガ・アニメ・ゲーム用アカウント
+                    [StaticText] MAMAレモン。 マンガ・アニメ・ゲーム用アカウント
+                    [link] @MAMALEMON_CAG
+                    [StaticText] @MAMALEMON_CAG
+                    [link] 10 minutes ago
+                    [StaticText] 10m
+                    [button] Grok actions
+                    [button] More
+                    [StaticText] 中山さん！
+アレクとパトリシアの結婚の件で早く声明を出してください！T_T
+お願いしますッ！
+m(_ _)m
+
+
+                    [link] #StreetFighter6
+                    [StaticText] #StreetFighter6
+                    [StaticText] 
+
+                    [link] #スト6
+                    [StaticText] #スト6
+                    [StaticText] Quote
+                    [link] TAKA-nakayama Verified account @takaNakayama Mar 17 かわよいー 👍 👍 👍 ぬいぐるみ エド&ジュリ 腕も動きます 🫡 e-capcom.com/shop/g/gC00009 Image Image Image
+                    [StaticText] TAKA-nakayama
+                    [image] Verified account
+                    [StaticText] @takaNakayama
+                    [StaticText] Mar 17
+                    [StaticText] かわよいー
+                    [image] 👍
+                    [image] 👍
+                    [image] 👍
+                    [StaticText] ぬいぐるみ エド&ジュリ 腕も動きます
+                    [image] 🫡
+                    [StaticText]  
+                    [StaticText] e-capcom.com/shop/g/gC00009
+                    [link] Image
+                    [image] Image
+                    [link] Image
+                    [image] Image
+                    [link] Image
+                    [image] Image
+                    [group] 26 views
+                    [button] 0 Replies. Reply
+                    [button] 0 reposts. Repost
+                    [button] 0 Likes. Like
+                    [link] 26 views. View post analytics
+                    [StaticText] 26
+                    [button] Bookmark
+                    [button] Share post
+                    [article] Mai 🌸 @MaiShiranui436 23 minutes ago #CammyWhite #Cammy #StreetFighter6 #SF6 Image 2 reposts, 7 likes, 3 bookmarks, 32 views
+                    [link] Mai 🌸
+                    [StaticText] Mai 
+                    [image] 🌸
+                    [link] @MaiShiranui436
+                    [StaticText] @MaiShiranui436
+                    [link] 23 minutes ago
+                    [StaticText] 23m
+                    [button] Grok actions
+                    [button] More
+                    [link] #CammyWhite
+                    [StaticText] #CammyWhite
+                    [StaticText]  
+                    [link] #Cammy
+                    [StaticText] #Cammy
+                    [StaticText]  
+                    [link] #StreetFighter6
+                    [StaticText] #StreetFighter6
+                    [StaticText]  
+                    [link] #SF6
+                    [StaticText] #SF6
+                    [link] Image
+                    [image] Image
+                    [group] 2 reposts, 7 likes, 3 bookmarks, 32 views
+                    [button] 0 Replies. Reply
+                    [button] 2 reposts. Repost
+                    [StaticText] 2
+                    [button] 7 Likes. Like
+                    [StaticText] 7
+                    [link] 32 views. View post analytics
+                    [StaticText] 32
+                    [button] Bookmark
+                    [button] Share post
+                    [article] Mai 🌸 @MaiShiranui436 25 minutes ago #MaiShiranui #Mai #StreetFighter6 #SF6 #Mod Image 2 likes, 2 bookmarks, 34 views
+                    [link] Mai 🌸
+                    [StaticText] Mai 
+                    [image] 🌸
+                    [link] @MaiShiranui436
+                    [StaticText] @MaiShiranui436
+                    [link] 25 minutes ago
+                    [StaticText] 25m
+                    [button] Grok actions
+                    [button] More
+                    [link] #MaiShiranui
+                    [StaticText] #MaiShiranui
+                    [StaticText]  
+                    [link] #Mai
+                    [StaticText] #Mai
+                    [StaticText]  
+                    [link] #StreetFighter6
+                    [StaticText] #StreetFighter6
+                    [StaticText]  
+                    [link] #SF6
+                    [StaticText] #SF6
+                    [StaticText]  
+                    [link] #Mod
+                    [StaticText] #Mod
+                    [link] Image
+                    [image] Image
+                    [group] 2 likes, 2 bookmarks, 34 views
+                    [button] 0 Replies. Reply
+                    [button] 0 reposts. Repost
+                    [button] 2 Likes. Like
+                    [StaticText] 2
+                    [link] 34 views. View post analytics
+                    [StaticText] 34
+                    [button] Bookmark
+                    [button] Share post
+                    [article] 杜咲 翠焔@クマのぬいぐるみVtuber【初代マビノギ宣伝部】 @sakura_edh_t 51 minutes ago 👊 【本日配信】 今日も ストリートファイター6！ 「30日で初心者脱却計画」 第6夜 🔥 昨日の練習は成果になっているのか… 今日も挑戦していきます！ ▶️ ２２時より特訓じゃ！ #スト6 #StreetFighter6 Image 1 reply, 2 likes, 48 views
+                    [link] 杜咲 翠焔@クマのぬいぐるみVtuber【初代マビノギ宣伝部】
+                    [StaticText] 杜咲 翠焔@クマのぬいぐるみVtuber【初代マビノギ宣伝部】
+                    [link] @sakura_edh_t
+                    [StaticText] @sakura_edh_t
+                    [link] 51 minutes ago
+                    [StaticText] 51m
+                    [button] Grok actions
+                    [button] More
+                    [image] 👊
+                    [StaticText] 【本日配信】
+
+今日も ストリートファイター6！
+
+「30日で初心者脱却計画」
+第6夜
+                    [image] 🔥
+                    [StaticText] 
+昨日の練習は成果になっているのか…
+今日も挑戦していきます！
+
+
+                    [image] ▶️
+                    [StaticText] ２２時より特訓じゃ！
+
+                    [link] #スト6
+                    [StaticText] #スト6
+                    [StaticText]  
+                    [link] #StreetFighter6
+                    [StaticText] #StreetFighter6
+                    [link] Image
+                    [image] Image
+                    [group] 1 reply, 2 likes, 48 views
+                    [button] 1 Reply. Reply
+                    [StaticText] 1
+                    [button] 0 reposts. Repost
+                    [button] 2 Likes. Like
+                    [StaticText] 2
+                    [link] 48 views. View post analytics
+                    [StaticText] 48
+                    [button] Bookmark
+                    [button] Share post

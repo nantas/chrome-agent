@@ -1,0 +1,17 @@
+# X document shell signals
+
+## reports/2026-03-21-sf6-x-hashtag-document.html
+bytes:   245141
+streetfighter6_occurrences: 0
+redirect_after_login_occurrences: 0
+i_flow_login_occurrences: 0
+empty_tweets_entity_occurrences: 1
+contains_login_prompt_text: 1
+
+## reports/2026-03-21-sf6-x-search-live-document.html
+bytes:   245141
+streetfighter6_occurrences: 0
+redirect_after_login_occurrences: 0
+i_flow_login_occurrences: 0
+empty_tweets_entity_occurrences: 1
+contains_login_prompt_text: 1

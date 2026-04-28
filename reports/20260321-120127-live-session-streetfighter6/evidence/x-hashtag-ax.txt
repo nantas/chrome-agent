@@ -1,0 +1,213 @@
+[RootWebArea] (2) #StreetFighter6 - Search / X
+            [heading] To view keyboard shortcuts, press question mark View keyboard shortcuts
+                [StaticText] To view keyboard shortcuts, press question mark
+              [link] View keyboard shortcuts
+                [StaticText] View keyboard shortcuts
+              [button] Skip to home timeline
+              [button] Skip to trending
+                    [heading] X
+                    [link] X
+                    [navigation] Primary
+                    [link] Home
+                    [link] Search and explore
+                    [link] Notifications (2 unread notifications)
+                    [StaticText] 2
+                    [link] Direct Messages
+                    [link] Grok
+                    [link] Bookmarks
+                    [link] Creator Studio
+                    [link] Premium
+                    [link] Profile
+                    [button] More menu items
+                    [link] Post
+                    [button] Account menu
+                    [image] Wang Nan
+                    [button] Back
+                    [search] Search
+                    [combobox] Search query = "#StreetFighter6"
+                    [StaticText] #StreetFighter6
+                    [button] More
+                    [button] Previous
+                    [tab] Top
+                    [StaticText] Top
+                    [tab] Latest
+                    [StaticText] Latest
+                    [tab] People
+                    [StaticText] People
+                    [tab] Media
+                    [StaticText] Media
+                    [tab] Lists
+                    [StaticText] Lists
+                    [button] Next
+                    [region] Search timeline
+                    [heading] Search timeline
+                    [StaticText] Search timeline
+                    [heading] People
+                    [StaticText] People
+                    [button] ストリートファイター6 アバターパーク / STREET FIGHTER6 Avatar Park @SF6AvatarPark Follow @SF6AvatarPark YouTube配信(サトシのゲームチャンネル)にてストリートファイター６のアバターバトル大会、アバターコンテストの主催をしております。【次回イベント】アバターバトルチャンピオン 03月22日19時～、再現アバターコンテスト03月29日19時～、大乱闘アバタードリームファイターズ 04月上旬頃21時～【場所はアジア12】
+                    [link] ストリートファイター6 アバターパーク / STREET FIGHTER6 Avatar Park
+                    [StaticText] ストリートファイター6 アバターパーク / STREET FIGHTER6 Avatar Park
+                    [link] @SF6AvatarPark
+                    [StaticText] @SF6AvatarPark
+                    [button] Follow @SF6AvatarPark
+                    [StaticText] Follow
+                    [StaticText] YouTube配信(サトシのゲームチャンネル)にてストリートファイター６のアバターバトル大会、アバターコンテストの主催をしております。【次回イベント】アバターバトルチャンピオン 03月22日19時～、再現アバターコンテスト03月29日19時～、大乱闘アバタードリームファイターズ 04月上旬頃21時～【場所はアジア12】
+                    [button] Rowmanow 🎮 Street Fighter 6 🎮 @Rowmanow Follow @Rowmanow Youtubeur multigaming. Mail pro : rowmanowpro@gmail.com
+                    [link] Rowmanow 🎮 Street Fighter 6 🎮
+                    [StaticText] Rowmanow 
+                    [image] 🎮
+                    [StaticText] Street Fighter 6
+                    [image] 🎮
+                    [link] @Rowmanow
+                    [StaticText] @Rowmanow
+                    [button] Follow @Rowmanow
+                    [StaticText] Follow
+                    [StaticText] Youtubeur multigaming. Mail pro : rowmanowpro@gmail.com
+                    [button] Street Fighter 6 Brasil @SF6BR Follow @SF6BR Não afiliados com a Capcom. Conta da comunidade SF6 Brasil no Discord. Fazemos torneios abertos e para iniciantes, guias e memes linktr.ee/scuff_brasil
+                    [link] Street Fighter 6 Brasil
+                    [StaticText] Street Fighter 6 Brasil
+                    [link] @SF6BR
+                    [StaticText] @SF6BR
+                    [button] Follow @SF6BR
+                    [StaticText] Follow
+                    [StaticText] Não afiliados com a Capcom. Conta da comunidade SF6 Brasil no Discord. Fazemos torneios abertos e para iniciantes, guias e memes 
+                    [link] linktr.ee/scuff_brasil
+                    [StaticText] linktr.ee/scuff_brasil
+                    [link] View all
+                    [StaticText] View all
+                    [article] REC @RECXFX Mar 15 Alright 👍 MOD : @robhal_MB #StreetFighter6 #MaiShiranui Embedded video Play Video 2 replies, 34 reposts, 433 likes, 264 bookmarks, 210676 views
+                    [link] REC
+                    [StaticText] REC
+                    [link] @RECXFX
+                    [StaticText] @RECXFX
+                    [link] Mar 15
+                    [StaticText] Mar 15
+                    [button] Grok actions
+                    [button] More
+                    [StaticText] Alright 
+                    [image] 👍
+                    [StaticText] 
+MOD : 
+                    [link] @robhal_MB
+                    [StaticText] @robhal_MB
+                    [StaticText]  
+
+
+                    [link] #StreetFighter6
+                    [StaticText] #StreetFighter6
+                    [StaticText]  
+                    [link] #MaiShiranui
+                    [StaticText] #MaiShiranui
+                    [Video] Embedded video
+                    [button] Play Video
+                    [group] 2 replies, 34 reposts, 433 likes, 264 bookmarks, 210676 views
+                    [button] 2 Replies. Reply
+                    [StaticText] 2
+                    [button] 34 reposts. Repost
+                    [StaticText] 34
+                    [button] 433 Likes. Like
+                    [StaticText] 433
+                    [link] 210676 views. View post analytics
+                    [StaticText] 210K
+                    [button] Bookmark
+                    [button] Share post
+                    [article] FGCJetsee @fgcjetsee Mar 19 Alex. #StreetFighter6 Embedded video Play Video 27 replies, 670 reposts, 5322 likes, 727 bookmarks, 413029 views
+                    [link] FGCJetsee
+                    [StaticText] FGCJetsee
+                    [link] @fgcjetsee
+                    [StaticText] @fgcjetsee
+                    [link] Mar 19
+                    [StaticText] Mar 19
+                    [button] Grok actions
+                    [button] More
+                    [StaticText] Alex. 
+                    [link] #StreetFighter6
+                    [StaticText] #StreetFighter6
+                    [Video] Embedded video
+                    [button] Play Video
+                    [group] 27 replies, 670 reposts, 5322 likes, 727 bookmarks, 413029 views
+                    [button] 27 Replies. Reply
+                    [StaticText] 27
+                    [button] 670 reposts. Repost
+                    [StaticText] 670
+                    [button] 5322 Likes. Like
+                    [StaticText] 5.3K
+                    [link] 413029 views. View post analytics
+                    [StaticText] 413K
+                    [button] Bookmark
+                    [button] Share post
+                    [article] Marco Rodrigues 🇧🇷 @Saikyokugen Mar 17 Guys... y'know Alex and Patricia are NOT blood related, right?? 🤨 🤨 🤨 #StreetFighter6 #SF6_Alex Image Image Image Image 83 replies, 120 reposts, 935 likes, 212 bookmarks, 157148 views
+                    [link] Marco Rodrigues 🇧🇷
+                    [StaticText] Marco Rodrigues 
+                    [image] 🇧🇷
+                    [link] @Saikyokugen
+                    [StaticText] @Saikyokugen
+                    [link] Mar 17
+                    [StaticText] Mar 17
+                    [button] Grok actions
+                    [button] More
+                    [StaticText] Guys... y'know Alex and Patricia are NOT blood related, right?? 
+                    [image] 🤨
+                    [image] 🤨
+                    [image] 🤨
+                    [StaticText] 
+
+
+                    [link] #StreetFighter6
+                    [StaticText] #StreetFighter6
+                    [StaticText]  
+                    [link] #SF6_Alex
+                    [StaticText] #SF6_Alex
+                    [link] Image
+                    [image] Image
+                    [link] Image
+                    [image] Image
+                    [link] Image
+                    [image] Image
+                    [link] Image
+                    [image] Image
+                    [group] 83 replies, 120 reposts, 935 likes, 212 bookmarks, 157148 views
+                    [button] 83 Replies. Reply
+                    [StaticText] 83
+                    [button] 120 reposts. Repost
+                    [StaticText] 120
+                    [button] 935 Likes. Like
+                    [StaticText] 935
+                    [link] 157148 views. View post analytics
+                    [StaticText] 157K
+                    [button] Bookmark
+                    [button] Share post
+                    [article] ADHD GAMES @AADHDGAMESS Mar 12 ADHD GOUKI ~殺意の多動・α~ #ストリートファイター6 #StreetFighter6 #スト6 Embedded video Play Video 12 replies, 208 reposts, 1648 likes, 154 bookmarks, 150950 views
+                    [link] ADHD GAMES
+                    [StaticText] ADHD GAMES
+                    [link] @AADHDGAMESS
+                    [StaticText] @AADHDGAMESS
+                    [link] Mar 12
+                    [StaticText] Mar 12
+                    [button] Grok actions
+                    [button] More
+                    [StaticText] ADHD GOUKI ~殺意の多動・α~
+
+
+                    [link] #ストリートファイター6
+                    [StaticText] #ストリートファイター6
+                    [StaticText] 
+
+                    [link] #StreetFighter6
+                    [StaticText] #StreetFighter6
+                    [StaticText]  
+                    [link] #スト6
+                    [StaticText] #スト6
+                    [Video] Embedded video
+                    [button] Play Video
+                    [group] 12 replies, 208 reposts, 1648 likes, 154 bookmarks, 150950 views
+                    [button] 12 Replies. Reply
+                    [StaticText] 12
+                    [button] 208 reposts. Repost
+                    [StaticText] 208
+                    [button] 1648 Likes. Like
+                    [StaticText] 1.6K
+                    [link] 150950 views. View post analytics
+                    [StaticText] 150K
+                    [button] Bookmark
+                    [button] Share post

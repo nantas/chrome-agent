@@ -1,0 +1,601 @@
+[RootWebArea] Street Fighter 6 - SuperCombo Wiki
+          [link] Visit the main page
+              [DisclosureTriangle] Toggle search
+                  [StaticText] Toggle search
+              [DisclosureTriangle] Toggle menu
+                  [StaticText] Toggle menu
+                  [DisclosureTriangle] Toggle preferences menu
+                    [StaticText] Toggle preferences menu
+                  [DisclosureTriangle] Toggle personal menu
+                    [StaticText] Toggle personal menu
+                  [heading] Street Fighter 6
+                    [StaticText] Street Fighter 6
+                  [StaticText] From SuperCombo Wiki
+                [button] Share this page
+                    [StaticText] Share this page
+                    [DisclosureTriangle] More actions
+                    [StaticText] More actions
+                    [heading] Characters
+                    [StaticText] Characters
+                    [link] Street Fighter 6/A.K.I.
+                    [link] Street Fighter 6/Akuma
+                    [link] Street Fighter 6/Alex
+                    [link] Street Fighter 6/Blanka
+                    [link] Street Fighter 6/C.Viper
+                    [link] Street Fighter 6/Cammy
+                    [link] Street Fighter 6/Chun-Li
+                    [link] Street Fighter 6/Dee Jay
+                    [link] Street Fighter 6/Dhalsim
+                    [link] Street Fighter 6/Ed
+                    [link] Street Fighter 6/E.Honda
+                    [link] Street Fighter 6/Elena
+                    [link] Street Fighter 6/Guile
+                    [link] Street Fighter 6/Jamie
+                    [link] Street Fighter 6/JP
+                    [link] Street Fighter 6/Juri
+                    [link] Street Fighter 6/Ken
+                    [link] Street Fighter 6/Kimberly
+                    [link] Street Fighter 6/Lily
+                    [link] Street Fighter 6/Luke
+                    [link] Street Fighter 6/M.Bison
+                    [link] Street Fighter 6/Mai
+                    [link] Street Fighter 6/Manon
+                    [link] Street Fighter 6/Marisa
+                    [link] Street Fighter 6/Rashid
+                    [link] Street Fighter 6/Ryu
+                    [link] Street Fighter 6/Sagat
+                    [link] Street Fighter 6/Terry
+                    [link] Street Fighter 6/Zangief
+                    [heading] System
+                    [StaticText] System
+                    [link] Controls
+                    [StaticText] Controls
+                    [link] HUD
+                    [StaticText] HUD
+                    [link] Gauges
+                    [StaticText] Gauges
+                    [link] Offense
+                    [StaticText] Offense
+                    [link] Defense
+                    [StaticText] Defense
+                    [link] Movement
+                    [StaticText] Movement
+                    [link] Game Data
+                    [StaticText] Game Data
+                    [link] Glossary
+                    [StaticText] Glossary
+                    [link] FAQ
+                    [StaticText] FAQ
+                    [heading] Welcome to the Street Fighter 6 Wiki!
+                    [StaticText] Welcome to the Street Fighter 6 Wiki!
+                    [StaticText] Street Fighter 6
+                    [StaticText]  is the latest entry in the franchise, featuring a cast of returning veterans reimagined and all-new characters.
+                    [LineBreak] 
+
+                    [StaticText] You can 
+                    [link] create an account
+                    [StaticText] create an account
+                    [StaticText]  to help edit this wiki on your own, and you can also join the 
+                    [link] Street Fighter 6 Resource Hub
+                    [StaticText] Street Fighter 6 Resource Hub
+                    [StaticText]  Discord Server for meta discussion about this wiki.
+                    [heading] Patch Notes
+                    [StaticText] Patch Notes
+                    [link] All Patch Notes...
+                    [StaticText] All Patch Notes...
+                    [columnheader] version
+                    [StaticText] version
+                    [columnheader] date
+                    [StaticText] date
+                    [columnheader] summary
+                    [StaticText] summary
+                    [cell] 2.0111
+                    [link] 2.0111
+                    [StaticText] 2.0111
+                    [cell] 2025-12-16
+                    [StaticText] 2025-12-16
+                    [cell] Bug fixes and minor adjustments, primarily for Elena, Mai, and Sagat.
+                    [StaticText] Bug fixes and minor adjustments, primarily for Elena, Mai, and Sagat.
+                    [cell] 2.01
+                    [link] 2.01
+                    [StaticText] 2.01
+                    [cell] 2025-10-15
+                    [StaticText] 2025-10-15
+                    [cell] C.Viper release. Minor bug fixes and adjustments for some characters.
+                    [StaticText] C.Viper release. Minor bug fixes and adjustments for some characters.
+                    [cell] 2.00
+                    [link] 2.00
+                    [StaticText] 2.00
+                    [cell] 2025-08-05
+                    [StaticText] 2025-08-05
+                    [cell] Sagat release. Minor bug fixes and adjustments (mostly related to Tiger Shot interactions).
+                    [StaticText] Sagat release. Minor bug fixes and adjustments (mostly related to Tiger Shot interactions).
+                    [cell] 1.10
+                    [link] 1.10
+                    [StaticText] 1.10
+                    [cell] 2025-06-03
+                    [StaticText] 2025-06-03
+                    [cell] Elena release. Balance changes for all characters.
+                    [StaticText] Elena release. Balance changes for all characters.
+                    [cell] 1.09
+                    [link] 1.09
+                    [StaticText] 1.09
+                    [cell] 2025-02-05
+                    [StaticText] 2025-02-05
+                    [cell] Mai release. Minor bug fixes.
+                    [StaticText] Mai release. Minor bug fixes.
+                    [cell] 1.08
+                    [link] 1.08
+                    [StaticText] 1.08
+                    [cell] 2024-12-02
+                    [StaticText] 2024-12-02
+                    [cell] Minor balance changes for all characters.
+                    [StaticText] Minor balance changes for all characters.
+                    [cell] 1.07
+                    [link] 1.07
+                    [StaticText] 1.07
+                    [cell] 2024-09-24
+                    [StaticText] 2024-09-24
+                    [cell] Terry release. Minor balance changes and bug fixes.
+                    [StaticText] Terry release. Minor balance changes and bug fixes.
+                    [cell] 1.06
+                    [link] 1.06
+                    [StaticText] 1.06
+                    [cell] 2024-06-26
+                    [StaticText] 2024-06-26
+                    [cell] M. Bison release. Minor balance changes and bug fixes.
+                    [StaticText] M. Bison release. Minor balance changes and bug fixes.
+                    [cell] 1.05
+                    [link] 1.05
+                    [StaticText] 1.05
+                    [cell] 2024-05-22
+                    [StaticText] 2024-05-22
+                    [cell] Akuma release. Balance changes for all characters.
+                    [StaticText] Akuma release. Balance changes for all characters.
+                    [cell] 1.04
+                    [link] 1.04
+                    [StaticText] 1.04
+                    [cell] 2024-02-27
+                    [StaticText] 2024-02-27
+                    [cell] Ed release. Several balance changes and bug fixes.
+                    [StaticText] Ed release. Several balance changes and bug fixes.
+                    [cell] 1.03
+                    [link] 1.03
+                    [StaticText] 1.03
+                    [cell] 2023-12-01
+                    [StaticText] 2023-12-01
+                    [cell] Costume 3 release. Minor bug fixes.
+                    [StaticText] Costume 3 release. Minor bug fixes.
+                    [cell] 1.02
+                    [link] 1.02
+                    [StaticText] 1.02
+                    [cell] 2023-09-27
+                    [StaticText] 2023-09-27
+                    [cell] A.K.I. release. Bug fixes with some minor changes due to bugs
+                    [StaticText] A.K.I. release. Bug fixes with some minor changes due to bugs
+                    [cell] 1.01
+                    [link] 1.01
+                    [StaticText] 1.01
+                    [cell] 2023-07-24
+                    [StaticText] 2023-07-24
+                    [cell] Rashid release. Bug fixes with some minor balance changes mainly for modern vs classic
+                    [StaticText] Rashid release. Bug fixes with some minor balance changes mainly for modern vs classic
+                    [cell] 1.00
+                    [link] 1.00
+                    [StaticText] 1.00
+                    [cell] 2023-06-02
+                    [StaticText] 2023-06-02
+                    [cell] Launch version.
+                    [StaticText] Launch version.
+                    [heading] Character Pass
+                    [StaticText] Character Pass
+                    [StaticText] The following characters joined Street Fighter 6 as part of Year 1:
+                    [ListMarker] • 
+                    [StaticText] Rashid:
+                    [StaticText]  July 24th, 2023
+                    [ListMarker] • 
+                    [StaticText] A.K.I.:
+                    [StaticText]  September 27th, 2023
+                    [ListMarker] • 
+                    [StaticText] Ed:
+                    [StaticText]  February 27th, 2024
+                    [ListMarker] • 
+                    [StaticText] Akuma:
+                    [StaticText]  May 22nd, 2024
+                    [StaticText] The following characters joined Street Fighter 6 as part of Year 2:
+                    [ListMarker] • 
+                    [StaticText] M. Bison:
+                    [StaticText]  June 26th, 2024
+                    [ListMarker] • 
+                    [StaticText] Terry:
+                    [StaticText]  September 24th, 2024
+                    [ListMarker] • 
+                    [StaticText] Mai:
+                    [StaticText]  February 5th, 2025
+                    [ListMarker] • 
+                    [StaticText] Elena:
+                    [StaticText]  June 4th, 2025
+                    [StaticText] The following characters will join Street Fighter 6 as part of Year 3:
+                    [ListMarker] • 
+                    [StaticText] Sagat:
+                    [StaticText]  August 5th, 2025
+                    [ListMarker] • 
+                    [StaticText] C. Viper:
+                    [StaticText]  October 15th, 2025
+                    [ListMarker] • 
+                    [StaticText] Alex:
+                    [StaticText]  March 17, 2026
+                    [ListMarker] • 
+                    [StaticText] Ingrid:
+                    [StaticText]  Late Spring 2026
+                    [columnheader] Street Fighter 6 (SF6)
+                    [StaticText] Street Fighter 6
+                    [LineBreak] 
+
+                    [StaticText] (SF6)
+                    [rowheader] Version
+                    [StaticText] Version
+                    [cell] 2.0200.000
+                    [StaticText] 2.0200.000
+                    [rowheader] Developers
+                    [StaticText] Developers
+                    [cell] Capcom
+                    [StaticText] Capcom
+                    [rowheader] Publishers
+                    [StaticText] Publishers
+                    [cell] Capcom
+                    [StaticText] Capcom
+                    [rowheader] Systems
+                    [StaticText] Systems
+                    [cell] PS4/5, Xbox Series, PC via Steam, NSW2
+                    [StaticText] PS4/5, Xbox Series, PC via Steam, NSW2
+                    [rowheader] Release Date
+                    [StaticText] Release Date
+                    [cell] June 2, 2023
+                    [StaticText] June 2, 2023
+                    [rowheader] Official Websites
+                    [StaticText] Official Websites
+                    [cell] Street Fighter 6 Portal
+                    [link] Street Fighter 6 Portal
+                    [StaticText] Street Fighter 6 Portal
+                    [cell] Capcom Pro Tour
+                    [link] Capcom Pro Tour
+                    [StaticText] Capcom Pro Tour
+                    [cell] streetfighter.com
+                    [link] streetfighter.com
+                    [StaticText] streetfighter.com
+                    [rowheader] Online Play
+                    [StaticText] Online Play
+                    [cell] Rollback
+                    [StaticText] Rollback
+                    [cell] Cross-play
+                    [StaticText] Cross-play
+                    [rowheader] Player Resources
+                    [StaticText] Player Resources
+                    [cell] Frame Assistant Tool
+                    [link] Frame Assistant Tool
+                    [StaticText] Frame Assistant Tool
+                    [cell] Street Fighter 6 Combo Database
+                    [link] Street Fighter 6 Combo Database
+                    [StaticText] Street Fighter 6 Combo Database
+                    [rowheader] Community Channels
+                    [StaticText] Community Channels
+                    [cell] SF6 Resource Hub Discord
+                    [link] SF6 Resource Hub Discord
+                    [StaticText] SF6 Resource Hub Discord
+                    [cell] SF6 Character Discords
+                    [link] SF6 Character Discords
+                    [StaticText] SF6 Character Discords
+                    [cell] SuperCombo Forums
+                    [link] SuperCombo Forums
+                    [StaticText] SuperCombo Forums
+                    [cell] r/StreetFighter Subreddit
+                    [link] r/StreetFighter Subreddit
+                    [StaticText] r/StreetFighter Subreddit
+                    [heading] General roadmap
+                    [StaticText] General roadmap
+                    [StaticText] See a full overview of wiki progress on the 
+                    [link] Roadmap page.
+                    [StaticText] Roadmap page.
+                    [columnheader] In Progress / Completed
+                    [StaticText] In Progress / Completed
+                    [columnheader] To-do
+                    [StaticText] To-do
+                    [cell] Finished move data (as of Patch 2.00) Finished Overview pages (up to Mai's release) with hitbox images, move descriptions, and all relevant info from Data pages Finished General pages (Offense, Defense, Movement, Game Data, Gauges, etc.) Can still be expanded upon, especially with more advanced strategies/techniques
+                    [ListMarker] • 
+                    [StaticText] Finished move data (as of 
+                    [link] Patch 2.00
+                    [StaticText] Patch 2.00
+                    [StaticText] )
+                    [ListMarker] • 
+                    [StaticText] Finished Overview pages (up to Mai's release) with hitbox images, move descriptions, and all relevant info from Data pages
+                    [ListMarker] • 
+                    [StaticText] Finished General pages (Offense, Defense, Movement, Game Data, Gauges, etc.)
+                    [ListMarker] ◦ 
+                    [StaticText] Can still be expanded upon, especially with more advanced strategies/techniques
+                    [cell] Combo Pages Add any missing combos or categories, ensuring all data is correct on the current patch Try to ensure consistent formatting across all pages, ensuring mobile-friendly layouts Strategy Pages Ensure all major sections have at least basic info Finish all Oki Tables (look for safe jumps, safejab setups, meaty overheads, DI-safe buttons with frame advantage, etc) Matchup Pages Add some info to all matchups (e.g. important punishes and general gameplan)
+                    [ListMarker] • 
+                    [StaticText] Combo Pages
+                    [ListMarker] ◦ 
+                    [StaticText] Add any missing combos or categories, ensuring all data is correct on the current patch
+                    [ListMarker] ◦ 
+                    [StaticText] Try to ensure consistent formatting across all pages, ensuring mobile-friendly layouts
+                    [ListMarker] • 
+                    [StaticText] Strategy Pages
+                    [ListMarker] ◦ 
+                    [StaticText] Ensure all major sections have at least basic info
+                    [ListMarker] ◦ 
+                    [StaticText] Finish all Oki Tables (look for safe jumps, safejab setups, meaty overheads, DI-safe buttons with frame advantage, etc)
+                    [ListMarker] • 
+                    [StaticText] Matchup Pages
+                    [ListMarker] ◦ 
+                    [StaticText] Add some info to all matchups (e.g. important punishes and general gameplan)
+                    [LineBreak] 
+
+                    [heading] SF6 Navigation
+                    [StaticText] SF6 Navigation
+                    [cell] Street Fighter 6 (SF6)
+                    [StaticText] Street Fighter 6 (SF6)
+                    [cell] General
+                    [StaticText] General
+                    [cell] FAQ • Controls • HUD • Glossary • Movement • Offense • Defense • Gauges • Game Data • Patch Notes • Links
+                    [link] FAQ
+                    [StaticText] FAQ
+                    [StaticText]  •
+                    [link] Controls
+                    [StaticText] Controls
+                    [StaticText]  •
+                    [link] HUD
+                    [StaticText] HUD
+                    [StaticText]  •
+                    [link] Glossary
+                    [StaticText] Glossary
+                    [StaticText]  •
+                    [link] Movement
+                    [StaticText] Movement
+                    [StaticText]  •
+                    [link] Offense
+                    [StaticText] Offense
+                    [StaticText]  •
+                    [link] Defense
+                    [StaticText] Defense
+                    [StaticText]  •
+                    [link] Gauges
+                    [StaticText] Gauges
+                    [StaticText]  •
+                    [link] Game Data
+                    [StaticText] Game Data
+                    [StaticText]  •
+                    [link] Patch Notes
+                    [StaticText] Patch Notes
+                    [StaticText]  •
+                    [link] Links
+                    [StaticText] Links
+                    [cell] Characters
+                    [StaticText] Characters
+                    [cell] A.K.I. A.K.I. Akuma Akuma Alex Alex Blanka Blanka C. Viper C. Viper Cammy Cammy Chun-Li Chun-Li Dee Jay Dee Jay Dhalsim Dhalsim Ed Ed E. Honda E. Honda Elena Elena Guile Guile Jamie Jamie
+                    [link] A.K.I.
+                    [image] A.K.I.
+                    [link] A.K.I.
+                    [StaticText] A.K.I.
+                    [link] Akuma
+                    [image] Akuma
+                    [link] Akuma
+                    [StaticText] Akuma
+                    [link] Alex
+                    [image] Alex
+                    [link] Alex
+                    [StaticText] Alex
+                    [link] Blanka
+                    [image] Blanka
+                    [link] Blanka
+                    [StaticText] Blanka
+                    [link] C. Viper
+                    [image] C. Viper
+                    [link] C. Viper
+                    [StaticText] C. Viper
+                    [link] Cammy
+                    [image] Cammy
+                    [link] Cammy
+                    [StaticText] Cammy
+                    [link] Chun-Li
+                    [image] Chun-Li
+                    [link] Chun-Li
+                    [StaticText] Chun-Li
+                    [link] Dee Jay
+                    [image] Dee Jay
+                    [link] Dee Jay
+                    [StaticText] Dee Jay
+                    [link] Dhalsim
+                    [image] Dhalsim
+                    [link] Dhalsim
+                    [StaticText] Dhalsim
+                    [link] Ed
+                    [image] Ed
+                    [link] Ed
+                    [StaticText] Ed
+                    [link] E. Honda
+                    [image] E. Honda
+                    [link] E. Honda
+                    [StaticText] E. Honda
+                    [link] Elena
+                    [image] Elena
+                    [link] Elena
+                    [StaticText] Elena
+                    [link] Guile
+                    [image] Guile
+                    [link] Guile
+                    [StaticText] Guile
+                    [link] Jamie
+                    [image] Jamie
+                    [link] Jamie
+                    [StaticText] Jamie
+                    [link] JP
+                    [image] JP
+                    [link] JP
+                    [StaticText] JP
+                    [link] Juri
+                    [image] Juri
+                    [link] Juri
+                    [StaticText] Juri
+                    [link] Ken
+                    [image] Ken
+                    [link] Ken
+                    [StaticText] Ken
+                    [link] Kimberly
+                    [image] Kimberly
+                    [link] Kimberly
+                    [StaticText] Kimberly
+                    [link] Lily
+                    [image] Lily
+                    [link] Lily
+                    [StaticText] Lily
+                    [link] Luke
+                    [image] Luke
+                    [link] Luke
+                    [StaticText] Luke
+                    [link] M. Bison
+                    [image] M. Bison
+                    [link] M. Bison
+                    [StaticText] M. Bison
+                    [link] Mai
+                    [image] Mai
+                    [link] Mai
+                    [StaticText] Mai
+                    [link] Manon
+                    [image] Manon
+                    [link] Manon
+                    [StaticText] Manon
+                    [link] Marisa
+                    [image] Marisa
+                    [link] Marisa
+                    [StaticText] Marisa
+                    [link] Rashid
+                    [image] Rashid
+                    [link] Rashid
+                    [StaticText] Rashid
+                    [link] Ryu
+                    [image] Ryu
+                    [link] Ryu
+                    [StaticText] Ryu
+                    [link] Sagat
+                    [image] Sagat
+                    [link] Sagat
+                    [StaticText] Sagat
+                    [link] Terry
+                    [image] Terry
+                    [link] Terry
+                    [StaticText] Terry
+                    [link] Zangief
+                    [image] Zangief
+                    [link] Zangief
+                    [StaticText] Zangief
+                    [cell] Data
+                    [StaticText] Data
+                    [cell] A.K.I. • Akuma • Alex • Blanka • C. Viper • Cammy • Chun-Li • Dee Jay • Dhalsim • Ed • E. Honda • Elena • Guile • Jamie • JP • Juri • Ken • Kimberly • Lily • Luke •
+                    [link] A.K.I.
+                    [StaticText] A.K.I.
+                    [StaticText]  •
+                    [link] Akuma
+                    [StaticText] Akuma
+                    [StaticText]  •
+                    [link] Alex
+                    [StaticText] Alex
+                    [StaticText]  •
+                    [link] Blanka
+                    [StaticText] Blanka
+                    [StaticText]  •
+                    [link] C. Viper
+                    [StaticText] C. Viper
+                    [StaticText]  •
+                    [link] Cammy
+                    [StaticText] Cammy
+                    [StaticText]  •
+                    [link] Chun-Li
+                    [StaticText] Chun-Li
+                    [StaticText]  •
+                    [link] Dee Jay
+                    [StaticText] Dee Jay
+                    [StaticText]  •
+                    [link] Dhalsim
+                    [StaticText] Dhalsim
+                    [StaticText]  •
+                    [link] Ed
+                    [StaticText] Ed
+                    [StaticText]  •
+                    [link] E. Honda
+                    [StaticText] E. Honda
+                    [StaticText]  •
+                    [link] Elena
+                    [StaticText] Elena
+                    [StaticText]  •
+                    [link] Guile
+                    [StaticText] Guile
+                    [StaticText]  •
+                    [link] Jamie
+                    [StaticText] Jamie
+                    [StaticText]  •
+                    [link] JP
+                    [StaticText] JP
+                    [StaticText]  •
+                    [link] Juri
+                    [StaticText] Juri
+                    [StaticText]  •
+                    [link] Ken
+                    [StaticText] Ken
+                    [StaticText]  •
+                    [link] Kimberly
+                    [StaticText] Kimberly
+                    [StaticText]  •
+                    [link] Lily
+                    [StaticText] Lily
+                    [StaticText]  •
+                    [link] Luke
+                    [StaticText] Luke
+                    [StaticText]  •
+                    [link] M. Bison
+                    [StaticText] M. Bison
+                    [StaticText]  •
+                    [link] Mai
+                    [StaticText] Mai
+                    [StaticText]  •
+                    [link] Manon
+                    [StaticText] Manon
+                    [StaticText]  •
+                    [link] Marisa
+                    [StaticText] Marisa
+                    [StaticText]  •
+                    [link] Rashid
+                    [StaticText] Rashid
+                    [StaticText]  •
+                    [link] Ryu
+                    [StaticText] Ryu
+                    [StaticText]  •
+                    [link] Sagat
+                    [StaticText] Sagat
+                    [StaticText]  •
+                    [link] Terry
+                    [StaticText] Terry
+                    [StaticText]  •
+                    [link] Zangief
+                    [StaticText] Zangief
+                  [link] Category
+                    [StaticText] Category
+                  [StaticText] :
+                    [link] Street Fighter 6
+                    [StaticText] Street Fighter 6
+                    [StaticText] Last modified
+                    [StaticText] This page was last edited on 17 March 2026, at 02:34.
+                  [StaticText] The SuperCombo Wiki is intended to be a repository for all fighting game strategy knowledge. While our roots are in the Capcom franchises, we invite fans of all fighting game series to augment the site with their strategies and techniques.
+                  [StaticText] SuperCombo Wiki brought to you by and for the fighting game community worldwide. If you enjoy the service, 
+                  [link] consider donating via Patreon.
+                    [StaticText] consider donating via Patreon.
+                    [link] Privacy policy
+                    [StaticText] Privacy policy
+                    [link] About SuperCombo Wiki
+                    [StaticText] About SuperCombo Wiki
+                    [link] Disclaimers
+                    [StaticText] Disclaimers
+                [StaticText] Game content and materials are trademarks and copyrights of their respective publisher and its licensors. All rights reserved.
+                    [link] Powered by MediaWiki
+                    [image] Powered by MediaWiki

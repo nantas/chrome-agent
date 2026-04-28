@@ -1,0 +1,53 @@
+{
+  "node_version": "v24.13.0",
+  "openspec_version": "1.2.0",
+  "validated_schemas": [
+    {
+      "name": "orbitos-change-v1",
+      "valid": true,
+      "issues": []
+    },
+    {
+      "name": "orbitos-replan-v1",
+      "valid": true,
+      "issues": []
+    }
+  ],
+  "copied_files": [
+    "openspec/manifest.yaml",
+    "openspec/schemas/orbitos-change-v1/schema.yaml",
+    "openspec/schemas/orbitos-change-v1/templates/proposal.md",
+    "openspec/schemas/orbitos-change-v1/templates/requirement.md",
+    "openspec/schemas/orbitos-change-v1/templates/design-spec.md",
+    "openspec/schemas/orbitos-change-v1/templates/tasks.md",
+    "openspec/schemas/orbitos-change-v1/templates/verification.md",
+    "openspec/schemas/orbitos-change-v1/templates/writeback.md",
+    "openspec/schemas/orbitos-replan-v1/schema.yaml",
+    "openspec/schemas/orbitos-replan-v1/templates/proposal.md",
+    "openspec/schemas/orbitos-replan-v1/templates/requirement.md",
+    "openspec/schemas/orbitos-replan-v1/templates/tasks.md",
+    "openspec/schemas/orbitos-replan-v1/templates/writeback.md"
+  ],
+  "checksum_map": {
+    "openspec/manifest.yaml": "82e7c9fdaeee3d9012a3d09307f78a48eba83fd59e819f72cb30a3c0ce612e7c",
+    "openspec/schemas/orbitos-change-v1/schema.yaml": "e49942262307ac8b4f046db3ebc8e3b15eac507e92ba5cda09224b6b27310222",
+    "openspec/schemas/orbitos-change-v1/templates/proposal.md": "6126ec75938d336c05a4943c1a8838f638154f9cb54c1827dc7c7457d911dcd5",
+    "openspec/schemas/orbitos-change-v1/templates/requirement.md": "f96bc2181ee42a3829e38a451fa3ca1a2c0cc2e57caa234930b5f1bc9f602ba2",
+    "openspec/schemas/orbitos-change-v1/templates/design-spec.md": "6a825ffe0649d32d05bd31c964f803be9dce03b64b4aeb8c49dfb9b72b6be38c",
+    "openspec/schemas/orbitos-change-v1/templates/tasks.md": "400f76699a0de6ca6ce6749ab09445eb1a184002ea11faf0920e8ce71fb28a41",
+    "openspec/schemas/orbitos-change-v1/templates/verification.md": "9ffad7dba04afb709d5f054146294e3c4a61bdb1b610e05752254080ef5af522",
+    "openspec/schemas/orbitos-change-v1/templates/writeback.md": "6a3c80aa2842876a7920722732d8534d7d51ea20fdfbdd2509cf368e23ff5bb8",
+    "openspec/schemas/orbitos-replan-v1/schema.yaml": "9905ccd029d83fb6381f4286a0c20da38a953ef50f5e1c693c814d172e18a99c",
+    "openspec/schemas/orbitos-replan-v1/templates/proposal.md": "3624c9dd1093a0df0ef1ac4e6d3f146e954eb928867acd446bd9225ea68f5005",
+    "openspec/schemas/orbitos-replan-v1/templates/requirement.md": "6bf1b33adb42a3ca77d75eda7f0a41993f226ef2dfd2f3dea0638f0f45ff7cd7",
+    "openspec/schemas/orbitos-replan-v1/templates/tasks.md": "b5d586950b444eea03752e498ef354c8b5d856cd70ec73e59c277f57f0afc0e8",
+    "openspec/schemas/orbitos-replan-v1/templates/writeback.md": "1b247de288bd5eaad4d24112c0272caa45205d4391e4c0a299b2375f07dfab1e"
+  },
+  "source_root": "/Users/nantas-agent/projects/obsidian-mind/.worktrees/feat-orbitos-openspec-schema-sync/20_项目/OrbitOS/OpenSpec_Schema_Source",
+  "target_repo": "/Users/nantas-agent/projects/chrome-agent",
+  "schemas": [
+    "orbitos-change-v1",
+    "orbitos-replan-v1"
+  ],
+  "dry_run": false
+}

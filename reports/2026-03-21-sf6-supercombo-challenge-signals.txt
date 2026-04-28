@@ -1,0 +1,5 @@
+# Supercombo challenge signals
+bytes:     5937
+title_just_a_moment_occurrences: 1
+cf_challenge_opt_occurrences: 7
+enable_js_and_cookies_occurrences: 1

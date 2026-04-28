@@ -1,0 +1,6 @@
+reports/20260321-120127-live-session-streetfighter6/evidence/x-search-hashtag-live.png
+Screenshot saved. Device pixel ratio (DPR): 2
+Coordinate mapping:
+  Screenshot pixels → CSS pixels (for CDP Input events): divide by 2
+  e.g. screenshot point (200, 400) → CSS (100, 200) → use clickxy <target> 100 200
+  On this 2x display: CSS px = screenshot px / 2 ≈ screenshot px × 0.5

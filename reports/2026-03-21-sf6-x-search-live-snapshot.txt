@@ -1,0 +1,19 @@
+uid=8_0 RootWebArea "登录 X / X" url="https://x.com/i/flow/login?redirect_after_login=%2Fsearch%3Fq%3D%2523StreetFighter6%26src%3Dtyped_query%26f%3Dlive"
+  uid=8_1 dialog "注册 X" modal
+    uid=8_2 generic
+    uid=8_3 group
+      uid=8_4 button "关闭" focusable focused
+      uid=8_5 image "X"
+      uid=8_6 heading "注册 X" level="1"
+      uid=8_7 Iframe "“使用 Google 账号登录”按钮"
+        uid=8_8 RootWebArea "Sign In - Google Accounts" url="https://accounts.google.com/gsi/button?theme=outline&size=large&shape=circle&logo_alignment=center&text=signin_with&width=300&is_fedcm_supported=true&client_id=49625052041-kgt0hghf445lmcmhijv46b715m2mpbct.apps.googleusercontent.com&iframe_id=gsi_158933_880007&cas=dqpTzwupxW1tdUPDpj9ozjsYgg483iL2d4CVEQelCwE&hl=zh"
+          uid=8_9 button "使用 Google 账号登录。在新标签页中打开"
+      uid=8_10 button "使用 Apple 登录"
+      uid=8_11 StaticText "或"
+      uid=8_12 StaticText "手机号码、邮件地址或用户名"
+      uid=8_13 textbox "手机号码、邮件地址或用户名"
+      uid=8_14 button "下一步"
+      uid=8_15 button "忘记密码？"
+      uid=8_16 StaticText "还没有账号？"
+      uid=8_17 button "注册"
+    uid=8_18 generic

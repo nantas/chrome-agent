@@ -1,0 +1,227 @@
+[RootWebArea] (2) SF6_Alex - Search / X
+            [heading] To view keyboard shortcuts, press question mark View keyboard shortcuts
+                [StaticText] To view keyboard shortcuts, press question mark
+              [link] View keyboard shortcuts
+                [StaticText] View keyboard shortcuts
+              [button] Skip to home timeline
+              [button] Skip to trending
+                    [heading] X
+                    [link] X
+                    [navigation] Primary
+                    [link] Home
+                    [link] Search and explore
+                    [link] Notifications (2 unread notifications)
+                    [StaticText] 2
+                    [link] Direct Messages
+                    [link] Grok
+                    [link] Bookmarks
+                    [link] Creator Studio
+                    [link] Premium
+                    [link] Profile
+                    [button] More menu items
+                    [link] Post
+                    [button] Account menu
+                    [image] Wang Nan
+                    [button] Back
+                    [search] Search
+                    [combobox] Search query = "SF6_Alex"
+                    [StaticText] SF6_Alex
+                    [button] More
+                    [button] Previous
+                    [tab] Top
+                    [StaticText] Top
+                    [tab] Latest
+                    [StaticText] Latest
+                    [tab] People
+                    [StaticText] People
+                    [tab] Media
+                    [StaticText] Media
+                    [tab] Lists
+                    [StaticText] Lists
+                    [button] Next
+                    [region] Search timeline
+                    [heading] Search timeline
+                    [StaticText] Search timeline
+                    [article] テータちゃん@スト6 @thetachan_SF6 6 minutes ago #SF6_Alex アレックスのドリーム ほぼ中央からのシミーからSA2で5720 2大P構え ▶︎ 遅らせ強エルボー ▶︎ ODフラチョ ▶︎ SA2 ▶︎ 中アックス構え ▶︎ 弱エルボー ▶︎ 中昇龍 画面端から中央付近まで全部同じルート◎ 低め確認で妥協ルート42F詐欺飛び 無敵ガード後のコンボでもいける Embedded video 0:10 of 0:29 Play 0:11 / 0:29 Unmute 100 percent Video Settings Picture-in-Picture Full screen 0:18 1 repost, 4 likes, 1 bookmark, 76 views
+                    [link] テータちゃん@スト6
+                    [StaticText] テータちゃん@スト6
+                    [link] @thetachan_SF6
+                    [StaticText] @thetachan_SF6
+                    [link] 6 minutes ago
+                    [StaticText] 6m
+                    [button] Grok actions
+                    [button] More
+                    [link] #SF6
+                    [StaticText] #SF6
+                    [link] _
+                    [StaticText] _
+                    [link] Alex
+                    [StaticText] Alex
+                    [StaticText]  
+
+アレックスのドリーム
+ほぼ中央からのシミーからSA2で5720
+
+2大P構え ▶︎ 遅らせ強エルボー
+ ▶︎ ODフラチョ ▶︎ SA2
+ ▶︎ 中アックス構え ▶︎ 弱エルボー ▶︎ 中昇龍
+
+画面端から中央付近まで全部同じルート◎
+低め確認で妥協ルート42F詐欺飛び
+無敵ガード後のコンボでもいける
+                    [Video] Embedded video
+                    [slider] Seek slider = 10.972025871276855
+                    [button] Play
+                    [StaticText] 0:11 / 0:29
+                    [button] Unmute
+                    [slider] Volume slider = 0
+                    [button] Video Settings
+                    [button] Picture-in-Picture
+                    [button] Full screen
+                    [StaticText] 0:18
+                    [group] 1 repost, 4 likes, 1 bookmark, 76 views
+                    [button] 0 Replies. Reply
+                    [button] 1 repost. Repost
+                    [StaticText] 1
+                    [button] 4 Likes. Like
+                    [StaticText] 4
+                    [link] 76 views. View post analytics
+                    [StaticText] 76
+                    [button] Bookmark
+                    [button] Share post
+                    [article] higan_1029 @helix_raw 1 hour ago アレックスのコンボ練習のし過ぎで脳と指が破壊されそうｗ モダンやってた弊害かわからないけど、小足当て強昇竜がめっちゃ下手になってて出来る気がしない…ｗ パワーもあってテクニカルでかなり難しいキャラだけどじっくり向き合うしかないな #Streetfighter６ #SF6_Alex #SF6 #スト６ #アレックス Image 1 like, 88 views
+                    [link] higan_1029
+                    [StaticText] higan_1029
+                    [link] @helix_raw
+                    [StaticText] @helix_raw
+                    [link] 1 hour ago
+                    [StaticText] 1h
+                    [button] Grok actions
+                    [button] More
+                    [StaticText] アレックスのコンボ練習のし過ぎで脳と指が破壊されそうｗ
+モダンやってた弊害かわからないけど、小足当て強昇竜がめっちゃ下手になってて出来る気がしない…ｗ
+パワーもあってテクニカルでかなり難しいキャラだけどじっくり向き合うしかないな
+
+                    [link] #Streetfighter６
+                    [StaticText] #Streetfighter６
+                    [StaticText]  
+                    [link] #SF6
+                    [StaticText] #SF6
+                    [link] _
+                    [StaticText] _
+                    [link] Alex
+                    [StaticText] Alex
+                    [StaticText]  
+                    [link] #SF6
+                    [StaticText] #SF6
+                    [StaticText]  
+                    [link] #スト６
+                    [StaticText] #スト６
+                    [StaticText]  
+                    [link] #アレックス
+                    [StaticText] #アレックス
+                    [link] Image
+                    [image] Image
+                    [group] 1 like, 88 views
+                    [button] 0 Replies. Reply
+                    [button] 0 reposts. Repost
+                    [button] 1 Like. Like
+                    [StaticText] 1
+                    [link] 88 views. View post analytics
+                    [StaticText] 88
+                    [button] Bookmark
+                    [button] Share post
+                    [article] THE COOL KID93 @THE_COOL_KID93 1 hour ago Some options vs Juri fireball #SF6_Alex Embedded video Play Video 2 replies, 1 repost, 30 likes, 7 bookmarks, 1713 views
+                    [link] THE COOL KID93
+                    [StaticText] THE COOL KID93
+                    [link] @THE_COOL_KID93
+                    [StaticText] @THE_COOL_KID93
+                    [link] 1 hour ago
+                    [StaticText] 1h
+                    [button] Grok actions
+                    [button] More
+                    [StaticText] Some options vs Juri fireball 
+                    [link] #SF6
+                    [StaticText] #SF6
+                    [link] _
+                    [StaticText] _
+                    [link] Alex
+                    [StaticText] Alex
+                    [Video] Embedded video
+                    [button] Play Video
+                    [group] 2 replies, 1 repost, 30 likes, 7 bookmarks, 1713 views
+                    [button] 2 Replies. Reply
+                    [StaticText] 2
+                    [button] 1 repost. Repost
+                    [StaticText] 1
+                    [button] 30 Likes. Like
+                    [StaticText] 30
+                    [link] 1713 views. View post analytics
+                    [StaticText] 1.7K
+                    [button] Bookmark
+                    [button] Share post
+                    [article] Reaver @TopReaver 2 hours ago This character is a thing of beauty. #SF6_Alex Embedded video Play Video 1 reply, 4 reposts, 6 likes, 1 bookmark, 179 views
+                    [link] Reaver
+                    [StaticText] Reaver
+                    [link] @TopReaver
+                    [StaticText] @TopReaver
+                    [link] 2 hours ago
+                    [StaticText] 2h
+                    [button] Grok actions
+                    [button] More
+                    [StaticText] This character is a thing of beauty. 
+                    [link] #SF6
+                    [StaticText] #SF6
+                    [link] _
+                    [StaticText] _
+                    [link] Alex
+                    [StaticText] Alex
+                    [Video] Embedded video
+                    [button] Play Video
+                    [group] 1 reply, 4 reposts, 6 likes, 1 bookmark, 179 views
+                    [button] 1 Reply. Reply
+                    [StaticText] 1
+                    [button] 4 reposts. Repost
+                    [StaticText] 4
+                    [button] 6 Likes. Like
+                    [StaticText] 6
+                    [link] 179 views. View post analytics
+                    [StaticText] 179
+                    [button] Bookmark
+                    [button] Share post
+                    [article] Vitrr @Bait____0 3 hours ago Modern n quiter? #SF6_alex #perfectko Embedded video Play Video Play Embedded video Play Video Play
+                    [link] Vitrr
+                    [StaticText] Vitrr
+                    [link] @Bait____0
+                    [StaticText] @Bait____0
+                    [link] 3 hours ago
+                    [StaticText] 3h
+                    [button] Grok actions
+                    [button] More
+                    [StaticText] Modern n quiter? 
+
+
+                    [link] #SF6
+                    [StaticText] #SF6
+                    [link] _
+                    [StaticText] _
+                    [link] alex
+                    [StaticText] alex
+                    [StaticText]  
+                    [link] #perfectko
+                    [StaticText] #perfectko
+                    [Video] Embedded video
+                    [button] Play Video
+                    [button] Play
+                    [Video] Embedded video
+                    [button] Play Video
+                    [button] Play
+                    [group] 28 views
+                    [button] 0 Replies. Reply
+                    [button] 0 reposts. Repost
+                    [button] 0 Likes. Like
+                    [link] 28 views. View post analytics
+                    [StaticText] 28
+                    [button] Bookmark
+                    [button] Share post
+        [StaticText] 1Password menu is available. Press down arrow to select.

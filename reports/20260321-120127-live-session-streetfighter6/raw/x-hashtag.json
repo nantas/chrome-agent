@@ -1,0 +1,51 @@
+{
+  "title": "(2) #StreetFighter6 - Search / X",
+  "url": "https://x.com/hashtag/StreetFighter6?src=hashtag_click",
+  "total_tweet_nodes": 4,
+  "visible_tweet_nodes": 1,
+  "first_visible_tweets": [
+    {
+      "index": 1,
+      "author": "REC | @RECXFX | · | Mar 15",
+      "text_snippet": "Alright \nMOD : \n@robhal_MB\n \n\n#StreetFighter6 #MaiShiranui",
+      "tweet_url": "https://x.com/RECXFX/status/2032940749927686242",
+      "datetime": "2026-03-14T22:03:39.000Z"
+    }
+  ],
+  "first_loaded_tweets": [
+    {
+      "index": 1,
+      "author": "REC | @RECXFX | · | Mar 15",
+      "text_snippet": "Alright \nMOD : \n@robhal_MB\n \n\n#StreetFighter6 #MaiShiranui",
+      "tweet_url": "https://x.com/RECXFX/status/2032940749927686242",
+      "datetime": "2026-03-14T22:03:39.000Z"
+    },
+    {
+      "index": 2,
+      "author": "FGCJetsee | @fgcjetsee | · | Mar 19",
+      "text_snippet": "Alex. #StreetFighter6",
+      "tweet_url": "https://x.com/fgcjetsee/status/2034391387420955135",
+      "datetime": "2026-03-18T22:07:58.000Z"
+    },
+    {
+      "index": 3,
+      "author": "Marco Rodrigues  | @Saikyokugen | · | Mar 17",
+      "text_snippet": "Guys... y'know Alex and Patricia are NOT blood related, right?? \n\n#StreetFighter6 #SF6_Alex",
+      "tweet_url": "https://x.com/Saikyokugen/status/2033848984276509162",
+      "datetime": "2026-03-17T10:12:39.000Z"
+    },
+    {
+      "index": 4,
+      "author": "ADHD GAMES | @AADHDGAMESS | · | Mar 12",
+      "text_snippet": "ADHD GOUKI ~殺意の多動・α~\n\n#ストリートファイター6\n#StreetFighter6 #スト6",
+      "tweet_url": "https://x.com/AADHDGAMESS/status/2032075204818845961",
+      "datetime": "2026-03-12T12:44:17.000Z"
+    }
+  ],
+  "can_scroll_further": true,
+  "no_more_results_detected": false,
+  "login_gate_signals": [],
+  "logged_in_nav_detected": true,
+  "timeline_detected": true,
+  "timestamp": "2026-03-21T04:05:08.115Z"
+}
