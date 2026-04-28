@@ -1,3 +1,7 @@
+> **Status**: Superseded by [`agents-governance`](../agents-governance/spec.md) as of 2026-04-28.
+> The operational routing rules originally defined here are now part of the agents-governance capability.
+> This document is preserved for historical reference.
+
 # scrapling-first-browser-workflow Specification
 
 ## Purpose

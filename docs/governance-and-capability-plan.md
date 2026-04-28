@@ -110,8 +110,8 @@
 
 | 属性 | 内容 |
 |------|------|
-| **范围** | 项目治理与能力契约建立 |
-| **交付物** | AGENTS.md 治理重写、能力契约创建与冻结 |
+| **范围** | 项目治理层与契约元模型建立 |
+| **交付物** | AGENTS.md 纯治理重写、agents-governance spec、capability-contracts 元模型 spec、操作流程下沉到 playbooks |
 | **需要的 specs** | `agents-governance`、`capability-contracts` |
 | **排他边界** | 不涉及引擎扩展、不涉及策略库、不涉及安装链 |
 

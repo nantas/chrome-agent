@@ -1,245 +1,164 @@
-# AGENTS.md
+# AGENTS.md — chrome-agent 治理文档
 
-This repository is a browser-agent workspace for website access, debugging, evidence collection, and execution reporting.
+## 1. Service Identity（服务身份）
 
-## Goals
+**chrome-agent** 是**跨仓库网页抓取服务（cross-repo web scraping service）**，提供标准化、可复用的网页内容获取流程。区别于通用的浏览器调试工具仓库，其核心职责是获取和分析网页内容，将浏览器访问与诊断能力作为下层服务的能力层使用。
 
-1. Use `codex-agent` as the primary entrypoint for browser-driven tasks
-2. Keep workflows driven by `AGENTS.md + skills`, not by ad hoc scripts
-3. Accumulate reusable reports and site-specific experience over time
+### 核心设计原则
 
-## Scope
+- **Scrapling-first**: 默认使用 Scrapling 作为抓取引擎，在需要结构化诊断证据时 fallback 到浏览器工具
+- **Workflow-driven**: 通过 `AGENTS.md` + skills 定义标准化工作流程，而非依赖临时脚本
+- **Read-only by default**: 对已登录页面只做读操作，不写回，除非用户明确扩大范围
+- **证据驱动**: 每次任务产出可追溯的报告，为后续流程改进和策略库积累提供依据
 
-- In scope:
-  - Website access and information gathering through a browser agent workflow
-  - Frontend debugging, page inspection, and evidence capture
-  - Reporting what was attempted, what succeeded, what failed, and what to try next
-- Out of scope for v1:
-  - Credential management
-  - A large automation framework
-  - Hard-coding detailed skill or config structures before real usage validates them
+### 范围
 
-## Default Web Grabbing Flow
+**范围内：**
+- 网页内容获取（静态页面、SPA、动态列表、受保护页面、文章提取）
+- 前端调试、页面结构化分析和证据收集
+- 站点特定经验的积累与策略库更新
 
-Use one operator flow for ordinary webpage grabbing work:
+**范围外（v1）：**
+- 凭据管理
+- 大型自动化框架
+- 在真实用例验证之前预先抽象 skill 和配置结构
 
-1. Understand the task, target site, and expected output first.
-2. Route the task into either `Content Retrieval` or `Platform/Page Analysis`.
-3. Decide whether the task is normal public/repeatable grabbing or approved live-session continuity.
-4. Start with Scrapling unless a live-session continuity trigger is already known up front.
-5. Stop on Scrapling if the result satisfies the task.
-6. Escalate to `chrome-devtools-mcp` only when diagnostic or evidence triggers are present.
-7. Escalate to repo-local `chrome-cdp` only when the current agent session must continue immediately on an already-open real Chrome tab.
-8. Capture evidence and write outputs at the depth required by the selected workflow.
-9. If the task reveals reusable site knowledge, update `sites/` or `docs/playbooks/`.
+## 2. Capability Framework（能力框架）
 
-### Route First
+### 对外能力（面向用户）
 
-- `Content Retrieval`: the user mainly wants page content, article body text, or a concise failure reason.
-- `Platform/Page Analysis`: the user mainly wants debugging, structure analysis, evidence collection, extraction-rule analysis, or a reusable report.
+| 能力 | 说明 | 状态 |
+|------|------|------|
+| **explore** | 分析目标页面结构、交互模式、反爬机制 | 规划中 |
+| **fetch** | 获取页面内容（静态/动态/受保护） | 已验证 |
+| **crawl** | 多页面遍历与批量抓取 | 规划中 |
 
-### Scrapling-First Path
+### 对内能力（维护与扩展）
 
-- `get`: default for static pages and article-style extraction where body order and inline images matter.
-- `fetch`: default for SPA pages, dynamic lists, pagination, or other rendered flows that need client-side state.
-- `stealthy-fetch`: default for protected pages, challenge pages, or anti-bot-sensitive targets.
-- bulk variants: use only when the task really is a batch grab across multiple URLs.
-- session variants: use only when repeated related reads benefit from one Scrapling browser session, or when an authenticated task has an explicit user-approved read-only target and session reuse is worth attempting.
-- If Scrapling returns content that satisfies the task, stay on Scrapling. Do not switch tools just because another browser tool could also complete the task.
+| 能力 | 说明 | 状态 |
+|------|------|------|
+| **site-strategy** | 站点结构描述（DOM 特征、分页模式、反爬等级） | 未结构化 |
+| **anti-crawl-strategy** | 反爬策略配置（代理、延迟、指纹、挑战处理） | 未结构化 |
+| **engine-registry** | 引擎注册与发现 | 未实现 |
+| **output-lifecycle** | 输出物管理（格式、暂存、清理） | 未实现 |
 
-### Fallback Boundaries
+能力全景详见[总体规划文档](docs/governance-and-capability-plan.md#3-能力全景图)。
 
-- `chrome-devtools-mcp`: the diagnostic and evidence path. Use it when Scrapling output is incomplete, visually suspect, blocked, or when the task needs screenshots, DOM or accessibility inspection, network evidence, console evidence, performance evidence, or interaction debugging.
-- repo-local `chrome-cdp`: the live-session continuity path. Use it when the current agent session must continue immediately on an already-open real Chrome tab, including approved authenticated tabs whose current state should not be recreated elsewhere.
-- `chrome-devtools-mcp --autoConnect` or `--wsEndpoint`: use these live-attach modes only when the task is known up front to need the real Chrome session and starting with MCP-native diagnostics is acceptable.
-- Do not switch between fallback tools just because both are technically capable. Choose by diagnostic-evidence needs versus live-tab continuity needs.
+## 3. Governance Rules（治理规则）
 
-### Authenticated Read-Only Boundary
+### 工作流路由规则
 
-- Authenticated or logged-in work requires an explicit user-approved target page or tab before either Scrapling session reuse or `chrome-cdp` continuation is attempted.
-- Authenticated runs are read-only by default unless the user explicitly broadens scope.
-- Scrapling-first still applies to approved authenticated work when session reuse is worth trying.
-- If Scrapling session reuse redirects to login, resets the page, loses the approved context, or creates logout/write-action risk, stop that Scrapling path and record failure instead of pushing through.
-- If an approved live tab exists after that failure, switch to repo-local `chrome-cdp` as the live-session continuity fallback.
-- Treat the current `x.com` result as the verified example for this rule: Scrapling-first remains the opening move, but current-session continuity can require immediate `chrome-cdp` fallback after session reuse fails.
+本仓库定义两种工作流路径，根据用户意图选择：
 
-## Workflow Types
+**Content Retrieval（默认路径）**：用户给 URL 要求获取内容时使用。Scrapling-first，轻量验证，直接返回内容。
 
-### Workflow A: Content Retrieval
+**Platform/Page Analysis（深度路径）**：用户要求分析、调试、收集证据时使用。可 fallback 到 Chrome DevTools，完整证据收集，产出报告。
 
-This is the default route.
+路由信号：默认走 Content Retrieval；prompt 包含 `分析、调试、证据、总结经验、平台、结构、抓取规则、复现` 等信号时走 Platform/Page Analysis；两种信号同时出现时优先 Platform/Page Analysis。
 
-Use it when the user primarily wants:
+操作流程详见[docs/playbooks/scrapling-fetchers.md](docs/playbooks/scrapling-fetchers.md)。
 
-- the content of a page
-- article正文 or main text
-- a direct answer about what a page says
-- a concise explanation of why extraction failed
+### 引擎选择策略
 
-Default deliverable:
+**默认路径：Scrapling**
+- 静态页面 → `get`
+- SPA/动态页面 → `fetch`
+- 受保护页面 → `stealthy-fetch`
+- 批量 URL → bulk variants
+- 已登录会话 → session variants
 
-- return the page content directly, or
-- return the blocking issue directly
+**诊断 fallback：chrome-devtools-mcp**
+当 Scrapling 输出不完整、被阻断、视觉存疑，或需要 DOM/网络/控制台/截图/交互证据时使用。
 
-Default operating style:
+**实时会话 fallback：chrome-cdp**
+当需要立即在已打开的 Chrome 标签页上继续操作，或已登录状态无法通过 Scrapling 安全保持时使用。
 
-- prefer the shortest reliable extraction path, starting with Scrapling `get`, `fetch`, `stealthy-fetch`, or their bulk/session variants
-- keep verification lightweight
-- avoid full evidence collection unless the page blocks extraction or the user asks for it
-- avoid mandatory `reports/` output unless the user requests a saved artifact, the failure is worth preserving, or reusable knowledge is discovered
+**fallback 选择标准**：按诊断需求 vs 会话连续性需求选择，不因两个工具都可用就随意切换。
 
-### Workflow B: Platform/Page Analysis
+切换逻辑详见[docs/playbooks/fallback-escalation.md](docs/playbooks/fallback-escalation.md)。
 
-This is the deep route.
+### 认证访问边界
 
-Use it when the user primarily wants:
+- 已登录/认证的工作需要用户明确批准目标页面或标签页
+- 认证运行默认为只读，除非用户明确扩大范围
+- 仍走 Scrapling-first，但 Scrapling 会话复用失败时切换到 chrome-cdp 实时标签页
+- 遇到重定向到登录、页面重置、登出或写操作风险时，停止并记录失败
 
-- page or platform structure analysis
-- debugging or failure investigation
-- evidence collection
-- extraction-rule analysis
-- reusable lessons for future runs
+认证会话规则详见[docs/playbooks/authenticated-sessions.md](docs/playbooks/authenticated-sessions.md)。
 
-Default deliverable:
+### 报告产出规范
 
-- a saved report with evidence, findings, failures, and next actions
+| 工作流 | 最低要求 |
+|--------|----------|
+| Content Retrieval | 页面标题、最终 URL、Scrapling 路径、提取内容/失败原因 |
+| Platform/Page Analysis | 完整 reports/ 产出：标题、URL、内容摘要、截图、结构线索、交互结果 |
+| 文章提取（两者通用） | DOM 保序、内联图片 URL 保留、Markdown 图片语法 |
 
-Default operating style:
+证据收集方法详见[docs/playbooks/evidence-collection.md](docs/playbooks/evidence-collection.md)。
 
-- collect stronger evidence, usually by escalating from Scrapling to `chrome-devtools-mcp`
-- preserve structural clues
-- save the run under `reports/`
-- update `sites/` or `docs/playbooks/` when the task yields reusable knowledge
+## 4. Directory Governance（目录结构治理）
 
-## Intent Routing
-
-Choose the workflow before deciding evidence depth.
-
-Default to `Content Retrieval` when:
-
-- the user gives only a URL
-- the user asks to get, read, fetch, or extract page content
-- the user’s desired output is content or a concise failure explanation
-
-Route to `Platform/Page Analysis` when the prompt includes signals such as:
-
-- `分析`
-- `调试`
-- `证据`
-- `总结经验`
-- `平台`
-- `结构`
-- `抓取规则`
-- `复现`
-
-If both kinds of signals appear, prefer `Platform/Page Analysis`.
-
-## Tooling Strategy
-
-- Default path: Scrapling in a dedicated Python `>=3.10` environment
-- Default route order: route the task, check live-session continuity needs, then stay Scrapling-first unless a defined fallback trigger is present
-- Diagnostic fallback: `chrome-devtools-mcp` in its managed browser context
-- Live-session continuity fallback: repo-local `chrome-cdp` for immediate continuation on an existing live Chrome tab, including approved authenticated read-only tabs
-- Advanced live-session mode: `chrome-devtools-mcp --autoConnect` or `--wsEndpoint` when a fresh live-attached MCP session is worth the setup
-- Do not assume all three are required for every task
-- Let real tasks drive how skills, configs, and playbooks evolve
-
-## Selection Rules
-
-- Default to Scrapling for public, repeatable, dynamic, protected, article, and batch grabbing tasks.
-- Stay on Scrapling if the output satisfies the task without extra diagnostics.
-- Switch to `chrome-devtools-mcp` when the task needs structured diagnostics such as snapshot, DOM, accessibility, network, console, screenshot, performance, or interaction evidence.
-- Switch to repo-local `chrome-cdp` when the user explicitly approves using the current live Chrome session and the existing agent session must continue on that already-open tab immediately.
-- Treat authenticated live tabs as part of the same live-session continuity trigger, but keep those runs read-only unless the user explicitly broadens scope.
-- If approved Scrapling session reuse fails to preserve authenticated context, stop that path and use the approved live tab fallback instead of retrying blindly.
-- If a live-session task is known up front and still needs MCP-native diagnostics, prefer starting with `chrome-devtools-mcp --autoConnect` or `--wsEndpoint` instead of changing tools mid-run.
-
-## `chrome-cdp-skill` Usage Boundary
-
-`chrome-cdp-skill` should be treated as a live-session handoff tool, not as the default browser automation path.
-
-Use it when:
-
-- the user has already opened the target website in their normal Chrome session
-- the task depends on the current logged-in state, open tabs, or the exact in-progress browsing context
-- the goal is for the agent to take over from the user's already-open browser session and continue the visit
-
-Do not prefer it when:
-
-- the task needs a reproducible isolated browser session
-- the task needs an explicit browser URL, explicit debug port, or explicit Chrome profile
-- the task should run against a dedicated test profile or a custom `user-data-dir`
-
-Current limitation:
-
-- the pinned `chrome-cdp-skill` setup reads Chrome debugging state from the default Chrome profile location
-- it does not currently provide a stable explicit entrypoint for custom profiles or custom browser endpoints in this repo
-
-Working rule for this repository:
-
-- If the user wants the agent to continue from a website they already opened manually, `chrome-cdp-skill` is the correct supplemental path.
-- If the task should start cleanly, run repeatably, or be isolated from the user's everyday browser state, stay on Scrapling first and use `chrome-devtools-mcp` only when diagnostics are required.
-
-## Reporting Requirements
-
-Each completed browser task should capture at least:
-
-- Task goal
-- Target site or page
-- Tooling path used
-- Result: success, partial success, or failure
-- Key evidence appropriate to the selected workflow
-- Next recommended action when useful
-
-For `Content Retrieval` tasks:
-
-- direct user output is the default deliverable
-- include the Scrapling fetcher path when used
-- create a `reports/` artifact only when the user asks for it, the failure should be preserved, or the task reveals reusable knowledge
-
-For `Platform/Page Analysis` tasks:
-
-- a saved `reports/` artifact is the default deliverable
-- evidence should be complete enough to support later review and workflow refinement
-
-For article-style extraction tasks in either workflow, generated正文 must preserve reading order from the page body:
-
-- Walk the article body in DOM order instead of relying on plain `innerText`
-- Keep real image source URLs in the output at their original positions
-- Use Markdown image syntax such as `![图片1](https://...)` for inline article images
-- Do not replace article images with generic placeholders such as `图片`
-
-## Minimum Verification Baseline
-
-For `Content Retrieval` tasks, capture at least:
-
-- page title and URL
-- the Scrapling fetcher path or explicit fallback path
-- extracted main content, or a precise failure reason
-- one lightweight evidence point when needed to trust the result
-
-For article-style retrieval, preserve DOM order and inline image URLs in the generated正文.
-
-For `Platform/Page Analysis` tasks on public or repeatable pages, capture at least:
-
-- page title and URL
-- one key content excerpt
-- one screenshot
-- one structure clue such as DOM or accessibility snapshot
-- one interaction outcome if the task includes a flow
-
-For `Platform/Page Analysis` tasks on live-session or authenticated runs, capture at least:
-
-- explicit user-approved target page or tab
-- read-only boundary by default unless the user broadens scope
-- one authentication or session-state clue when relevant
-- first-connection versus follow-up action notes
-- confirmation that no unexpected reset, logout, redirect, or write-action risk occurred
-
-If a task triggers unexpected logout, redirect, page reset, or write-action risk, stop and record failure rather than pushing through.
-
-## Repository Expectations
-
-- Keep top-level structure stable
-- Avoid premature abstraction in `skills/` and `configs/`
-- Prefer writing down decisions after real runs instead of guessing them up front
+```
+.
+├── AGENTS.md           # [本文件] 治理文档——服务身份、能力契约框架、治理规则
+├── README.md           # 仓库全景——身份、能力总览、Quick Start、路线图
+├── openspec/           # 规范驱动的变更管理（Orbitos Spec Standard v0.3）
+│   ├── changes/        #   进行中 + 已归档的变更
+│   └── specs/          #   已冻结的能力规范（行为规范真源）
+├── docs/
+│   ├── decisions/      # 架构决策记录（YYYY-MM-DD-topic.md）
+│   ├── playbooks/      # 操作手册（从 AGENTS.md 提取的操作流程）
+│   ├── plans/          # 实现规划文档
+│   └── setup/          # 环境配置与安装指引
+├── outputs/            # 抓取产出暂存区（.gitignore 排除）
+├── reports/            # 执行报告与证据
+├── skills/             # 全局 skill 源码
+├── sites/              # 站点经验 + 反爬策略（YAML frontmatter + 正文）
+├── configs/            # 工具与运行配置
+└── scripts/            # 辅助脚本
+```
+
+## 5. Decision Record Governance（决策记录治理）
+
+所有架构决策记录存放于 `docs/decisions/`。
+
+### 命名规则
+
+`YYYY-MM-DD-<topic>.md`，例如 `2026-04-23-scrapling-first-workflow.md`
+
+### 内容结构
+
+每个决策记录包含：
+- **Context**: 决策背景和驱动力
+- **Decision**: 做出的决策和理由
+- **Consequences**: 决策带来的后果和后续考虑
+
+### 索引
+
+`docs/decisions/README.md` 维持所有决策的索引清单，包括标题、日期和一句话摘要。
+
+## 6. Spec and Change Governance（规范与变更治理）
+
+本仓库使用 Orbitos Spec Standard v0.3 管理规范与变更。
+
+- 行为规范真源位于 `openspec/specs/<capability-id>/spec.md`
+- 活跃变更位于 `openspec/changes/<change-name>/`
+- 已归档变更位于 `openspec/changes/archive/YYYY-MM-DD-<name>/`
+- 项目页面（Obsidian）不替代 spec delta 作为实现与验证依据
+- 回写只同步结论、状态、摘要与链接，不复制整份 spec/design/tasks
+
+## 7. Reference Index（参考索引）
+
+| 文档 | 位置 | 用途 |
+|------|------|------|
+| 总体规划 | `docs/governance-and-capability-plan.md` | 项目路线图与阶段定义 |
+| 决策记录 | `docs/decisions/` | 架构决策索引 |
+| 操作手册 | `docs/playbooks/` | Scrapling 使用、fallback、证据收集、认证会话 |
+| Scrapling fetcher 指南 | `docs/playbooks/scrapling-fetchers.md` | fetcher 选型与参数参考 |
+| Fallback 切换逻辑 | `docs/playbooks/fallback-escalation.md` | 何时升到 DevTools 或 chrome-cdp |
+| 证据收集方法 | `docs/playbooks/evidence-collection.md` | 截图/DOM/网络等收集步骤 |
+| 认证会话规则 | `docs/playbooks/authenticated-sessions.md` | 已登录页面的只读操作安全规则 |
+| 站点经验库 | `sites/` | 站点结构与反爬策略 |
+| 能力规范 | `openspec/specs/` | 已冻结的行为规范 |
+| 治理 Spec | `openspec/specs/agents-governance/spec.md` | 本文件的规范真源 |
+| 契约元模型 | `openspec/specs/capability-contracts/spec.md` | 引擎契约通用 schema |
