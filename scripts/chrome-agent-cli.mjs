@@ -16,9 +16,9 @@ function printHelp() {
   const text = `Usage: chrome-agent [--format json|text] [--repo <path|repo://id>] <command> [args]
 
 Commands:
-  explore <url>          Analyze strategy coverage, route, and remediation.
-  fetch <url>            Run Scrapling-first content retrieval and emit artifacts.
-  crawl <url>            Run bounded strategy-guided crawl.
+  explore <url>          Run the explicit platform-analysis backend workflow.
+  fetch <url>            Run the explicit content-retrieval backend workflow.
+  crawl <url>            Run the explicit bounded-crawl backend workflow.
   doctor                 Validate launcher, repo resolution, repo shape, and Scrapling readiness.
   clean [--scope all]    Remove disposable outputs by default.
 
@@ -163,6 +163,8 @@ function renderResult(result, format) {
     lines.push("- none");
   }
   lines.push(`next_action: ${result.next_action}`);
+  lines.push(`workflow: ${result.workflow ?? "none"}`);
+  lines.push(`engine_path: ${result.engine_path ?? "none"}`);
   process.stdout.write(`${lines.join("\n")}\n`);
 }
 
@@ -389,13 +391,14 @@ function shouldEmitReport(command, reportOverride) {
   return command === "explore";
 }
 
-function buildExploreReport({ targetUrl, strategy, matchingPage, repoRef, resolutionMode, preflight }) {
+function buildExploreReport({ targetUrl, strategy, matchingPage, repoRef, resolutionMode, preflight, recommendedFetcher }) {
   const lines = [
     `# Explore Report`,
     "",
     `- Target: ${targetUrl}`,
     `- Repo ref: ${repoRef}`,
     `- Resolution: ${resolutionSummary(repoRef, resolutionMode)}`,
+    `- Workflow: platform_analysis`,
     `- Strategy matched: ${strategy ? "yes" : "no"}`,
     `- Scrapling preflight: ${preflight.ok ? `${preflight.status} (${preflight.source})` : "unavailable"}`,
   ];
@@ -404,9 +407,22 @@ function buildExploreReport({ targetUrl, strategy, matchingPage, repoRef, resolu
     lines.push(`- Protection level: ${strategy.protection_level}`);
     lines.push(`- Entry points: ${(strategy.document?.structure?.entry_points ?? []).join(", ") || "none"}`);
     lines.push(`- Matched page type: ${matchingPage?.id ?? "none"}`);
+    lines.push(`- Recommended fetcher: ${recommendedFetcher ?? "unknown"}`);
+    lines.push(`- Anti-crawl refs: ${[...(strategy.anti_crawl_refs ?? []), ...(matchingPage?.anti_crawl_refs ?? [])].join(", ") || "none"}`);
   } else {
     lines.push("- Strategy file: none");
     lines.push("- Gap: no site strategy currently covers this target.");
+    lines.push("- Recommended fetcher: unknown until strategy coverage exists.");
+  }
+  lines.push("");
+  lines.push("## Structure Clues");
+  if (strategy) {
+    lines.push(`- Domain: ${strategy.domain}`);
+    lines.push(`- Declared pages: ${(strategy.document?.structure?.pages ?? []).map((page) => page.id).join(", ") || "none"}`);
+    lines.push(`- Matched URL pattern: ${matchingPage?.url_pattern ?? "none"}`);
+  } else {
+    lines.push(`- Host: ${new URL(targetUrl).hostname}`);
+    lines.push("- Strategy gap prevents deeper bounded workflow guidance.");
   }
   lines.push("");
   lines.push("## Next Action");
@@ -427,6 +443,8 @@ function makeResult(command, target, repoRef, summary, artifacts, nextAction, re
     summary,
     artifacts,
     next_action: nextAction,
+    workflow: extra.workflow ?? null,
+    engine_path: extra.engine_path ?? null,
     ...extra,
   };
 }
@@ -436,6 +454,7 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
   const { strategy } = findStrategy(repoRoot, targetUrl);
   const matchingPage = strategy ? findMatchingPage(strategy.document, targetUrl) : null;
   const preflight = runScraplingPreflight(repoRoot, false);
+  const recommendedFetcher = strategy ? selectFetcher(strategy, matchingPage) : null;
   const report = buildExploreReport({
     targetUrl,
     strategy,
@@ -443,6 +462,7 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
     repoRef,
     resolutionMode,
     preflight,
+    recommendedFetcher,
   });
   const emitReport = shouldEmitReport("explore", reportOverride);
   const artifacts = [];
@@ -461,6 +481,10 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
       artifacts,
       `Create or refine a site strategy for ${new URL(targetUrl).hostname}, then retry fetch or crawl.`,
       "partial_success",
+      {
+        workflow: "platform_analysis",
+        engine_path: `strategy_registry -> strategy_gap -> scrapling_preflight:${preflight.status ?? "unavailable"}`,
+      },
     );
   }
 
@@ -468,9 +492,14 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
     "explore",
     targetUrl,
     repoRef,
-    `Matched strategy ${path.relative(repoRoot, strategy.path)} and documented the repository-local route.`,
+    `Matched strategy ${path.relative(repoRoot, strategy.path)}, documented the repository-local analysis route, and prepared backend guidance for ${recommendedFetcher ?? "unknown"} follow-up.`,
     artifacts,
     `Use chrome-agent fetch ${targetUrl} for content retrieval or crawl from one of: ${(strategy.document?.structure?.entry_points ?? []).join(", ") || "the declared entry points"}.`,
+    "success",
+    {
+      workflow: "platform_analysis",
+      engine_path: `strategy_registry -> analysis_report -> recommended:${recommendedFetcher ?? "unknown"} -> scrapling_preflight:${preflight.status ?? "unavailable"}`,
+    },
   );
 }
 
@@ -576,6 +605,10 @@ function runFetch(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride) 
         ? "Inspect the durable fetch report, adjust strategy or fetcher selection, then retry."
         : "Inspect disposable artifacts (manifest/stderr), adjust strategy or fetcher selection, then retry.",
       "failure",
+      {
+        workflow: "content_retrieval",
+        engine_path: `scrapling:${fetcher} -> preflight:${fetchResult.preflight?.status ?? "unknown"} -> failed`,
+      },
     );
   }
 
@@ -587,6 +620,11 @@ function runFetch(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride) 
     `Fetched content with scrapling ${fetcher}${title ? ` and identified "${title}"` : ""}.`,
     artifacts,
     strategy ? "Review the extracted content or continue to crawl if bounded traversal is required." : "Consider running explore to add a site strategy if this domain should support bounded crawl later.",
+    "success",
+    {
+      workflow: "content_retrieval",
+      engine_path: `scrapling:${fetcher} -> preflight:${fetchResult.preflight?.status ?? "unknown"}`,
+    },
   );
 }
 
@@ -684,6 +722,10 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, entryPointOverri
       artifacts,
       `Run chrome-agent explore ${targetUrl} first to create or refine a site strategy.`,
       "failure",
+      {
+        workflow: "content_retrieval",
+        engine_path: "strategy_registry -> strategy_gap",
+      },
     );
   }
 
@@ -721,6 +763,10 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, entryPointOverri
       artifacts,
       `Update ${path.relative(repoRoot, strategy.path)} so the crawl can start from a declared entry point.`,
       "failure",
+      {
+        workflow: "content_retrieval",
+        engine_path: `strategy_registry -> ${path.relative(repoRoot, strategy.path)} -> missing_entry_point`,
+      },
     );
   }
 
@@ -749,6 +795,10 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, entryPointOverri
       artifacts,
       "Repair the Scrapling CLI environment, then retry crawl.",
       "failure",
+      {
+        workflow: "content_retrieval",
+        engine_path: `strategy_registry -> scrapling_preflight:${preflight.status ?? "unavailable"} -> blocked`,
+      },
     );
   }
 
@@ -858,7 +908,10 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, entryPointOverri
       ? "Review the crawl report, strategy selectors, or authentication requirements before retrying."
       : "Inspect the crawl report and outputs. Extend the site strategy if more bounded traversal is needed.";
 
-  return makeResult("crawl", targetUrl, repoRef, summary, artifacts, nextAction, resultState);
+  return makeResult("crawl", targetUrl, repoRef, summary, artifacts, nextAction, resultState, {
+    workflow: "content_retrieval",
+    engine_path: `strategy_registry -> bounded_crawl -> scrapling_preflight:${preflight.status ?? "unknown"}`,
+  });
 }
 
 function runDoctor(repoRoot, repoRef, resolutionMode) {
@@ -911,6 +964,8 @@ function runDoctor(repoRoot, repoRef, resolutionMode) {
     {
       checks,
       resolution_mode: resolutionMode,
+      workflow: "runtime_support",
+      engine_path: `doctor -> repo_resolution:${resolutionMode} -> scrapling_preflight:${preflight.status ?? "unavailable"}`,
     },
   );
 }
@@ -955,6 +1010,11 @@ function runClean(repoRoot, repoRef, scope) {
       : `Removed ${removed.length} disposable output path(s) and preserved durable reports.`,
     [...removed, ...preserved],
     scope === "all" ? "none" : "Use --scope all only when you explicitly intend to delete durable reports.",
+    "success",
+    {
+      workflow: "artifact_maintenance",
+      engine_path: `clean -> scope:${scope}`,
+    },
   );
 }
 

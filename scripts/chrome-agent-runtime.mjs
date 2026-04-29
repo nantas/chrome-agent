@@ -12,9 +12,9 @@ function printHelp() {
   const text = `Usage: chrome-agent [--repo <path|repo://id>] [--format json|text] <command> [args]
 
 Commands:
-  explore <url>    Analyze strategy coverage and repository-local workflow fit.
-  fetch <url>      Run the repository-local content retrieval workflow.
-  crawl <url>      Run strategy-guided crawl with bounded traversal.
+  explore <url>    Run the explicit platform-analysis backend workflow.
+  fetch <url>      Run the explicit content-retrieval backend workflow.
+  crawl <url>      Run the explicit bounded-crawl backend workflow.
   doctor           Validate launcher, repo resolution, repo shape, and prerequisites.
   clean            Remove disposable outputs by default.
 
@@ -83,6 +83,8 @@ function renderResult(result, format) {
     lines.push("- none");
   }
   lines.push(`next_action: ${result.next_action}`);
+  lines.push(`workflow: ${result.workflow ?? "none"}`);
+  lines.push(`engine_path: ${result.engine_path ?? "none"}`);
   process.stdout.write(`${lines.join("\n")}\n`);
 }
 
@@ -204,6 +206,8 @@ function main() {
         summary: `Repository resolution failed before dispatch. ${repoResolution.failures.join("; ")}.`,
         artifacts: [],
         next_action: `Register ${DEFAULT_REPO_REF} in ${repoResolution.registryPath} or set CHROME_AGENT_REPO to a valid repository, then retry.`,
+        workflow: "runtime_support",
+        engine_path: "doctor -> repo_resolution:unresolved",
       },
       parsed.format,
     );
@@ -221,6 +225,8 @@ function main() {
         summary: `Resolved repository is missing scripts/chrome-agent-cli.mjs: ${repoResolution.repoPath}.`,
         artifacts: [],
         next_action: "Update the repository to a Phase 5-compatible revision and retry.",
+        workflow: "runtime_support",
+        engine_path: `dispatch -> repo_cli_missing:${repoResolution.repoPath}`,
       },
       parsed.format,
     );
@@ -258,6 +264,8 @@ function main() {
         summary: `Runtime dispatch failed: ${child.error.message}`,
         artifacts: [],
         next_action: "Inspect the local Node.js runtime and repository-local CLI implementation, then retry.",
+        workflow: "runtime_support",
+        engine_path: `dispatch -> spawn_failed:${repoResolution.repoPath}`,
       },
       parsed.format,
     );

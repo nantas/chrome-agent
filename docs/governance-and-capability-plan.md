@@ -69,23 +69,17 @@
 ### 对外能力（面向用户）
 
 ```
-用户请求
+agent caller
     │
-    ├─ explore ──→ 分析目标页面结构、交互模式、反爬机制
-    │
-    ├─ fetch ────→ 获取页面内容
-    │    ├── get           静态页面 / 低保护
-    │    ├── fetch         SPA / 动态页面 / 需 JS 渲染
-    │    └── stealthy-fetch  受保护页面 / Cloudflare / WAF
-    │
-    ├─ crawl ────→ strategy-guided bounded traversal
-    │    ├── entry_points  声明式入口
-    │    ├── links_to      声明式页面连接
-    │    └── pagination    声明式分页推进
-    │
-    ├─ doctor ───→ launcher / repo 解析 / preflight 自检
-    │
-    └─ clean ────→ disposable outputs 清理（默认安全）
+    └─ chrome-agent workflow skill
+          ├── doctor   → backend preflight
+          ├── fetch    → 内容获取
+          │    ├── get             静态页面 / 低保护
+          │    ├── fetch           SPA / 动态页面 / 需 JS 渲染
+          │    └── stealthy-fetch  受保护页面 / Cloudflare / WAF
+          ├── explore  → 平台 / 页面分析
+          ├── crawl    → strategy-guided bounded traversal
+          └── repo-backed CLI backend (`chrome-agent`)
 ```
 
 ### 对内能力（维护与扩展）
@@ -146,13 +140,13 @@
 | **需要的 specs** | `engine-registry`、`extension-api`、`scrapling-bulk-fetch-contract` |
 | **排他边界** | 不包含策略自动选择、不包含编排层 |
 
-### Phase 5: 全局 Capability CLI
+### Phase 5: Skill-First / CLI-Backed Entry
 
 | 属性 | 内容 |
 |------|------|
-| **范围** | repo-backed global CLI、repo-registry-first 解析、strategy-guided crawl、install/output 支撑面 |
-| **交付物** | `global-capability-cli` spec、`install-chain` spec、`output-lifecycle` spec、`strategy-guided-crawl` spec、全局 launcher、`doctor`、`clean`、bounded `crawl` |
-| **需要的 specs** | `global-capability-cli`、`install-chain`、`output-lifecycle`、`strategy-guided-crawl` |
+| **范围** | 全局 workflow skill、repo-backed global CLI、repo-registry-first 解析、strategy-guided crawl、install/output 支撑面 |
+| **交付物** | `global-workflow-skill` spec、`global-capability-cli` spec、`install-chain` spec、`output-lifecycle` spec、`strategy-guided-crawl` spec、全局 launcher、`doctor`、`clean`、bounded `crawl` |
+| **需要的 specs** | `global-workflow-skill`、`global-capability-cli`、`install-chain`、`output-lifecycle`、`strategy-guided-crawl` |
 | **排他边界** | 不涉及开放式 spider、不重写仓库工作流为纯 deterministic runtime、不涉及运行时监控、不涉及远程调度 |
 
 ---
@@ -169,7 +163,7 @@ Phase 2: 契约冻结 ───────────── Phase 3: 策略库
 Phase 4: 引擎扩展治理 ←──────────────────┘
     │
     ▼
-Phase 5: 安装链与清理闭环
+Phase 5: Skill-first 入口与 CLI 后端闭环
 ```
 
 依赖说明：
@@ -178,7 +172,7 @@ Phase 5: 安装链与清理闭环
 - **Phase 3 ← Phase 1**: 策略 schema 依赖治理层定义的目录结构
 - **Phase 3 ← Phase 2**: 策略库中的字段类型和错误码依赖冻结的契约
 - **Phase 4 ← Phase 2 + Phase 3**: 引擎扩展需要已冻结的契约和已标准化的策略库
-- **Phase 5 ← Phase 4**: 全局 CLI 依赖稳定的引擎、策略与扩展治理契约，并把这些仓内契约作为执行权威而不是替代它们
+- **Phase 5 ← Phase 4**: workflow skill 与全局 CLI 依赖稳定的引擎、策略与扩展治理契约，并把这些仓内契约作为执行权威而不是替代它们
 
 ---
 
@@ -207,7 +201,7 @@ Phase 5: 安装链与清理闭环
 | Python >=3.10 | Scrapling 运行环境 |
 | Playwright | 浏览器自动化 |
 | uv | Python 包管理 |
-| codex-agent | 入口 agent |
+| agent caller | 调用入口（skill-first） |
 | opencode | CLI 工作流驱动 |
 
 ---

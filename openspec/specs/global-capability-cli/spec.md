@@ -2,13 +2,13 @@
 
 ## Purpose
 
-Define the formal external CLI contract for `chrome-agent`, including the first-class command surface, repo-backed dispatch model, repo resolution precedence, JSON-first result envelope, and retirement of the historical global skill as the primary entry path.
+Define the low-level explicit CLI contract for `chrome-agent`, including the first-class command surface, repo-backed dispatch model, repo resolution precedence, JSON-first result envelope, and its relationship to the global workflow skill.
 
 ## Requirements
 
 ### Requirement: Global command surface
 
-The system SHALL expose `chrome-agent` as the formal global CLI entrypoint for this repository's external capabilities.
+The system SHALL expose `chrome-agent` as the repo-backed low-level explicit execution surface for this repository's external capabilities.
 
 The CLI SHALL define these first-class commands:
 - `explore`
@@ -19,9 +19,9 @@ The CLI SHALL define these first-class commands:
 
 #### Scenario: Command inventory
 
-- **WHEN** an operator or agent invokes `chrome-agent --help`
+- **WHEN** an operator invokes `chrome-agent --help`
 - **THEN** the CLI SHALL present the five first-class commands above
-- **AND** it SHALL not require the caller to invoke the removed `skills/chrome-agent` dispatcher as the primary path
+- **AND** it SHALL describe `fetch`, `explore`, and `crawl` as explicit backend workflows rather than as the only user-facing intent layer
 
 ### Requirement: Repo-backed execution authority
 
@@ -77,20 +77,22 @@ The JSON result SHALL include at least:
 - `summary`
 - `artifacts`
 - `next_action`
+- `workflow`
+- `engine_path`
 
 #### Scenario: Structured success result
 
 - **WHEN** a command completes successfully
 - **THEN** the CLI SHALL emit a machine-readable result object with all fields above
-- **AND** `result` SHALL be `success`
-- **AND** `repo_ref` SHALL identify the resolved repository reference used for execution
+- **AND** `workflow` SHALL identify whether the command executed `content_retrieval`, `platform_analysis`, `runtime_support`, or another explicit backend workflow
+- **AND** `engine_path` SHALL summarize the actual engine or escalation path used for execution
 
 #### Scenario: Structured partial failure
 
 - **WHEN** a command completes with usable output but unresolved issues
 - **THEN** the CLI SHALL emit the same result envelope
 - **AND** `result` SHALL be `partial_success`
-- **AND** `next_action` SHALL contain an explicit remediation suggestion
+- **AND** `next_action` SHALL contain an explicit remediation suggestion grounded in the attempted workflow
 
 ### Requirement: Text rendering as optional view
 
@@ -104,13 +106,16 @@ The CLI SHALL support a human-readable text rendering, but that rendering SHALL 
 
 ### Requirement: Explore command routing
 
-The `explore` command SHALL route into a repository-local exploratory workflow rather than a deterministic fetch-only path.
+The `explore` command SHALL route into the repository-local Platform/Page Analysis backend rather than only a strategy-gap probe.
+
+The repository-local analysis backend MAY inspect page structure, anti-crawl signals, strategy gaps, fallback evidence, and diagnostic artifacts.
 
 #### Scenario: Explore command execution
 
 - **WHEN** `chrome-agent explore <target>` is invoked
-- **THEN** the CLI SHALL dispatch to a repository-local workflow that may inspect page structure, anti-crawl signals, and strategy gaps
-- **AND** the result SHALL return any generated or referenced reports or strategy artifacts
+- **THEN** the CLI SHALL dispatch to a repository-local workflow that can perform deeper evidence collection and fallback-oriented diagnostics
+- **AND** the result SHALL identify `workflow: platform_analysis`
+- **AND** the result SHALL return any generated or referenced reports, screenshots, structure clues, or strategy artifacts
 
 ### Requirement: Fetch command routing
 
@@ -122,12 +127,12 @@ The `fetch` command SHALL route into the repository-local content retrieval work
 - **THEN** the CLI SHALL dispatch to the repository-local content retrieval workflow
 - **AND** the downstream workflow SHALL remain free to choose the appropriate engine family according to repository rules
 
-### Requirement: Decommission old global skill as primary entry
+### Requirement: Relationship to global workflow skill
 
-The system SHALL retire `skills/chrome-agent` as a formal primary entrypoint once the global CLI is introduced.
+The CLI SHALL coexist with the global workflow skill as the backend execution surface for agent-first usage.
 
-#### Scenario: Primary entry migration
+#### Scenario: Skill-backed CLI usage
 
-- **WHEN** Phase 5 is implemented
-- **THEN** the documented primary external entry SHALL be the global `chrome-agent` CLI
-- **AND** any historical skill-based path SHALL be treated as removed or superseded rather than co-equal
+- **WHEN** the global workflow skill invokes the CLI
+- **THEN** the CLI SHALL remain the execution backend and source of truth for machine-readable results
+- **AND** it SHALL not require the skill to re-implement repository routing or engine selection logic

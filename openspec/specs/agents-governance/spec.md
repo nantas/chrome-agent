@@ -3,7 +3,9 @@
 ## Purpose
 
 Define the governance contract for the repository entry document, workflow routing, engine boundaries, reporting expectations, directory rules, decision records, and the relationship between active workflow governance and superseded historical specs.
+
 ## Requirements
+
 ### Requirement: AGENTS.md 结构与强制内容
 
 The system SHALL rewrite AGENTS.md as a pure governance document with the following mandatory sections, ordered as specified:
@@ -32,15 +34,19 @@ AGENTS.md SHALL NOT contain operational how-to content; such content SHALL resid
 
 ### Requirement: 服务身份声明
 
-The system SHALL declare chrome-agent as a cross-repo web scraping service with a repo-backed global CLI as its formal external entrypoint.
+The system SHALL declare chrome-agent as a cross-repo web scraping service with a skill-first, CLI-backed external entry model.
 
-The service identity SHALL continue to state that repository-local governance remains authoritative for workflow execution.
+The service identity SHALL state that:
+- the global `chrome-agent` workflow skill is the recommended primary entry for agent-driven usage
+- the repo-backed `chrome-agent` CLI is the low-level explicit execution surface and shell/backend entry
+- repository-local governance remains authoritative for workflow execution
 
 #### Scenario: Identity declaration
 
 - **WHEN** an operator or agent reads the Service Identity section
 - **THEN** the section SHALL state that chrome-agent is a "跨仓库网页抓取服务（cross-repo web scraping service）"
-- **AND** it SHALL describe the global `chrome-agent` CLI as the formal external entrypoint
+- **AND** it SHALL describe the global workflow skill as the recommended agent-first entry
+- **AND** it SHALL describe the repo-backed CLI as the backend execution surface rather than the only formal entry
 - **AND** it SHALL preserve the four core principles: Scrapling-first, workflow-driven (AGENTS.md + skills), read-only by default for authenticated runs, and evidence-driven reporting
 
 #### Scenario: Scope boundaries
@@ -51,17 +57,23 @@ The service identity SHALL continue to state that repository-local governance re
 
 ### Requirement: 工作流路由规则
 
-The system SHALL document that the repo-backed global CLI is only an entry layer, while repository-local workflow routing remains authoritative.
+The system SHALL document that both the global workflow skill and the repo-backed CLI are entry layers, while repository-local workflow routing remains authoritative.
 
-For any request arriving through the global CLI, the repository-local workflow SHALL still decide Content Retrieval versus Platform/Page Analysis according to repository governance.
+For any request arriving through the skill or the CLI, the repository-local workflow SHALL still decide Content Retrieval versus Platform/Page Analysis according to repository governance.
 
 For any workflow path that depends on Scrapling as the first engine family, the system SHALL check Scrapling CLI availability before attempting fetcher selection or content retrieval.
 
-#### Scenario: Content Retrieval routing
+#### Scenario: Skill entry with repository routing
 
-- **WHEN** a request enters through the global `chrome-agent` CLI
-- **THEN** the target repository SHALL still apply its own workflow routing rules
-- **AND** the CLI SHALL not bypass or replace those routing decisions with a separate parallel policy layer
+- **WHEN** a request enters through the global `chrome-agent` workflow skill
+- **THEN** the skill MAY route the request to `fetch`, `explore`, or `crawl`
+- **AND** the repository-local workflow SHALL remain authoritative for engine selection, fallback escalation, and reporting behavior
+
+#### Scenario: CLI entry with repository routing
+
+- **WHEN** a request enters through the repo-backed `chrome-agent` CLI
+- **THEN** the target repository SHALL still apply its own workflow routing and execution rules
+- **AND** the CLI SHALL not replace those routing decisions with a parallel policy layer
 
 #### Scenario: Content Retrieval routing
 
@@ -88,13 +100,13 @@ For any workflow path that depends on Scrapling as the first engine family, the 
 
 ### Requirement: 引擎选择策略
 
-The system SHALL preserve repository-local engine selection authority even when a request originates from the global CLI.
+The system SHALL preserve repository-local engine selection authority even when a request originates from the global workflow skill or the global CLI.
 
 #### Scenario: Global entry, local engine selection
 
 - **WHEN** `chrome-agent fetch` or `chrome-agent crawl` dispatches into the repository
 - **THEN** the repository-local workflow SHALL continue to apply Scrapling-first selection, strategy overrides, and fallback boundaries
-- **AND** the global CLI SHALL not hardcode an alternative engine selection model
+- **AND** the global workflow skill and CLI SHALL not hardcode an alternative engine selection model
 
 #### Scenario: Default Scrapling path
 
@@ -157,8 +169,8 @@ The system SHALL define the governance rules for each top-level directory in AGE
 
 #### Scenario: AGENTS.md content boundary after CLI introduction
 
-- **WHEN** AGENTS.md is updated for Phase 5
-- **THEN** it SHALL describe the existence and role of the global CLI at the governance level
+- **WHEN** AGENTS.md is updated for Phase 5+
+- **THEN** it SHALL describe the existence and role of the global workflow skill and CLI at the governance level
 - **AND** it SHALL keep detailed launcher install and doctor procedures in setup or playbook documents rather than turning AGENTS.md into an install manual
 
 ### Requirement: 决策记录治理
@@ -174,6 +186,16 @@ The system SHALL define the governance rules for decision records in AGENTS.md.
 
 - **WHEN** the decision records directory is maintained
 - **THEN** docs/decisions/README.md SHALL serve as an index listing all decisions with title, date, and one-line summary
+
+### Requirement: Reference Index
+
+The system SHALL index both the agent-facing skill path and the CLI/playbook path in its governance references.
+
+#### Scenario: Reference coverage
+
+- **WHEN** AGENTS.md or README links the repository's external entry documentation
+- **THEN** the references SHALL cover the global workflow skill and the repo-backed CLI/backend guidance together
+- **AND** they SHALL not describe the skill as merely historical if it remains the recommended agent-first entry
 
 ### Requirement: Scrapling-first spec 迁移
 

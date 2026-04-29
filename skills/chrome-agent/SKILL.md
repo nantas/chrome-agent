@@ -1,159 +1,154 @@
 ---
 name: chrome-agent
-description: Historical dispatcher skill for chrome-agent. Superseded by the global `chrome-agent` CLI as the formal primary entrypoint.
+description: Agent-first workflow skill for chrome-agent. Uses `chrome-agent doctor --format json` as preflight, then routes intent to the repo-backed CLI backend.
 ---
 
-# Chrome Agent Global Skill
+# Chrome Agent Workflow Skill
 
-> Status: superseded by the repo-backed global `chrome-agent` CLI. Keep this file only as a historical compatibility artifact, not as the primary install path.
+Use this skill as the recommended agent-facing entry for `chrome-agent`.
 
-## Purpose
+The skill is intent-facing. It does not implement scraping, crawl rules, or fallback logic itself. The only supported execution backend is the repo-backed `chrome-agent` CLI.
 
-Use this skill when you want a globally installed entrypoint that forwards webpage extraction work into the local `chrome-agent` repository instead of re-implementing the workflow in the current session.
+## Backend Contract
 
-This skill is a thin dispatcher. It does not clone repositories, install dependencies, or embed site-specific extraction logic.
+Always run backend preflight first:
 
-## Required Preconditions
-
-Before runtime, verify:
-
-- `~/.agents/skills/codex-agent/` exists, or `~/.agents/skills/repo-agent/` exists
-- `CHROME_AGENT_REPO` is defined
-- `CHROME_AGENT_REPO` is an absolute path to a local repository
-- `CHROME_AGENT_REPO/AGENTS.md` exists
-
-If any requirement fails, stop and report `failure` with the missing requirement.
-
-## Dispatcher Priority
-
-Use:
-
-1. `codex-agent` first
-2. `repo-agent` only when `codex-agent` is unavailable
-
-Do not ask the user to choose unless they explicitly want to override this order.
-
-## Install Notes
-
-The repository-owned source for this skill should live at:
-
-- `skills/chrome-agent/SKILL.md`
-
-The global install destination should be:
-
-- `~/.agents/skills/chrome-agent/`
-
-Before any install or update action:
-
-- check whether `~/.agents/skills/chrome-agent/` already exists
-- check whether `CHROME_AGENT_REPO` is already set in the current environment or shell config
-- do not overwrite either one silently
-- if an existing skill or conflicting environment variable is found, ask for explicit confirmation before making persistent changes
-
-## Runtime Procedure
-
-### Step 1: Validate dispatcher skills
-
-Check for:
-
-- `~/.agents/skills/codex-agent/`
-- `~/.agents/skills/repo-agent/`
-
-If both are missing, return:
-
-```text
-result: failure
-target: <user target or unknown>
-summary: Neither codex-agent nor repo-agent is installed under ~/.agents/skills.
-artifacts:
-next_action: Install codex-agent or repo-agent, then run this request again.
+```bash
+chrome-agent doctor --format json
 ```
 
-### Step 2: Validate repository path
+Interpret the doctor result as the source of truth:
 
-Resolve `CHROME_AGENT_REPO`.
+- If `result` is `success`, continue.
+- If `result` is `failure`, stop.
+- If `result` is `partial_success`, treat it as blocking for workflow dispatch and stop unless the doctor output clearly marks all failed checks as non-blocking.
 
-Validation rules:
+When stopping, return the doctor-provided remediation instead of inventing a non-CLI fallback.
 
-- it must be non-empty
-- it must be absolute
-- it must exist
-- it must contain `AGENTS.md`
-
-If validation fails, return:
-
-```text
-result: failure
-target: <user target or unknown>
-summary: CHROME_AGENT_REPO is missing or does not point to a valid chrome-agent repository.
-artifacts:
-next_action: Set CHROME_AGENT_REPO to the local chrome-agent repository path and retry.
-```
-
-Do not treat the current working directory as an implicit fallback for `CHROME_AGENT_REPO`. If the environment variable is missing or invalid, stop.
-
-### Step 3: Forward the task
-
-Forward the user's request into `CHROME_AGENT_REPO` and require the downstream agent to:
-
-- read the repository `AGENTS.md`
-- execute the webpage extraction task according to the repository workflow
-- choose `Content Retrieval` vs `Platform/Page Analysis` based on the repository rules
-- return the final result in the required output shape
-
-### Step 4: Required downstream output
-
-Require the downstream session to return:
+Required result fields to preserve from doctor:
 
 - `result`
-- `target`
 - `summary`
 - `artifacts`
 - `next_action`
+- `repo_ref`
+- `workflow`
+- `engine_path`
 
-Preferred text shape:
+## Intent Routing
 
-```text
-result: success
-target: https://example.com/post/123
-summary: Extracted the article content and saved the output.
-artifacts:
-- /abs/path/to/reports/example.md
-- /abs/path/to/output/article.md
-next_action: none
+After doctor succeeds, route user intent to exactly one CLI workflow backend.
+
+### Route to `fetch`
+
+Use:
+
+- content retrieval
+- 正文抽取
+- bare URL fetch
+- concise failure explanation
+- read/get/extract page content
+
+Command:
+
+```bash
+chrome-agent fetch <target> --format json
 ```
 
-The required result block must be the last block in the downstream response so the parent session can parse it reliably even if the downstream agent emits intermediate logs earlier in the run.
+### Route to `explore`
 
-### Step 5: Return to the parent session
+Use:
 
-Pass through the downstream result when it is already clear and complete.
+- analysis
+- debugging
+- evidence collection
+- structure investigation
+- anti-crawl rule inspection
+- reproduction
+- strategy coverage questions
 
-If the downstream output is incomplete, provide a conservative summary and label any inferred statements as inference. Do not claim success without evidence from the downstream run.
+Command:
 
-## Forwarding Prompt Contract
+```bash
+chrome-agent explore <target> --format json
+```
 
-When dispatching, include instructions equivalent to:
+Treat `explore` as the CLI backend for Platform/Page Analysis.
+
+### Route to `crawl`
+
+Use:
+
+- bounded multi-page traversal
+- list expansion
+- batch gap fill
+- strategy-guided multi-page collection
+
+Command:
+
+```bash
+chrome-agent crawl <target> --format json
+```
+
+If the request is not yet clearly bounded by declared strategy coverage, prefer `explore` first and return its remediation.
+
+## Result Packaging
+
+For routed commands, treat the CLI JSON result as the only source of truth.
+
+Return or re-render these fields without changing their meaning:
+
+- `result`
+- `command`
+- `target`
+- `repo_ref`
+- `summary`
+- `artifacts`
+- `next_action`
+- `workflow`
+- `engine_path`
+
+Packaging rules:
+
+- Do not claim success when the CLI returned `partial_success` or `failure`.
+- Do not rewrite the backend workflow, engine path, or remediation into a conflicting interpretation.
+- You may summarize the result for readability, but preserve artifact paths exactly.
+- If the CLI reports a strategy gap, preflight issue, or fallback recommendation, surface that as-is.
+
+Preferred final shape:
 
 ```text
-Read AGENTS.md in the target repository and execute this webpage extraction request according to the repository workflow.
-
-User request:
-<verbatim user request>
-
-Return the final outcome in this shape:
 result: <success|partial_success|failure>
-target: <url or page identifier>
-summary: <brief result summary>
+command: <fetch|explore|crawl|doctor>
+target: <url or runtime>
+repo_ref: <repo://chrome-agent|path:...|env:CHROME_AGENT_REPO>
+summary: <brief backend-grounded summary>
 artifacts:
 - <absolute path>
-next_action: <none or recommended next step>
-
-Make this result block the final block in the response. Do not append extra commentary after it.
+next_action: <none or remediation>
+workflow: <content_retrieval|platform_analysis|runtime_support>
+engine_path: <backend path summary>
 ```
 
-## Notes
+## Runtime Boundaries
 
-- Prefer direct extraction requests to flow through the repository's `Content Retrieval` route.
-- Do not silently widen scope into debugging or evidence-heavy analysis unless the downstream repository workflow decides that the prompt requires it.
-- Preserve artifact paths exactly as returned by the downstream repository.
+- Do not depend on `repo-agent`, `codex-agent`, or any other prompt-forwarding runtime.
+- Do not re-implement repository routing, engine selection, strategy matching, or fallback escalation inside the skill.
+- Do not bypass `chrome-agent doctor --format json`.
+- Do not treat the skill as a standalone scraper runtime; it is a CLI-backed orchestration layer only.
+
+## Install Notes
+
+Repository source of truth:
+
+- `skills/chrome-agent/SKILL.md`
+
+Recommended global install destination:
+
+- `~/.agents/skills/chrome-agent/`
+
+Install and update guidance must present:
+
+- the global workflow skill as the recommended agent-facing entry
+- the global `chrome-agent` CLI as the required backend prerequisite
+- the skill as delegating to the CLI rather than replacing it
