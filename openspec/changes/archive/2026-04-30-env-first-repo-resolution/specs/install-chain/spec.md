@@ -1,49 +1,29 @@
-# install-chain — Spec
+# Specification Delta
 
-## Purpose
+## Capability 对齐（已确认）
 
-Define the installation and runtime support chain for the global `chrome-agent` launcher, the workflow skill that sits above it, env-first repository resolution, explicit override compatibility, and `doctor` coverage.
+- Capability: `install-chain`
+- 来源: `proposal.md` / 已确认 capabilities
+- 变更类型: `modified`
+- 用户确认摘要: 用户确认 `CHROME_AGENT_REPO` 应提升为默认运行前提；缺失或无效时默认停止并要求显式指定路径；repo-registry 不再作为默认热路径
 
-## Requirements
+## 规范真源声明
 
-### Requirement: Thin global launcher model
+- 本文件是该 capability 在本次 change 中的行为规范真源
+- design / tasks / verification 必须引用本文件
+- 项目页面回写不得替代本文件
 
-The system SHALL continue to distribute `chrome-agent` as a thin global launcher rather than as a standalone full runtime package.
-
-The launcher SHALL remain the execution backend used directly by shell callers and indirectly by the global workflow skill.
-
-#### Scenario: Launcher responsibility boundary
-
-- **WHEN** the global launcher is installed
-- **THEN** it SHALL provide command discovery and dispatch only
-- **AND** it SHALL not duplicate the repository's workflow guidance, AGENTS routing model, or site-specific extraction logic
-
-### Requirement: Global runtime placement
-
-The system SHALL install the launcher using the existing OrbitOS-style global runtime pattern.
-
-This SHALL include:
-- a global runtime script under `~/.agents/scripts/`
-- a user-invocable shim under a PATH-visible user bin directory
-
-#### Scenario: Runtime script location
-
-- **WHEN** the install chain provisions the global launcher
-- **THEN** the runtime implementation SHALL be placed under `~/.agents/scripts/`
-- **AND** the caller-facing executable SHALL be available from a PATH-visible location without requiring the user to `cd` into the repository
+## MODIFIED Requirements
 
 ### Requirement: Environment-default installation assumptions
-
 The install chain SHALL treat `CHROME_AGENT_REPO` as the default runtime prerequisite for the global workflow skill and the repo-backed CLI.
 
 #### Scenario: Install without explicit repo path
-
 - **WHEN** a caller installs or invokes the CLI without a direct repository path override
 - **THEN** the install chain SHALL expect `CHROME_AGENT_REPO` to identify the local chrome-agent repository
 - **AND** it SHALL not describe repo-registry as the default runtime locator for high-frequency usage
 
 ### Requirement: Doctor command coverage
-
 The `doctor` command SHALL remain the backend readiness check used by both direct CLI callers and the global workflow skill.
 
 At minimum, `doctor` SHALL check:
@@ -53,50 +33,31 @@ At minimum, `doctor` SHALL check:
 - Scrapling CLI preflight status delegated from repository-local logic when relevant
 
 #### Scenario: Healthy doctor result
-
 - **WHEN** all required runtime dependencies are available
 - **THEN** `chrome-agent doctor` SHALL return `success`
 - **AND** it SHALL identify the resolved repository path and runtime readiness state
 
 #### Scenario: Broken doctor result
-
 - **WHEN** `CHROME_AGENT_REPO` is missing or invalid and no explicit `--repo` override is provided
 - **THEN** `chrome-agent doctor` SHALL return `failure`
 - **AND** it SHALL point to the missing or invalid env stage and the remediation required
 
 #### Scenario: Skill uses doctor as preflight
-
 - **WHEN** the global workflow skill prepares to dispatch user work
 - **THEN** it SHALL be able to rely on `chrome-agent doctor --format json` as the authoritative backend readiness check
 - **AND** the install guidance SHALL describe that dependency explicitly
 
-### Requirement: Fail before hidden dispatch
-
-The install chain SHALL stop before hidden dispatch if launcher or repository resolution prerequisites are not satisfied.
-
-#### Scenario: Missing repository mapping
-
-- **WHEN** no valid repository mapping can be resolved
-- **THEN** the CLI SHALL fail before attempting downstream execution
-- **AND** it SHALL not improvise a current-working-directory fallback
-
 ### Requirement: Workflow skill installation path
-
 The install chain SHALL document and support the global workflow skill as the recommended agent-facing installation path on top of the CLI backend.
 
 #### Scenario: Agent-facing installation guidance
-
 - **WHEN** Phase 5+ installation guidance is consulted for agent usage
 - **THEN** the guidance SHALL describe installing or updating the global workflow skill in addition to the CLI backend
 - **AND** it SHALL make clear that `CHROME_AGENT_REPO` is the default runtime prerequisite
 - **AND** it SHALL describe explicit `--repo` overrides as the non-default alternative path
 
-### Requirement: No legacy dispatcher dependency
+## REMOVED Requirements
 
-The install chain SHALL NOT require `repo-agent`, `codex-agent`, or equivalent prompt-forwarding dispatcher runtimes as part of the supported installation path.
-
-#### Scenario: Supported dependency inventory
-
-- **WHEN** the install contract lists runtime prerequisites
-- **THEN** it SHALL include the CLI launcher, repository resolution contract, and repository-local prerequisites
-- **AND** it SHALL not include `repo-agent` or `codex-agent` as required workflow dependencies
+### Requirement: Registry-first installation assumptions
+**Reason**: The new default runtime model optimizes for env-backed high-frequency usage rather than registry-backed auto-discovery.
+**Migration**: Promote `CHROME_AGENT_REPO` to the default runtime contract and document repo-registry only for explicit repo-ref override scenarios.

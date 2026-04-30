@@ -17,6 +17,12 @@ Always run backend preflight first:
 chrome-agent doctor --format json
 ```
 
+This preflight depends on the CLI's env-first repository contract:
+
+- default repository source: `CHROME_AGENT_REPO`
+- explicit override path: `--repo <path|repo://id>`
+- missing or invalid env: stop and surface CLI remediation
+
 Interpret the doctor result as the source of truth:
 
 - If `result` is `success`, continue.
@@ -152,3 +158,5 @@ Install and update guidance must present:
 - the global workflow skill as the recommended agent-facing entry
 - the global `chrome-agent` CLI as the required backend prerequisite
 - the skill as delegating to the CLI rather than replacing it
+- `CHROME_AGENT_REPO` as the default backend repository prerequisite
+- `--repo <path|repo://id>` as the explicit non-default override path

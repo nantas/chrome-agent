@@ -2,7 +2,7 @@
 
 ## Goal
 
-Install the repo-backed global `chrome-agent` CLI launcher, install the global workflow skill on top of it, and validate that the backend can resolve `repo://chrome-agent`, dispatch into the repository, and report remediation clearly when fallback is needed.
+Install the repo-backed global `chrome-agent` CLI launcher, install the global workflow skill on top of it, and validate that the backend can resolve the default `CHROME_AGENT_REPO` repository, dispatch into the repository, and report remediation clearly when an explicit override is needed.
 
 ## Source and Destination
 
@@ -12,8 +12,8 @@ Install the repo-backed global `chrome-agent` CLI launcher, install the global w
 - runtime destination: `~/.agents/scripts/chrome-agent.mjs`
 - user-facing shim: `~/.local/bin/chrome-agent`
 - workflow skill destination: `~/.agents/skills/chrome-agent/SKILL.md`
-- primary repository locator: `repo://chrome-agent` via repo-registry
-- fallback repository locator: `CHROME_AGENT_REPO`
+- default repository locator: `CHROME_AGENT_REPO`
+- explicit repo-ref locator: `--repo repo://chrome-agent`
 
 ## Decision Points
 
@@ -22,7 +22,6 @@ Before any persistent write, inspect:
 - whether `~/.agents/scripts/chrome-agent.mjs` already exists
 - whether `~/.local/bin/chrome-agent` already exists
 - whether `~/.agents/skills/chrome-agent/SKILL.md` already exists
-- whether `repo://chrome-agent` is already registered in repo-registry
 - whether `CHROME_AGENT_REPO` is already set in the current shell or shell config
 - whether any existing `CHROME_AGENT_REPO` value already matches the current repository path
 
@@ -36,13 +35,7 @@ Check whether the runtime and shim already exist:
 ls -ld ~/.agents/scripts/chrome-agent.mjs ~/.local/bin/chrome-agent ~/.agents/skills/chrome-agent/SKILL.md
 ```
 
-Check repo-registry resolution first:
-
-```bash
-python3 "$HOME/.agents/scripts/repo-registry.py" resolve --repo-ref 'repo://chrome-agent'
-```
-
-Check the current environment fallback value:
+Check the current environment default value:
 
 ```bash
 printf '%s\n' "$CHROME_AGENT_REPO"
@@ -81,7 +74,7 @@ cp skills/chrome-agent/SKILL.md ~/.agents/skills/chrome-agent/SKILL.md
 
 Do not overwrite blindly. First compare and confirm. If replacement is approved, re-run the installer after removing or backing up the existing launcher paths, then update the installed skill file explicitly.
 
-### Case 3: repo-registry missing, `CHROME_AGENT_REPO` fallback needed
+### Case 3: `CHROME_AGENT_REPO` missing and default path not ready
 
 After user approval, append the current repository path to the active shell config. Example for `zsh`:
 
@@ -118,7 +111,8 @@ Expected result:
 ## Operator Notes
 
 - Starting installation from a single prompt is fine.
-- The operator must still inspect repo-registry and fallback state before persisting shell configuration.
+- The operator must still inspect existing `CHROME_AGENT_REPO` state before persisting shell configuration.
+- The operator must treat `CHROME_AGENT_REPO` as the default runtime prerequisite.
 - Persistent changes to launcher paths or shell config must remain explicit and reviewable.
 - The workflow skill is the recommended agent-facing entry, but it depends on the CLI backend rather than replacing it.
 - Do not document `repo-agent`, `codex-agent`, or any other prompt-forwarding dispatcher as part of the supported install chain.

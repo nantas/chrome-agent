@@ -144,7 +144,7 @@ agent caller
 
 | 属性 | 内容 |
 |------|------|
-| **范围** | 全局 workflow skill、repo-backed global CLI、repo-registry-first 解析、strategy-guided crawl、install/output 支撑面 |
+| **范围** | 全局 workflow skill、repo-backed global CLI、env-first 仓库解析、strategy-guided crawl、install/output 支撑面 |
 | **交付物** | `global-workflow-skill` spec、`global-capability-cli` spec、`install-chain` spec、`output-lifecycle` spec、`strategy-guided-crawl` spec、全局 launcher、`doctor`、`clean`、bounded `crawl` |
 | **需要的 specs** | `global-workflow-skill`、`global-capability-cli`、`install-chain`、`output-lifecycle`、`strategy-guided-crawl` |
 | **排他边界** | 不涉及开放式 spider、不重写仓库工作流为纯 deterministic runtime、不涉及运行时监控、不涉及远程调度 |

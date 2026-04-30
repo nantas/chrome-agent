@@ -127,8 +127,8 @@ This repository is the source of truth for the repo-backed global `chrome-agent`
 - installer: `scripts/install-chrome-agent-cli.sh`
 - runtime script: `~/.agents/scripts/chrome-agent.mjs`
 - user-facing shim: `~/.local/bin/chrome-agent`
-- primary repository locator: `repo://chrome-agent`
-- fallback repository locator: `CHROME_AGENT_REPO`
+- default repository locator: `CHROME_AGENT_REPO`
+- explicit repo-ref locator: `--repo repo://chrome-agent`
 
 ### Runtime Contract
 
@@ -143,7 +143,6 @@ The launcher is intentionally thin:
 
 Before installing the launcher or writing shell configuration:
 
-- inspect repo-registry for `repo://chrome-agent`
 - inspect existing launcher paths
 - inspect existing `CHROME_AGENT_REPO` state
 - do not overwrite conflicting launcher paths or env config silently

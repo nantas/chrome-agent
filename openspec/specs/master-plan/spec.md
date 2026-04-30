@@ -29,7 +29,7 @@ The system SHALL produce a master planning document at `docs/governance-and-capa
 
 ### Requirement: 能力全景图
 
-The system SHALL define the external entry model as skill-first and CLI-backed while continuing to list `explore`, `fetch`, and `crawl` as the repository's external capabilities.
+The system SHALL define the external entry model as skill-first and CLI-backed while treating `CHROME_AGENT_REPO` as the default runtime prerequisite for the backend CLI path.
 
 The capability map SHALL show:
 - the global `chrome-agent` workflow skill as the recommended agent-facing entry
@@ -38,19 +38,18 @@ The capability map SHALL show:
 #### Scenario: Phase 5 capability framing
 
 - **WHEN** the master plan describes the external capability progression
-- **THEN** Phase 5 SHALL be framed around a skill-first workflow entry with a repo-backed CLI backend
-- **AND** it SHALL not frame the CLI as the only formal user-facing entry
+- **THEN** Phase 5+ SHALL be framed around a skill-first workflow entry with an env-first backend runtime path
+- **AND** it SHALL not frame repo-registry as the default repository lookup path for high-frequency usage
 
 ### Requirement: 阶段划分
 
-The system SHALL redefine the Phase 5 stage goal as a two-layer entry contract: workflow skill on top, capability CLI beneath.
+The system SHALL describe the post-Phase-5 runtime contract as a two-layer entry model whose default local repository source is `CHROME_AGENT_REPO`.
 
 #### Scenario: Phase 5 summary
 
 - **WHEN** the master plan lists Phase 5 scope, deliverables, and boundaries
-- **THEN** the scope SHALL describe restoring an official workflow skill, preserving the thin CLI backend, and formalizing their contract boundary
-- **AND** the deliverables SHALL include the workflow-skill capability contract in addition to the CLI and install-chain updates
-- **AND** the phase boundary SHALL continue to exclude open-ended spidering, pure deterministic runtime reimplementation, runtime monitoring, and remote orchestration
+- **THEN** the scope SHALL describe workflow skill + CLI layering, env-first repository resolution, and explicit override support
+- **AND** it SHALL not describe repo-registry-first auto-discovery as the primary runtime assumption
 
 ### Requirement: 依赖关系
 
@@ -64,10 +63,11 @@ The system SHALL explain that the skill-first entry layer depends on the stable 
 
 ### Requirement: README rewrite
 
-The system SHALL rewrite `README.md` to reflect the skill-first, CLI-backed public model.
+The system SHALL rewrite `README.md` to reflect the env-first, skill-first / CLI-backed public model.
 
 #### Scenario: README content
 
 - **WHEN** the README is updated after this change
 - **THEN** it SHALL distinguish the recommended agent-facing entry from the CLI backend command surface
-- **AND** it SHALL avoid describing the workflow skill as retired if it remains the recommended agent entry
+- **AND** it SHALL explain that `CHROME_AGENT_REPO` is the default runtime prerequisite
+- **AND** it SHALL reserve repo-registry references for explicit repo-ref or maintenance-oriented paths

@@ -123,11 +123,11 @@ function isValidRepo(repoPath) {
 }
 
 function resolveRepository(repoOverride) {
-  const registry = readRegistry();
   const failures = [];
 
   if (repoOverride) {
     if (repoOverride.startsWith("repo://")) {
+      const registry = readRegistry();
       const repoPath = resolveRepoRef(repoOverride, registry);
       if (isValidRepo(repoPath)) {
         return {
@@ -135,8 +135,6 @@ function resolveRepository(repoOverride) {
           repoPath,
           repoRef: repoOverride,
           resolutionMode: "explicit_override",
-          registryPath: registry.registryPath,
-          fallbackUsed: false,
         };
       }
       failures.push(`Explicit repo override could not resolve: ${repoOverride}`);
@@ -146,26 +144,16 @@ function resolveRepository(repoOverride) {
         repoPath: path.resolve(repoOverride),
         repoRef: `path:${path.resolve(repoOverride)}`,
         resolutionMode: "explicit_override",
-        registryPath: registry.registryPath,
-        fallbackUsed: false,
       };
     } else {
       failures.push(`Explicit repo override is not a valid chrome-agent repository: ${repoOverride}`);
     }
-  }
 
-  const registryRepoPath = resolveRepoRef(DEFAULT_REPO_REF, registry);
-  if (isValidRepo(registryRepoPath)) {
     return {
-      ok: true,
-      repoPath: registryRepoPath,
-      repoRef: DEFAULT_REPO_REF,
-      resolutionMode: "repo_registry",
-      registryPath: registry.registryPath,
-      fallbackUsed: false,
+      ok: false,
+      failures,
     };
   }
-  failures.push(`repo-registry did not resolve ${DEFAULT_REPO_REF} to a valid repository`);
 
   const envRepo = process.env.CHROME_AGENT_REPO;
   if (isValidRepo(envRepo)) {
@@ -173,9 +161,7 @@ function resolveRepository(repoOverride) {
       ok: true,
       repoPath: path.resolve(envRepo),
       repoRef: "env:CHROME_AGENT_REPO",
-      resolutionMode: "env_fallback",
-      registryPath: registry.registryPath,
-      fallbackUsed: true,
+      resolutionMode: "env_default",
     };
   }
   failures.push("CHROME_AGENT_REPO is missing or does not point to a valid repository");
@@ -183,7 +169,6 @@ function resolveRepository(repoOverride) {
   return {
     ok: false,
     failures,
-    registryPath: registry.registryPath,
   };
 }
 
@@ -202,10 +187,10 @@ function main() {
         result: "failure",
         command: parsed.command,
         target: parsed.target,
-        repo_ref: DEFAULT_REPO_REF,
+        repo_ref: parsed.repoOverride ?? "env:CHROME_AGENT_REPO",
         summary: `Repository resolution failed before dispatch. ${repoResolution.failures.join("; ")}.`,
         artifacts: [],
-        next_action: `Register ${DEFAULT_REPO_REF} in ${repoResolution.registryPath} or set CHROME_AGENT_REPO to a valid repository, then retry.`,
+        next_action: "Set CHROME_AGENT_REPO to a valid chrome-agent repository or supply --repo <path|repo://id>, then retry.",
         workflow: "runtime_support",
         engine_path: "doctor -> repo_resolution:unresolved",
       },

@@ -49,19 +49,20 @@ The routing contract SHALL be:
 
 The global workflow skill SHALL use the repo-backed CLI as its only supported execution backend.
 
-Before routing user work, the skill SHALL validate backend readiness through `chrome-agent doctor --format json`.
+Before routing user work, the skill SHALL validate backend readiness through `chrome-agent doctor --format json`, using the CLI's env-first repository resolution contract.
 
-#### Scenario: Backend ready
+#### Scenario: Backend ready via env default
 
-- **WHEN** `chrome-agent doctor --format json` reports that runtime prerequisites are satisfied
+- **WHEN** `chrome-agent doctor --format json` reports that `CHROME_AGENT_REPO` resolves to a valid repository
 - **THEN** the skill SHALL continue to the routed workflow command
 - **AND** it SHALL preserve the resolved repository and backend remediation details from the CLI
 
-#### Scenario: Backend not ready
+#### Scenario: Backend not ready due to missing or invalid env
 
-- **WHEN** the CLI doctor result reports `failure` or a blocking `partial_success`
+- **WHEN** the CLI doctor result reports `failure` because `CHROME_AGENT_REPO` is missing or invalid
 - **THEN** the skill SHALL stop before dispatching `fetch`, `explore`, or `crawl`
 - **AND** it SHALL return the doctor-provided remediation instead of improvising a non-CLI fallback path
+- **AND** it SHALL not silently depend on repo-registry as the default repository source
 
 ### Requirement: No legacy dispatcher runtime
 
@@ -83,3 +84,4 @@ The global workflow skill SHALL derive its final user-facing result from the CLI
 - **THEN** the skill SHALL use the CLI JSON result as the source of truth for `result`, `summary`, `artifacts`, and remediation
 - **AND** it MAY re-render that result for the caller
 - **AND** it SHALL not claim success if the backend CLI result does not provide evidence for it
+- **AND** it SHALL preserve the CLI's env-first repository resolution semantics in any surfaced `repo_ref` or remediation text

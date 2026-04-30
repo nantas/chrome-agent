@@ -218,18 +218,6 @@ function readRegistry(repoRoot) {
   return { registryPath, entries: parsed.entries ?? [] };
 }
 
-function readGlobalRepoRegistry() {
-  const registryPath = process.env.ORBITOS_REPO_REGISTRY || path.join(os.homedir(), ".config", "orbitos", "repo_registry.json");
-  if (!fs.existsSync(registryPath)) {
-    return { registryPath, data: null };
-  }
-  try {
-    return { registryPath, data: JSON.parse(fs.readFileSync(registryPath, "utf8")) };
-  } catch {
-    return { registryPath, data: null };
-  }
-}
-
 function findStrategy(repoRoot, targetUrl) {
   const registry = readRegistry(repoRoot);
   const url = new URL(targetUrl);
@@ -364,11 +352,14 @@ function repoShapeIsValid(repoRoot) {
 }
 
 function resolutionSummary(repoRef, resolutionMode) {
-  if (resolutionMode === "env_fallback") {
-    return `Resolved via CHROME_AGENT_REPO fallback (${repoRef}).`;
+  if (resolutionMode === "env_default") {
+    return `Resolved via CHROME_AGENT_REPO default (${repoRef}).`;
   }
   if (resolutionMode === "explicit_override") {
     return `Resolved via explicit override (${repoRef}).`;
+  }
+  if (resolutionMode === "repo_local") {
+    return `Resolved via repository-local invocation (${repoRef}).`;
   }
   return `Resolved via repo-registry (${repoRef}).`;
 }
@@ -920,22 +911,15 @@ function runDoctor(repoRoot, repoRef, resolutionMode) {
   const runtimePath = path.join(runtimeDir, "chrome-agent.mjs");
   const shimPath = path.join(binDir, "chrome-agent");
   const preflight = runScraplingPreflight(repoRoot, false);
-  const globalRegistry = readGlobalRepoRegistry();
-  const registryRepoPath = globalRegistry.data?.repos?.["chrome-agent"]?.path ?? null;
-  const envFallbackPath = process.env.CHROME_AGENT_REPO ? path.resolve(process.env.CHROME_AGENT_REPO) : null;
+  const envDefaultPath = process.env.CHROME_AGENT_REPO ? path.resolve(process.env.CHROME_AGENT_REPO) : null;
 
   const checks = [
     { name: "runtime_script", ok: fs.existsSync(runtimePath), detail: runtimePath },
     { name: "user_shim", ok: fs.existsSync(shimPath), detail: shimPath },
     {
-      name: "repo_registry_resolution",
-      ok: typeof registryRepoPath === "string" && fs.existsSync(path.resolve(registryRepoPath)),
-      detail: registryRepoPath ?? globalRegistry.registryPath,
-    },
-    {
-      name: "env_fallback",
-      ok: !envFallbackPath || repoShapeIsValid(envFallbackPath),
-      detail: envFallbackPath ?? "unset",
+      name: "env_default",
+      ok: resolutionMode === "explicit_override" ? true : repoShapeIsValid(envDefaultPath),
+      detail: resolutionMode === "explicit_override" ? "not_used" : envDefaultPath ?? "unset",
     },
     { name: "repo_shape", ok: repoShapeIsValid(repoRoot), detail: path.join(repoRoot, "AGENTS.md") },
     { name: "scrapling_preflight", ok: preflight.ok, detail: preflight.resolvedCliPath ?? "unavailable" },
@@ -959,7 +943,7 @@ function runDoctor(repoRoot, repoRef, resolutionMode) {
     })),
     broken.length === 0
       ? "none"
-      : "Install the global launcher, ensure repo-registry or CHROME_AGENT_REPO resolves correctly, and repair Scrapling CLI availability.",
+      : "Install the global launcher, set CHROME_AGENT_REPO or supply an explicit --repo <path|repo://id>, and repair Scrapling CLI availability.",
     resultState,
     {
       checks,
