@@ -75,7 +75,8 @@ agent caller
           ├── doctor   → backend preflight
           ├── fetch    → 内容获取
           │    ├── get             静态页面 / 低保护
-          │    ├── fetch           SPA / 动态页面 / 需 JS 渲染
+          │    ├── obscura-fetch   动态页面 / SPA / 轻量 JS 渲染
+          │    ├── fetch           完整浏览器 / 复杂动态交互
           │    └── stealthy-fetch  受保护页面 / Cloudflare / WAF
           ├── explore  → 平台 / 页面分析
           ├── crawl    → strategy-guided bounded traversal
@@ -183,7 +184,8 @@ Phase 5: Skill-first 入口与 CLI 后端闭环
 | 引擎 | 类型 | 使用场景 |
 |------|------|----------|
 | Scrapling `get` | HTTP (impersonate) | 静态页面、低保护 |
-| Scrapling `fetch` | Playwright | SPA、动态交互 |
+| Obscura `fetch` | CDP lightweight (Rust+V8) | 动态页面、SPA、轻量 JS 渲染 |
+| Scrapling `fetch` | Playwright | 完整浏览器、复杂动态交互 |
 | Scrapling `stealthy-fetch` | Playwright + 指纹伪装 | Cloudflare、WAF、高保护 |
 | `chrome-devtools-mcp` | Chrome DevTools Protocol | 诊断证据（DOM/网络/性能） |
 | `chrome-cdp` | Chrome DevTools Protocol | 实时会话延续 |
@@ -191,6 +193,7 @@ Phase 5: Skill-first 入口与 CLI 后端闭环
 ### 扩展方向
 
 - **Playwright-based 新引擎**: 可通过 registry 接入
+- **CDP lightweight 新引擎**: 已接入 Obscura (obscura-fetch)，为后续同类引擎提供 precedent
 - **CDP-based 新工具**: 通过 WS endpoint 集成
 - **自定义协议引擎**: 通过统一的 engine contract 接入
 
