@@ -23,7 +23,7 @@ The registry file SHALL be a JSON object with a single key `engines` containing 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `id` | string | yes | Canonical engine identifier (kebab-case, must match contract spec directory name stem, e.g., `scrapling-get`) |
-| `type` | string | yes | Engine type: `http`, `playwright`, `playwright_stealth`, `cdp_managed`, `cdp_live`, `playwright_bulk` |
+| `type` | string | yes | Engine type: `http`, `playwright`, `playwright_stealth`, `cdp_managed`, `cdp_live`, `cdp_lightweight`, `playwright_bulk` |
 | `characteristics` | object | yes | Three scoring dimensions: efficiency, stability, adaptability (see Characteristics requirement) |
 | `composite_score` | number | yes | Weighted aggregate score (0-100), derived from characteristics |
 | `default_rank` | integer | yes | Default execution priority order (1 = first to try, higher = later) |
@@ -49,6 +49,7 @@ The system SHALL define three scoring dimensions for each engine in the registry
 
 1. **efficiency** (`characteristics.efficiency.score`): Speed and resource cost of the engine. Higher = lighter/faster.
    - HTTP-based engines (no browser): typically 0.80-0.95
+   - CDP-lightweight engines (Rust/V8, no full browser): typically 0.70-0.90
    - Playwright-based engines (browser launch): typically 0.30-0.60
    - CDP-based engines (real browser): typically 0.20-0.40
 2. **stability** (`characteristics.stability.score`): Reliability and consistency of the engine for its target scenarios.
@@ -103,6 +104,7 @@ The `default_rank` SHALL reflect the default execution order:
 
 The Scrapling-first principle SHALL be enforced by overriding raw score ordering within engine families:
 - All Scrapling engines (`http`, `playwright`, `playwright_stealth`, `playwright_bulk`) SHALL rank before CDP engines (`cdp_managed`, `cdp_live`)
+- CDP-lightweight engines (`cdp_lightweight`) SHALL rank between Scrapling `http` and Scrapling `playwright` engines, reflecting their position as a lighter alternative to full browser automation
 - Within Scrapling: lighter engines rank before heavier ones (`scrapling-get` → `scrapling-fetch` → `scrapling-stealthy-fetch`), with bulk siblings placed adjacent to their non-bulk counterparts when the scenario is batch-oriented
 - Within CDP: `chrome-devtools-mcp` SHALL rank before `chrome-cdp`
 
@@ -113,6 +115,12 @@ The Scrapling-first principle SHALL be enforced by overriding raw score ordering
 - **WHEN** an agent encounters an unknown URL with no matching strategy and no protection signals
 - **THEN** the engine with `default_rank: 1` (`scrapling-get`) SHALL be the first choice
 - **AND** escalation SHALL follow ascending `default_rank` order
+
+#### Scenario: CDP-lightweight engine position in escalation chain
+
+- **WHEN** `scrapling-get` fails due to requiring JS rendering
+- **THEN** the next engine in the escalation chain SHALL be the `cdp_lightweight` engine (`obscura-fetch`) before escalating to full `playwright` engines
+- **AND** this reflects the efficiency advantage of `cdp_lightweight` over `playwright` for moderate JS rendering needs
 
 #### Scenario: Default rank overridden by strategy
 
@@ -172,6 +180,57 @@ The system SHALL integrate the engine registry with the `engine-contracts` aggre
 - **WHEN** `engine-contracts/spec.md` needs to list available engines
 - **THEN** it SHALL defer to `configs/engine-registry.json`
 - **AND** cross-engine tables SHALL reference engines by their registry `id`
+
+### Requirement: obscura-fetch engine entry
+
+The system SHALL register the obscura-fetch engine in `configs/engine-registry.json` with the following characteristics:
+
+```json
+{
+  "id": "obscura-fetch",
+  "type": "cdp_lightweight",
+  "characteristics": {
+    "efficiency": {
+      "score": 0.85,
+      "note": "Rust+V8 headless browser. ~8MB RSS idle, ~50MB peak, 85ms page load. 2-3.5x faster than playwright for JS-rendered pages."
+    },
+    "stability": {
+      "score": 0.55,
+      "note": "v0.1.0 with limited release history. CDP implementation is a subset. Needs more site coverage validation."
+    },
+    "adaptability": {
+      "score": 0.65,
+      "note": "Handles static HTML, JS-rendered SPA, dynamic lists, basic stealth. Not suitable for high-protection pages or complex browser APIs (WebSocket, Web Worker)."
+    }
+  },
+  "composite_score": 62,
+  "default_rank": 2,
+  "best_for": ["dynamic_content", "dynamic_list", "dynamic_grid", "static_article"],
+  "contract_spec": "obscura-fetch-contract",
+  "status": "draft"
+}
+```
+
+The `composite_score` SHALL be derived using the formula: `round((adaptability × 0.50 + stability × 0.30 + efficiency × 0.20) × 100)`.
+
+#### Scenario: obscura-fetch registry entry validation
+
+- **WHEN** the `obscura-fetch` registry entry is validated
+- **THEN** all three characteristic dimensions SHALL have non-null scores and notes
+- **AND** `id` SHALL match the contract spec directory stem `obscura-fetch-contract`
+- **AND** `type` SHALL be `cdp_lightweight`
+- **AND** `status` SHALL be `draft`
+- **AND** `composite_score` SHALL equal `round((0.65 × 0.50 + 0.55 × 0.30 + 0.85 × 0.20) × 100)` = `62`
+
+#### Scenario: Existing engine rank adjustment
+
+- **WHEN** obscura-fetch is added with `default_rank: 2`
+- **THEN** existing engines with `default_rank ≥ 2` SHALL have their ranks incremented by 1:
+  - `scrapling-fetch`: 2 → 3
+  - `scrapling-bulk-fetch`: 3 → 4
+  - `scrapling-stealthy-fetch`: 3 → 4
+  - `chrome-devtools-mcp`: 4 → 5
+  - `chrome-cdp`: 5 → 6
 
 ### Requirement: 与策略 schemas 的集成
 

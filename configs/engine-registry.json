@@ -24,6 +24,29 @@
       "status": "frozen"
     },
     {
+      "id": "obscura-fetch",
+      "type": "cdp_lightweight",
+      "characteristics": {
+        "efficiency": {
+          "score": 0.85,
+          "note": "Rust+V8 headless browser. ~8MB RSS idle, ~50MB peak, 85ms page load. 2-3.5x faster than playwright for JS-rendered pages."
+        },
+        "stability": {
+          "score": 0.55,
+          "note": "v0.1.0 with limited release history. CDP implementation is a subset. Needs more site coverage validation."
+        },
+        "adaptability": {
+          "score": 0.65,
+          "note": "Handles static HTML, JS-rendered SPA, dynamic lists, basic stealth. Not suitable for high-protection pages or complex browser APIs (WebSocket, Web Worker)."
+        }
+      },
+      "composite_score": 66,
+      "default_rank": 2,
+      "best_for": ["dynamic_content", "dynamic_list", "dynamic_grid", "static_article"],
+      "contract_spec": "obscura-fetch-contract",
+      "status": "draft"
+    },
+    {
       "id": "scrapling-fetch",
       "type": "playwright",
       "characteristics": {
@@ -41,32 +64,9 @@
         }
       },
       "composite_score": 66,
-      "default_rank": 2,
+      "default_rank": 3,
       "best_for": ["dynamic_content", "dynamic_list", "search_results"],
       "contract_spec": "scrapling-fetch-contract",
-      "status": "frozen"
-    },
-    {
-      "id": "scrapling-stealthy-fetch",
-      "type": "playwright_stealth",
-      "characteristics": {
-        "efficiency": {
-          "score": 0.4,
-          "note": "Heavier browser path because stealth and challenge solving increase runtime cost."
-        },
-        "stability": {
-          "score": 0.85,
-          "note": "Reliable for validated protected-page scenarios once escalation is justified."
-        },
-        "adaptability": {
-          "score": 0.9,
-          "note": "Handles high-protection targets and challenge flows beyond standard fetch."
-        }
-      },
-      "composite_score": 79,
-      "default_rank": 3,
-      "best_for": ["high_protection"],
-      "contract_spec": "scrapling-stealthy-fetch-contract",
       "status": "frozen"
     },
     {
@@ -87,9 +87,32 @@
         }
       },
       "composite_score": 61,
-      "default_rank": 3,
+      "default_rank": 4,
       "best_for": ["bulk_operations"],
       "contract_spec": "scrapling-bulk-fetch-contract",
+      "status": "frozen"
+    },
+    {
+      "id": "scrapling-stealthy-fetch",
+      "type": "playwright_stealth",
+      "characteristics": {
+        "efficiency": {
+          "score": 0.4,
+          "note": "Heavier browser path because stealth and challenge solving increase runtime cost."
+        },
+        "stability": {
+          "score": 0.85,
+          "note": "Reliable for validated protected-page scenarios once escalation is justified."
+        },
+        "adaptability": {
+          "score": 0.9,
+          "note": "Handles high-protection targets and challenge flows beyond standard fetch."
+        }
+      },
+      "composite_score": 79,
+      "default_rank": 4,
+      "best_for": ["high_protection"],
+      "contract_spec": "scrapling-stealthy-fetch-contract",
       "status": "frozen"
     },
     {
@@ -110,7 +133,7 @@
         }
       },
       "composite_score": 75,
-      "default_rank": 4,
+      "default_rank": 5,
       "best_for": ["diagnostic"],
       "contract_spec": "chrome-devtools-mcp-contract",
       "status": "frozen"
@@ -133,7 +156,7 @@
         }
       },
       "composite_score": 65,
-      "default_rank": 5,
+      "default_rank": 6,
       "best_for": ["authenticated"],
       "contract_spec": "chrome-cdp-contract",
       "status": "frozen"

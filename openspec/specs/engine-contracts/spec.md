@@ -46,17 +46,19 @@ Engine selection SHALL use the following priority sources in order:
 2. Anti-crawl strategy `engine_priority` (if matching protection detected)
 3. Engine `default_rank` from `configs/engine-registry.json`
 
-#### Scenario: Scrapling-first rule
+#### Scenario: Scrapling-first rule with cdp_lightweight
 
 - **WHEN** a webpage grabbing task is initiated
-- **THEN** the engine selection SHALL start with the Scrapling engine family (engines with type prefix `playwright` or `http` in the registry) by default
-- **AND** the selection SHALL escalate to CDP engines only when defined fallback triggers are present
+- **THEN** the engine selection SHALL start with the Scrapling engine family (engines with type `http`, `cdp_lightweight`, `playwright*` in the registry) by default
+- **AND** `cdp_lightweight` engines SHALL be considered part of the first-escalation tier between HTTP and full Playwright engines
+- **AND** the selection SHALL escalate to full CDP engines (`cdp_managed`, `cdp_live`) only when lighter options are exhausted or defined fallback triggers are present
 
 #### Scenario: Page type to engine mapping
 
 - **WHEN** routing an engine for a given page type in the absence of strategy overrides
 - **THEN** the engine with the lowest `default_rank` that `best_for` includes that page type SHALL be selected
 - **AND** if no engine explicitly `best_for` covers the page type, `default_rank` order SHALL be used as the fallback escalation chain
+- **AND** for `dynamic_content` and `dynamic_list` page types, `obscura-fetch` (cdp_lightweight) SHALL be tried before `scrapling-fetch` (playwright) when both are available
 
 #### Scenario: Fallback boundaries
 
@@ -74,27 +76,28 @@ The system SHALL ensure consistent error categories and recommendations across a
 - **WHEN** error contracts are compared across engines
 - **THEN** the following error categories SHALL be used consistently (each engine adds engine-specific categories as needed):
 
-| Category | scrapling-get | scrapling-fetch | scrapling-stealthy-fetch | scrapling-bulk-fetch | chrome-devtools-mcp | chrome-cdp |
-|----------|:---:|:---:|:---:|:---:|:---:|:---:|
-| network | ✓ | ✓ | ✓ | ✓ | — | — |
-| timeout | ✓ | ✓ | ✓ | ✓ | — | — |
-| block | ✓ | ✓ | ✓ | ✓ | — | — |
-| parse | ✓ | ✓ | ✓ | ✓ | — | — |
-| browser | — | ✓ | ✓ | ✓ | — | — |
-| challenge | — | — | ✓ | — | — | — |
-| connection | — | — | — | — | ✓ | ✓ |
-| navigation | — | — | — | — | ✓ | — |
-| selector | — | — | — | — | ✓ | — |
-| evaluation | — | — | — | — | ✓ | — |
-| auth_redirect | — | — | — | — | — | ✓ |
-| session_loss | — | — | — | — | — | ✓ |
-| rate_limit | — | — | — | — | — | ✓ |
-| permissions | — | — | — | — | — | ✓ |
+| Category | scrapling-get | obscura-fetch | scrapling-fetch | scrapling-stealthy-fetch | scrapling-bulk-fetch | chrome-devtools-mcp | chrome-cdp |
+|----------|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
+| network | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
+| timeout | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
+| block | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
+| parse | ✓ | ✓ | ✓ | ✓ | ✓ | — | — |
+| browser | — | ✓ | ✓ | ✓ | ✓ | — | — |
+| challenge | — | — | — | ✓ | — | — | — |
+| connection | — | — | — | — | — | ✓ | ✓ |
+| navigation | — | — | — | — | — | ✓ | — |
+| selector | — | — | — | — | — | ✓ | — |
+| evaluation | — | — | — | — | — | ✓ | — |
+| auth_redirect | — | — | — | — | — | — | ✓ |
+| session_loss | — | — | — | — | — | — | ✓ |
+| rate_limit | — | — | — | — | — | — | ✓ |
+| permissions | — | — | — | — | — | — | ✓ |
 
 #### Scenario: Escalation chain
 
 - **WHEN** an engine fails and escalation is recommended
-- **THEN** the escalation SHALL follow the chain: `scrapling-get → scrapling-fetch → scrapling-stealthy-fetch → chrome-devtools-mcp` for protection-level escalation
+- **THEN** the standard escalation chain SHALL follow: `scrapling-get → obscura-fetch → scrapling-fetch → scrapling-stealthy-fetch → chrome-devtools-mcp` for protection-level escalation
+- **AND** `obscura-fetch` SHALL be tried after `scrapling-get` fails (e.g., JS rendering required) and before `scrapling-fetch` (e.g., full browser needed)
 - **AND** the bulk escalation chain SHALL follow: `scrapling-bulk-fetch → scrapling-bulk-stealthy-fetch` for batch operations
 - **AND** the live-session path SHALL follow: `scrapling-fetch/stealthy-fetch (session reuse fail) → chrome-cdp`
 
@@ -124,6 +127,7 @@ The system SHALL provide a consolidated view of smoke-check scenarios across all
 | Engine | Smoke-check Target | Expected Outcome |
 |--------|-------------------|-----------------|
 | scrapling-get | mp.weixin.qq.com/s/... | 文章标题 + DOM 顺序正文 + 内联图片 URL 保留 |
+| obscura-fetch | news.ycombinator.com | 页面标题 "Hacker News" + ≥20 story entries + HTTP 200 + timing ≤ 5000ms |
 | scrapling-fetch | x.com/<user>/status/<id> | SPA 渲染推文内容 + 作者 + 媒体链接 |
 | scrapling-stealthy-fetch | wiki.supercombo.gg/w/... | CF 挑战突破 + 文章内容（非挑战壳） |
 | scrapling-bulk-fetch | [example.com, httpbin.org/get] | 双 URL 成功，status 200 × 2，正确内容 |
