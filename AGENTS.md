@@ -185,6 +185,13 @@ sites/
 - **操作内容分离**：脚本、配置等操作内容放入 `_attachments/`，不混入 `strategy.md`
 - **受控词汇表**：`protection_level`、`page_type`、`protection_type` 的枚举值定义在各自的 spec 中，新增值需通过 openspec change
 
+### 策略派生（Bootstrap）
+
+- **`bootstrap-strategy` 命令自动生成并更新 registry.json**：通过 `chrome-agent bootstrap-strategy <url> --from <domain>` 派生的策略会自动写入 `sites/strategies/<domain>/strategy.md` 并追加 `registry.json` 条目，无需手动更新索引
+- **手动创建策略仍需人工更新 registry.json**：当不通过 `bootstrap-strategy` 而是直接新建 `strategy.md` 时，必须手动添加对应 registry 条目
+- **`backend` 字段为可选 advisory 字段**：用于标记后端家族关系（如 `weird-gloop-mediawiki-1.45`），不作为运行时策略匹配键；无效值仅触发警告，不阻断执行
+- **bootstrap 生成的策略必须 review**：生成的 `strategy.md` 包含 `<!-- Bootstrapped from ...; review recommended -->` 标记，使用前必须完成验证并替换为实际操作细节
+
 更多细节参见 `sites/README.md`。
 
 ## 8. 引擎扩展治理（Engine Extension Governance）

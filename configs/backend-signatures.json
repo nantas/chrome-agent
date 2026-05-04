@@ -1,0 +1,19 @@
+{
+  "backends": [
+    {
+      "id": "weird-gloop-mediawiki-1.45",
+      "label": "Weird Gloop MediaWiki 1.45.x",
+      "detection": {
+        "meta_generator": "MediaWiki",
+        "dom_selector": "#mw-content-text",
+        "url_patterns": ["/w/", "/wiki/"]
+      },
+      "reusable_strategies": [
+        "vampire.survivors.wiki",
+        "balatrowiki.org"
+      ],
+      "cleanup_profile_options": ["vampire-survivors", "balatro", "generic-mediawiki"],
+      "notes": "Server-side rendered static HTML. scrapling-get sufficient."
+    }
+  ]
+}

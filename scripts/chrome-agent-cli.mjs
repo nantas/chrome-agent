@@ -19,12 +19,16 @@ Commands:
   explore <url>          Run the explicit platform-analysis backend workflow.
   fetch <url>            Run the explicit content-retrieval backend workflow.
   crawl <url>            Run the explicit bounded-crawl backend workflow.
+  bootstrap-strategy <url> --from <domain> [--profile <name>]
+                         Bootstrap a new site strategy from an existing reference strategy.
   doctor                 Validate launcher, repo resolution, repo shape, and Scrapling readiness.
   clean [--scope all]    Remove disposable outputs by default.
 
 Command options:
   --entry-point <id>     Crawl from a specific declared entry point.
   --max-pages <n>        Maximum pages to traverse in crawl. Default: 3.
+  --from <domain>        Reference domain for bootstrap-strategy (required).
+  --profile <name>       Cleanup profile override for bootstrap-strategy.
   --report               Force durable report emission to reports/.
   --no-report            Disable durable report emission for this run.
   --scope <scope>        Clean scope: disposable (default) or all.
@@ -65,6 +69,8 @@ function parseArgs(argv) {
   let entryPoint = null;
   let maxPages = 3;
   let report = null;
+  let fromDomain = null;
+  let profile = null;
   const positionals = [];
 
   for (let i = 0; i < passthrough.length; i += 1) {
@@ -114,6 +120,24 @@ function parseArgs(argv) {
       maxPages = Number.parseInt(value.slice("--max-pages=".length), 10);
       continue;
     }
+    if (value === "--from" && i + 1 < passthrough.length) {
+      fromDomain = passthrough[i + 1];
+      i += 1;
+      continue;
+    }
+    if (value.startsWith("--from=")) {
+      fromDomain = value.slice("--from=".length);
+      continue;
+    }
+    if (value === "--profile" && i + 1 < passthrough.length) {
+      profile = passthrough[i + 1];
+      i += 1;
+      continue;
+    }
+    if (value.startsWith("--profile=")) {
+      profile = value.slice("--profile=".length);
+      continue;
+    }
     if (value === "--report") {
       report = true;
       continue;
@@ -134,6 +158,8 @@ function parseArgs(argv) {
     entryPoint,
     maxPages: Number.isFinite(maxPages) && maxPages > 0 ? maxPages : 3,
     report,
+    fromDomain,
+    profile,
     command: positionals[0] ?? null,
     target: positionals[1] ?? null,
     internal,
@@ -210,6 +236,69 @@ function readFrontmatter(strategyPath) {
     throw new Error(`Strategy file is missing YAML frontmatter: ${strategyPath}`);
   }
   return YAML.parse(match[1]);
+}
+
+function detectBackend(repoRoot, htmlContent, targetUrl) {
+  const sigPath = path.join(repoRoot, "configs", "backend-signatures.json");
+  if (!fs.existsSync(sigPath)) {
+    return null;
+  }
+  const parsed = JSON.parse(fs.readFileSync(sigPath, "utf8"));
+  const backends = parsed.backends ?? [];
+  const url = new URL(targetUrl);
+  const pathname = url.pathname;
+
+  for (const backend of backends) {
+    const detection = backend.detection;
+    if (!detection) continue;
+
+    let matches = 0;
+    let checks = 0;
+
+    if (detection.meta_generator !== undefined) {
+      checks += 1;
+      const metaMatch = htmlContent.match(/<meta\s+name=["']generator["']\s+content=["']([^"']*)["']/i);
+      if (metaMatch && metaMatch[1].includes(detection.meta_generator)) {
+        matches += 1;
+      }
+    }
+
+    if (detection.dom_selector !== undefined) {
+      checks += 1;
+      const selector = detection.dom_selector.trim();
+      if (selector.startsWith("#")) {
+        const id = selector.slice(1);
+        const idRegex = new RegExp(`id=["']${id}["']`, "i");
+        if (idRegex.test(htmlContent)) {
+          matches += 1;
+        }
+      } else if (selector.startsWith(".")) {
+        const cls = selector.slice(1);
+        const classRegex = new RegExp(`class=["'][^"']*${cls}[^"']*["']`, "i");
+        if (classRegex.test(htmlContent)) {
+          matches += 1;
+        }
+      } else {
+        if (htmlContent.includes(selector)) {
+          matches += 1;
+        }
+      }
+    }
+
+    if (detection.url_patterns !== undefined && detection.url_patterns.length > 0) {
+      checks += 1;
+      const urlMatch = detection.url_patterns.some((pattern) => pathname.includes(pattern));
+      if (urlMatch) {
+        matches += 1;
+      }
+    }
+
+    if (checks > 0 && matches === checks) {
+      return backend;
+    }
+  }
+
+  return null;
 }
 
 function readRegistry(repoRoot) {
@@ -382,7 +471,7 @@ function shouldEmitReport(command, reportOverride) {
   return command === "explore";
 }
 
-function buildExploreReport({ targetUrl, strategy, matchingPage, repoRef, resolutionMode, preflight, recommendedFetcher }) {
+function buildExploreReport({ targetUrl, strategy, matchingPage, repoRef, resolutionMode, preflight, recommendedFetcher, backend = null, htmlFetchResult = null }) {
   const lines = [
     `# Explore Report`,
     "",
@@ -402,7 +491,14 @@ function buildExploreReport({ targetUrl, strategy, matchingPage, repoRef, resolu
     lines.push(`- Anti-crawl refs: ${[...(strategy.anti_crawl_refs ?? []), ...(matchingPage?.anti_crawl_refs ?? [])].join(", ") || "none"}`);
   } else {
     lines.push("- Strategy file: none");
-    lines.push("- Gap: no site strategy currently covers this target.");
+    if (backend) {
+      lines.push(`- Detected backend: ${backend.label}`);
+      lines.push(`- Backend ID: ${backend.id}`);
+      lines.push(`- Reusable strategies: ${(backend.reusable_strategies ?? []).join(", ") || "none"}`);
+      lines.push("- Gap: no site strategy currently covers this target, but a known backend was detected.");
+    } else {
+      lines.push("- Gap: no site strategy currently covers this target.");
+    }
     lines.push("- Recommended fetcher: unknown until strategy coverage exists.");
   }
   lines.push("");
@@ -419,6 +515,11 @@ function buildExploreReport({ targetUrl, strategy, matchingPage, repoRef, resolu
   lines.push("## Next Action");
   if (strategy) {
     lines.push("- Use `chrome-agent fetch <url>` for content retrieval, or `chrome-agent crawl <url>` when bounded traversal is needed.");
+  } else if (backend && (backend.reusable_strategies ?? []).length > 0) {
+    const fromDomain = backend.reusable_strategies[0];
+    lines.push(`- Detected backend: ${backend.label}.`);
+    lines.push(`- Reusable strategy candidates: ${backend.reusable_strategies.join(", ")}.`);
+    lines.push(`- Run \`chrome-agent bootstrap-strategy ${targetUrl} --from ${fromDomain}\` to generate a strategy from a known reference.`);
   } else {
     lines.push("- Run `chrome-agent explore <url>` as the first step for strategy authoring evidence, then add or refine a `sites/strategies/<domain>/strategy.md` entry.");
   }
@@ -441,11 +542,24 @@ function makeResult(command, target, repoRef, summary, artifacts, nextAction, re
 }
 
 function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride) {
-  const { reportPath } = buildRunPaths(repoRoot, "explore", targetUrl);
+  const { runDir, reportPath } = buildRunPaths(repoRoot, "explore", targetUrl);
   const { strategy } = findStrategy(repoRoot, targetUrl);
   const matchingPage = strategy ? findMatchingPage(strategy.document, targetUrl) : null;
   const preflight = runScraplingPreflight(repoRoot, false);
   const recommendedFetcher = strategy ? selectFetcher(strategy, matchingPage) : null;
+
+  let backend = null;
+  let htmlFetchResult = null;
+  if (!strategy) {
+    ensureDir(runDir);
+    const htmlPath = path.join(runDir, "sample.html");
+    htmlFetchResult = runScraplingFetch(repoRoot, "get", targetUrl, htmlPath);
+    if (htmlFetchResult.ok && fs.existsSync(htmlPath)) {
+      const htmlContent = fs.readFileSync(htmlPath, "utf8");
+      backend = detectBackend(repoRoot, htmlContent, targetUrl);
+    }
+  }
+
   const report = buildExploreReport({
     targetUrl,
     strategy,
@@ -454,6 +568,8 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
     resolutionMode,
     preflight,
     recommendedFetcher,
+    backend,
+    htmlFetchResult,
   });
   const emitReport = shouldEmitReport("explore", reportOverride);
   const artifacts = [];
@@ -462,6 +578,24 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
     artifacts.push(absoluteArtifact(reportPath, "durable", "Explore report"));
   }
   if (!strategy) {
+    if (backend && (backend.reusable_strategies ?? []).length > 0) {
+      const fromDomain = backend.reusable_strategies[0];
+      return makeResult(
+        "explore",
+        targetUrl,
+        repoRef,
+        emitReport
+          ? `No matching site strategy exists yet; detected backend ${backend.label} and identified reusable strategy candidates.`
+          : `No matching site strategy exists yet; detected backend ${backend.label}.`,
+        artifacts,
+        `Run chrome-agent bootstrap-strategy ${targetUrl} --from ${fromDomain} to generate a strategy from a known reference.`,
+        "partial_success",
+        {
+          workflow: "platform_analysis",
+          engine_path: `strategy_registry -> strategy_gap -> backend_detection:${backend.id} -> scrapling_preflight:${preflight.status ?? "unavailable"}`,
+        },
+      );
+    }
     return makeResult(
       "explore",
       targetUrl,
@@ -905,6 +1039,139 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, entryPointOverri
   });
 }
 
+function runBootstrapStrategy(repoRoot, repoRef, resolutionMode, targetUrl, fromDomain, profile, reportOverride) {
+  const { registryPath, entries } = readRegistry(repoRoot);
+  const refEntry = entries.find((e) => e.domain === fromDomain);
+  if (!refEntry) {
+    return makeResult(
+      "bootstrap-strategy",
+      targetUrl,
+      repoRef,
+      `No strategy exists for reference domain '${fromDomain}'.`,
+      [],
+      `Choose a valid --from domain that exists in sites/strategies/registry.json.`,
+      "failure",
+    );
+  }
+
+  const targetDomain = new URL(targetUrl).hostname;
+  const existingEntry = entries.find(
+    (e) => e.domain === targetDomain || targetDomain.endsWith(`.${e.domain}`),
+  );
+  if (existingEntry) {
+    return makeResult(
+      "bootstrap-strategy",
+      targetUrl,
+      repoRef,
+      `A strategy already exists for '${targetDomain}'. Bootstrap would overwrite it.`,
+      [absoluteArtifact(path.join(repoRoot, "sites", "strategies", existingEntry.file), "durable", "Existing strategy")],
+      `Review the existing strategy or remove it before bootstrapping.`,
+      "failure",
+    );
+  }
+
+  const refStrategyPath = path.join(repoRoot, "sites", "strategies", refEntry.file);
+  const refFrontmatter = readFrontmatter(refStrategyPath);
+  const refRaw = fs.readFileSync(refStrategyPath, "utf8");
+
+  const newFrontmatter = { ...refFrontmatter };
+  const oldDomain = refFrontmatter.domain;
+  newFrontmatter.domain = targetDomain;
+  newFrontmatter.description = refFrontmatter.description.replace(oldDomain, targetDomain);
+
+  if (newFrontmatter.structure?.pages) {
+    for (const page of newFrontmatter.structure.pages) {
+      if (page.url_example) {
+        page.url_example = page.url_example.replace(oldDomain, targetDomain);
+      }
+    }
+  }
+
+  if (profile && newFrontmatter.extraction?.cleanup) {
+    newFrontmatter.extraction.cleanup = [profile];
+  }
+
+  const sigPath = path.join(repoRoot, "configs", "backend-signatures.json");
+  let matchingBackend = null;
+  if (fs.existsSync(sigPath)) {
+    const parsed = JSON.parse(fs.readFileSync(sigPath, "utf8"));
+    const backends = parsed.backends ?? [];
+    matchingBackend = backends.find((b) => b.reusable_strategies?.includes(fromDomain));
+  }
+  if (matchingBackend) {
+    newFrontmatter.backend = matchingBackend.id;
+  }
+
+  const { date } = nowParts();
+  const bodyLines = [
+    `<!-- Bootstrapped from ${fromDomain} on ${date}; review recommended -->`,
+    "",
+    "## Overview",
+    "",
+    `\`${targetDomain}\` was bootstrapped from \`${fromDomain}\` as a shared-backend strategy. Review and validate all fields before production use.`,
+    "",
+    "## Page Structure",
+    "",
+    "*(Bootstrapped — copy the reference strategy's page structure narrative and adapt domain-specific details.)*",
+    "",
+    "## Extraction Flow",
+    "",
+    "*(Bootstrapped — copy the reference strategy's extraction flow and validate selectors.)*",
+    "",
+    "## Known Issues",
+    "",
+    "*(Bootstrapped — copy the reference strategy's known issues and add site-specific observations.)*",
+    "",
+    "## Evidence",
+    "",
+    `Bootstrapped from ${fromDomain} on ${date}; requires validation.`,
+  ];
+  const body = bodyLines.join("\n");
+
+  const strategyDir = path.join(repoRoot, "sites", "strategies", targetDomain);
+  const strategyPath = path.join(strategyDir, "strategy.md");
+  const frontmatterYaml = YAML.stringify(newFrontmatter);
+  const strategyContent = `---\n${frontmatterYaml}---\n${body}\n`;
+  writeTextFile(strategyPath, strategyContent);
+
+  const newEntry = {
+    domain: targetDomain,
+    description: newFrontmatter.description,
+    protection_level: newFrontmatter.protection_level,
+    page_types: [...new Set((newFrontmatter.structure?.pages ?? []).map((p) => p.type))],
+    pagination: [...new Set((newFrontmatter.structure?.pages ?? []).map((p) => {
+      if (typeof p.pagination === "object" && p.pagination !== null) {
+        return p.pagination.mechanism;
+      }
+      return p.pagination ?? "none";
+    }))],
+    entry_points: newFrontmatter.structure?.entry_points ?? [],
+    anti_crawl_refs: newFrontmatter.anti_crawl_refs ?? [],
+    file: `${targetDomain}/strategy.md`,
+    ...(newFrontmatter.backend ? { backend: newFrontmatter.backend } : {}),
+  };
+  entries.push(newEntry);
+  fs.writeFileSync(registryPath, JSON.stringify({ entries }, null, 2), "utf8");
+
+  const artifacts = [
+    absoluteArtifact(strategyPath, "durable", "Bootstrapped strategy"),
+    absoluteArtifact(registryPath, "durable", "Updated registry", "updated"),
+  ];
+  return makeResult(
+    "bootstrap-strategy",
+    targetUrl,
+    repoRef,
+    `Bootstrapped strategy for ${targetDomain} from ${fromDomain}.`,
+    artifacts,
+    `Review the generated strategy at ${strategyPath}, then run chrome-agent crawl ${targetUrl}.`,
+    "success",
+    {
+      workflow: "strategy_authoring",
+      engine_path: `bootstrap -> reference:${fromDomain} -> target:${targetDomain}`,
+    },
+  );
+}
+
 function runDoctor(repoRoot, repoRef, resolutionMode) {
   const runtimeDir = process.env.CHROME_AGENT_RUNTIME_DIR || path.join(os.homedir(), ".agents", "scripts");
   const binDir = process.env.CHROME_AGENT_BIN_DIR || path.join(os.homedir(), ".local", "bin");
@@ -1038,6 +1305,15 @@ function main() {
           throw new Error("crawl requires a target URL.");
         }
         result = runCrawl(repoRoot, repoRef, resolutionMode, parsed.target, parsed.entryPoint, parsed.maxPages, parsed.report);
+        break;
+      case "bootstrap-strategy":
+        if (!parsed.target) {
+          throw new Error("bootstrap-strategy requires a target URL.");
+        }
+        if (!parsed.fromDomain) {
+          throw new Error("bootstrap-strategy requires --from <domain>.");
+        }
+        result = runBootstrapStrategy(repoRoot, repoRef, resolutionMode, parsed.target, parsed.fromDomain, parsed.profile, parsed.report);
         break;
       case "doctor":
         result = runDoctor(repoRoot, repoRef, resolutionMode);

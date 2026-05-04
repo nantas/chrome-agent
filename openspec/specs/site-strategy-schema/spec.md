@@ -41,6 +41,7 @@ Each `strategy.md` SHALL include the following fields in its YAML frontmatter:
 | `engine_preference` | object | no | Optional engine preference for this site; contains `preferred` (string) and optional `reason` (string) |
 | `structure` | object | yes | Page hierarchy and connectivity (see Structure requirement) |
 | `extraction` | object | no | Globally useful selectors, image handling, and cleanup rules |
+| `backend` | string | no | Backend family identifier from `configs/backend-signatures.json`; used for cross-site strategy reuse and backend detection validation |
 
 #### Scenario: 必填字段完整性
 
@@ -53,6 +54,25 @@ Each `strategy.md` SHALL include the following fields in its YAML frontmatter:
 - **WHEN** a site has no protection mechanisms
 - **THEN** `anti_crawl_refs` SHALL be `[]` (empty array)
 - **AND** this SHALL be explicitly stated, not omitted
+
+#### Scenario: 新增 backend 字段
+
+- **WHEN** a site strategy is created for a domain that shares a known backend platform (e.g., Weird Gloop MediaWiki)
+- **THEN** the `backend` field MAY be populated with the matching `id` from `configs/backend-signatures.json`
+- **AND** when present, `backend` SHALL be treated as an advisory tag, not a runtime strategy matching key
+
+#### Scenario: 无 backend 字段
+
+- **WHEN** a site strategy does not specify `backend`
+- **THEN** the strategy SHALL be considered fully valid and complete
+- **AND** the absence of `backend` SHALL NOT trigger any validation error
+- **AND** the behavior of all downstream consumers SHALL remain unchanged
+
+#### Scenario: backend 字段值无效
+
+- **WHEN** a site strategy specifies a `backend` value that does not exist in `configs/backend-signatures.json`
+- **THEN** the system SHALL emit a warning but SHALL NOT treat it as a blocking error
+- **AND** the strategy SHALL still be accepted for crawl eligibility
 
 ### Requirement: Structure 页面层级与连接
 
@@ -266,6 +286,19 @@ The system SHALL maintain a `sites/strategies/registry.json` index for fast mach
 | `entry_points` | string[] | Entry point page IDs |
 | `anti_crawl_refs` | string[] | Referenced anti-crawl strategy IDs |
 | `file` | string | Relative path to `strategy.md` |
+| `backend` | string | Optional backend family identifier from `configs/backend-signatures.json` |
+
+#### Scenario: Registry 条目包含 backend
+
+- **WHEN** a strategy file has a `backend` field in its YAML frontmatter
+- **THEN** the corresponding `registry.json` entry SHOULD include `backend` with the same value
+- **AND** `registry.json` entries without `backend` SHALL remain valid
+
+#### Scenario: 通过 backend 查询策略
+
+- **WHEN** an agent or tool queries `registry.json` for all strategies sharing a specific backend
+- **THEN** it SHALL be able to filter entries by the `backend` field
+- **AND** entries without `backend` SHALL be excluded from such filtered results
 
 #### Scenario: Registry 可查询
 

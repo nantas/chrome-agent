@@ -71,3 +71,31 @@ sites/
 4. **如果站点首次遇到新反爬机制**: 先创建 anti-crawl 文件，再在 strategy.md 的 `anti_crawl_refs` 中引用
 
 受控词汇表（`protection_level`, `page_type`, `protection_type`）定义在 `openspec/specs/site-strategy-schema/spec.md` 和 `openspec/specs/anti-crawl-schema/spec.md` 中。新增值需要通过 openspec change 扩展。
+
+## 从已有后端派生策略（Bootstrap）
+
+当 `explore` 检测到已知后端（如 Weird Gloop MediaWiki）但无匹配策略时，可以使用 `bootstrap-strategy` 命令从同后端的已有策略一键派生新策略：
+
+```bash
+chrome-agent bootstrap-strategy <target-url> --from <reference-domain> [--profile <cleanup-profile>]
+```
+
+### 前置条件
+
+- `--from` 指定的参考域名必须已存在于 `sites/strategies/registry.json`
+- 目标 URL 的域名在 registry.json 中**不能**已有策略
+- 参考策略必须包含完整的 YAML frontmatter 和结构定义
+
+### 生成内容
+
+- `sites/strategies/<target-domain>/strategy.md`：基于参考策略的 frontmatter，替换 `domain`、`description`、`url_example`，并标记 `backend` 字段
+- 自动更新 `sites/strategies/registry.json`，追加新条目
+
+### 后续步骤
+
+1. **Review 生成的策略**：检查 `description`、`url_example`、`structure.pages` 是否适配目标站点
+2. **补充 Markdown body**：替换占位符章节（Page Structure、Extraction Flow、Known Issues）为实际操作细节
+3. **验证 crawl**：运行 `chrome-agent crawl <target-url>` 验证策略有效性
+4. **标记完成**：将 strategy.md 顶部的 `<!-- Bootstrapped from ...; review recommended -->` 移除或替换为验证日期
+
+> **注意**: bootstrap 生成的策略是**草稿级别**，必须在生产使用前完成 review 和验证。

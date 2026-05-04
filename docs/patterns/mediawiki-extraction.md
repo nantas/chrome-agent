@@ -116,23 +116,32 @@ Output: Cleaned Markdown
 
 When encountering a new MediaWiki site (especially Weird Gloop), follow this checklist before applying extraction patterns:
 
-1. **Verify MediaWiki identity**
+1. **Run `chrome-agent explore <url>` for backend detection**
+   - If the site is not yet in `sites/strategies/registry.json`, `explore` will automatically fetch raw HTML and detect known backends (e.g., Weird Gloop MediaWiki via `<meta name="generator">`, `#mw-content-text`, and `/w/` URL patterns).
+   - When a backend is detected, `explore` recommends a concrete `bootstrap-strategy` command using an existing reference domain (e.g., `vampire.survivors.wiki` or `balatrowiki.org`).
+
+2. **Use `bootstrap-strategy` to generate a draft strategy**
+   - Example: `chrome-agent bootstrap-strategy https://newsite.wiki/w/Main_Page --from balatrowiki.org`
+   - This generates `sites/strategies/newsite.wiki/strategy.md` with copied frontmatter, replaced domain/URLs, and a `backend: weird-gloop-mediawiki-1.45` advisory tag.
+   - The generated strategy must be reviewed and validated before production use.
+
+3. **Verify MediaWiki identity manually (if backend detection missed)**
    - Check HTML `<meta name="generator" content="MediaWiki ...">`.
    - Confirm DOM structure contains `#mw-content-text` or `.mw-parser-output`.
 
-2. **Assess protection level**
+4. **Assess protection level**
    - Run `scrapling-get <url>` and inspect output.
    - If blocked or challenged, check `protection_level` and consider `obscura-fetch` or `scrapling-stealthy-fetch`.
 
-3. **Compare against noise taxonomy**
+5. **Compare against noise taxonomy**
    - Run a sample article through Scrapling and compare output against the four clusters above.
    - Note any site-specific noise not covered by existing clusters.
 
-4. **Select cleanup profile**
+6. **Select cleanup profile**
    - If the site is Weird Gloop and matches vampire/balatro structure: start with the closest existing profile.
    - Otherwise: use `generic-mediawiki` with `--dry-run` first to inspect rule effects.
 
-5. **Identify gaps**
+7. **Identify gaps**
    - If site-specific noise is found, create a new profile in `clean-mediawiki.sh` or document the gap in this file.
    - Do not extend the generic profile with unverified rules.
 
