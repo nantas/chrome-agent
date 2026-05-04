@@ -18,7 +18,8 @@ function printHelp() {
 Commands:
   explore <url>          Run the explicit platform-analysis backend workflow.
   fetch <url>            Run the explicit content-retrieval backend workflow.
-  crawl <url>            Run the explicit bounded-crawl backend workflow.
+  crawl <url>            Run the explicit strategy-guided bounded-crawl backend workflow.
+  scrape <url>           Run the explicit strategy-free recursive scraping backend workflow.
   bootstrap-strategy <url> --from <domain> [--profile <name>]
                          Bootstrap a new site strategy from an existing reference strategy.
   doctor                 Validate launcher, repo resolution, repo shape, and Scrapling readiness.
@@ -26,9 +27,16 @@ Commands:
 
 Command options:
   --entry-point <id>     Crawl from a specific declared entry point.
-  --max-pages <n>        Maximum pages to traverse in crawl. Default: 3.
+  --max-pages <n>        Maximum pages to traverse. Default: 3 (crawl), 10 (scrape).
   --from <domain>        Reference domain for bootstrap-strategy (required).
   --profile <name>       Cleanup profile override for bootstrap-strategy.
+  --no-same-domain       Allow cross-domain link following in scrape (default: same-domain only).
+  --match <glob>         URL pathname glob filter for scrape (e.g., "/wiki/*").
+  --no-markdown          Retain HTML output, skip Markdown conversion.
+  --merge                Merge all per-page Markdown files into a single document.
+  --concurrency <n>      Phase 2 Markdown conversion concurrency. Default: 5.
+  --fetcher <name>       Override Scrapling fetcher for scrape (default: get).
+  --keep-html            Retain intermediate HTML files alongside Markdown.
   --report               Force durable report emission to reports/.
   --no-report            Disable durable report emission for this run.
   --scope <scope>        Clean scope: disposable (default) or all.
@@ -67,10 +75,17 @@ function parseArgs(argv) {
   let repoOverride = null;
   let scope = "disposable";
   let entryPoint = null;
-  let maxPages = 3;
+  let maxPages = null;
   let report = null;
   let fromDomain = null;
   let profile = null;
+  let sameDomain = true;
+  let matchPattern = null;
+  let markdown = true;
+  let merge = false;
+  let concurrency = 5;
+  let fetcherOverride = null;
+  let keepHtml = false;
   const positionals = [];
 
   for (let i = 0; i < passthrough.length; i += 1) {
@@ -146,6 +161,49 @@ function parseArgs(argv) {
       report = false;
       continue;
     }
+    if (value === "--no-same-domain") {
+      sameDomain = false;
+      continue;
+    }
+    if (value === "--match" && i + 1 < passthrough.length) {
+      matchPattern = passthrough[i + 1];
+      i += 1;
+      continue;
+    }
+    if (value.startsWith("--match=")) {
+      matchPattern = value.slice("--match=".length);
+      continue;
+    }
+    if (value === "--no-markdown") {
+      markdown = false;
+      continue;
+    }
+    if (value === "--merge") {
+      merge = true;
+      continue;
+    }
+    if (value === "--concurrency" && i + 1 < passthrough.length) {
+      concurrency = Number.parseInt(passthrough[i + 1], 10);
+      i += 1;
+      continue;
+    }
+    if (value.startsWith("--concurrency=")) {
+      concurrency = Number.parseInt(value.slice("--concurrency=".length), 10);
+      continue;
+    }
+    if (value === "--fetcher" && i + 1 < passthrough.length) {
+      fetcherOverride = passthrough[i + 1];
+      i += 1;
+      continue;
+    }
+    if (value.startsWith("--fetcher=")) {
+      fetcherOverride = value.slice("--fetcher=".length);
+      continue;
+    }
+    if (value === "--keep-html") {
+      keepHtml = true;
+      continue;
+    }
     if (!value.startsWith("-")) {
       positionals.push(value);
     }
@@ -156,10 +214,17 @@ function parseArgs(argv) {
     repoOverride,
     scope,
     entryPoint,
-    maxPages: Number.isFinite(maxPages) && maxPages > 0 ? maxPages : 3,
+    maxPages,
     report,
     fromDomain,
     profile,
+    sameDomain,
+    matchPattern,
+    markdown,
+    merge,
+    concurrency: Number.isFinite(concurrency) && concurrency > 0 ? concurrency : 5,
+    fetcherOverride,
+    keepHtml,
     command: positionals[0] ?? null,
     target: positionals[1] ?? null,
     internal,
@@ -399,6 +464,9 @@ function runScraplingPreflight(repoRoot, allowInstall) {
 }
 
 function runScraplingFetch(repoRoot, fetcher, targetUrl, outputPath, extraArgs = []) {
+  // Ensure the output directory exists before invoking Scrapling
+  ensureDir(path.dirname(outputPath));
+
   const preflight = runScraplingPreflight(repoRoot, true);
   if (!preflight.ok || !preflight.resolvedCliPath) {
     return {
@@ -434,6 +502,156 @@ function summarizeContent(outputPath) {
     .filter(Boolean);
   const firstHeading = lines.find((line) => line.startsWith("# "));
   return firstHeading ? firstHeading.slice(2).trim() : lines[0] ?? null;
+}
+
+function urlToStructuredPath(urlStr, baseDir) {
+  const url = new URL(urlStr);
+  let pathname = url.pathname.replace(/^\/+/, "");
+  if (!pathname || pathname === "/") pathname = "index";
+  // slugify special chars but preserve path separators
+  pathname = pathname
+    .replace(/[^a-zA-Z0-9/_-]/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/(^-|-$)/g, "");
+  if (!pathname.endsWith(".md")) pathname += ".md";
+  return path.join(baseDir, pathname);
+}
+
+function relativizeMarkdownLinks(content, mdPath, urlToPathMap) {
+  const baseDir = path.dirname(mdPath);
+
+  // Helper: compute relative path from current file to target file
+  const makeRel = (targetPath) => {
+    let rel = path.relative(baseDir, targetPath).replace(/\\/g, "/");
+    if (!rel.startsWith(".")) rel = "./" + rel;
+    return rel;
+  };
+
+  // Replace Markdown links: [text](absolute_url)
+  content = content.replace(/\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/g, (match, text, url) => {
+    if (urlToPathMap[url]) {
+      return `[${text}](${makeRel(urlToPathMap[url])})`;
+    }
+    return match;
+  });
+
+  // Replace bare absolute URLs on their own line or in angle brackets
+  content = content.replace(/<(https?:\/\/[^>]+)>/g, (match, url) => {
+    if (urlToPathMap[url]) {
+      return `[${url}](${makeRel(urlToPathMap[url])})`;
+    }
+    return match;
+  });
+
+  return content;
+}
+
+function collectMarkdownArtifacts(runDir) {
+  const artifacts = [];
+  function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(fullPath);
+      } else if (entry.name.endsWith(".md") && !entry.name.endsWith(".error.log")) {
+        const rel = path.relative(runDir, fullPath);
+        artifacts.push(absoluteArtifact(fullPath, "disposable", `Converted page ${rel}`));
+      }
+    }
+  }
+  walk(runDir);
+  return artifacts;
+}
+
+function convertTraversalToMarkdown(repoRoot, runDir, manifest, opts = {}) {
+  const {
+    fetcherFn = () => "get",
+    concurrency = 5,
+    merge = false,
+    cleanupHtml = true,
+    outputName = "output",
+    relativize = true,
+  } = opts;
+
+  const visited = manifest.visited ?? [];
+  const successful = [];
+  const failed = [];
+  const urlToPath = {};
+
+  // NOTE: v1 processes sequentially because runScraplingFetch uses spawnSync.
+  // True concurrency requires async spawn; concurrency param is reserved for v2.
+  for (let i = 0; i < visited.length; i += 1) {
+    const url = visited[i];
+    const mdPath = urlToStructuredPath(url, runDir);
+    ensureDir(path.dirname(mdPath));
+    urlToPath[url] = mdPath;
+    const fetcher = fetcherFn(url);
+    const result = runScraplingFetch(repoRoot, fetcher, url, mdPath, ["--ai-targeted"]);
+    if (result.ok) {
+      successful.push({ url, path: mdPath });
+    } else {
+      failed.push({ url, error: result.stderr || "Scrapling markdown conversion failed." });
+      const errorPath = `${mdPath}.error.log`;
+      writeTextFile(errorPath, result.stderr || "Scrapling markdown conversion failed.");
+    }
+  }
+
+  // Post-process: relativize internal links
+  if (relativize && Object.keys(urlToPath).length > 0) {
+    for (const { path: mdPath } of successful) {
+      let content = fs.readFileSync(mdPath, "utf8");
+      content = relativizeMarkdownLinks(content, mdPath, urlToPath);
+      writeTextFile(mdPath, content);
+    }
+  }
+
+  // Cleanup HTML intermediates
+  if (cleanupHtml) {
+    for (const file of fs.readdirSync(runDir)) {
+      if (file.endsWith(".html")) {
+        fs.unlinkSync(path.join(runDir, file));
+      }
+    }
+  }
+
+  // Merge
+  let mergedPath = null;
+  if (merge && successful.length > 0) {
+    mergedPath = path.join(runDir, `${outputName}.md`);
+    mergeMarkdownFiles(successful.map((s) => s.path), mergedPath, manifest.target);
+  }
+
+  return { successful, failed, mergedPath, urlToPath };
+}
+
+function mergeMarkdownFiles(filePaths, outputPath, targetUrl) {
+  const toc = [];
+  const sections = [];
+  const outputName = path.basename(outputPath, ".md");
+
+  for (const filePath of filePaths.sort()) {
+    const content = fs.readFileSync(filePath, "utf8");
+    const lines = content.split("\n");
+    const firstHeading = lines.find((line) => line.startsWith("# "));
+    const title = firstHeading ? firstHeading.slice(2).trim() : path.basename(filePath, ".md");
+    const anchor = title.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-").replace(/^-|-$/g, "");
+    toc.push(`- [${title}](#${anchor})`);
+    sections.push(`## ${title}\n\n${content}`);
+  }
+
+  const merged = [
+    `# ${outputName.includes("crawl") ? "Crawl" : "Scrape"} Output: ${targetUrl}`,
+    "",
+    "## Table of Contents",
+    ...toc,
+    "",
+    "---",
+    "",
+    sections.join("\n\n---\n\n"),
+    "",
+  ].join("\n");
+
+  writeTextFile(outputPath, merged);
 }
 
 function repoShapeIsValid(repoRoot) {
@@ -798,7 +1016,7 @@ function nextPaginationUrl(currentUrl, pagination, pageNumber) {
   return null;
 }
 
-function buildCrawlReport({ targetUrl, repoRef, resolutionMode, strategy, events, result }) {
+function buildCrawlReport({ targetUrl, repoRef, resolutionMode, strategy, events, result, phase2 }) {
   const lines = [
     `# Crawl Report`,
     "",
@@ -813,10 +1031,29 @@ function buildCrawlReport({ targetUrl, repoRef, resolutionMode, strategy, events
   for (const event of events) {
     lines.push(`- ${event}`);
   }
+  if (phase2) {
+    lines.push("");
+    lines.push("## Phase 2: Markdown Conversion");
+    lines.push(`- Successful: ${phase2.successful}`);
+    lines.push(`- Failed: ${phase2.failed}`);
+    if (phase2.mergedPath) {
+      lines.push(`- Merged output: ${phase2.mergedPath}`);
+    }
+  }
   return `${lines.join("\n")}\n`;
 }
 
-function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, entryPointOverride, maxPages, reportOverride) {
+function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {}) {
+  const {
+    entryPoint: entryPointOverride = null,
+    maxPages = 3,
+    report: reportOverride = null,
+    markdown = true,
+    merge = false,
+    concurrency = 5,
+    keepHtml = false,
+  } = opts;
+
   const { runDir, reportPath } = buildRunPaths(repoRoot, "crawl", targetUrl);
   ensureDir(runDir);
   const manifestPath = path.join(runDir, "manifest.json");
@@ -1005,10 +1242,58 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, entryPointOverri
       unrestricted_recursive_spider: false,
     },
   };
-  writeTextFile(manifestPath, JSON.stringify(manifest, null, 2));
-  artifacts.push(absoluteArtifact(manifestPath, "disposable", "Crawl manifest"));
 
-  const resultState = failures > 0 && visited.size > failures ? "partial_success" : failures > 0 ? "failure" : "success";
+  // Phase 2: Markdown conversion
+  let phase2Result = null;
+  if (markdown && visited.size > 0) {
+    phase2Result = convertTraversalToMarkdown(repoRoot, runDir, manifest, {
+      fetcherFn: (url) => {
+        const page = pages.find((p) => pagePatternMatches(p, url));
+        return selectFetcher(strategy, page);
+      },
+      concurrency,
+      merge,
+      cleanupHtml: !keepHtml,
+      outputName: "crawl-output",
+    });
+    manifest.phase2 = {
+      successful_count: phase2Result.successful.length,
+      failed_count: phase2Result.failed.length,
+      failed_urls: phase2Result.failed.map((f) => f.url),
+      merged_path: phase2Result.mergedPath,
+    };
+  }
+
+  writeTextFile(manifestPath, JSON.stringify(manifest, null, 2));
+
+  // Rebuild artifacts based on output mode
+  const finalArtifacts = [absoluteArtifact(manifestPath, "disposable", "Crawl manifest")];
+
+  if (markdown) {
+    finalArtifacts.push(...collectMarkdownArtifacts(runDir));
+    // Ensure merged file gets a descriptive label if found by collectMarkdownArtifacts
+    for (const { url } of (phase2Result?.failed ?? [])) {
+      const idx = manifest.visited.indexOf(url);
+      if (idx >= 0) {
+        const errorPath = path.join(runDir, `${String(idx + 1).padStart(2, "0")}.md.error.log`);
+        if (fs.existsSync(errorPath)) {
+          finalArtifacts.push(absoluteArtifact(errorPath, "disposable", `Conversion error for ${url}`));
+        }
+      }
+    }
+  } else {
+    for (const file of fs.readdirSync(runDir)) {
+      if (file.endsWith(".html")) {
+        finalArtifacts.push(absoluteArtifact(path.join(runDir, file), "disposable", `Crawled page ${file}`));
+      }
+    }
+  }
+
+  const traversalOk = visited.size > 0 && failures === 0;
+  const conversionOk = !markdown || (phase2Result && phase2Result.failed.length === 0);
+  const resultState =
+    traversalOk && conversionOk ? "success" : visited.size > failures ? "partial_success" : "failure";
+
   if (emitReport) {
     const report = buildCrawlReport({
       targetUrl,
@@ -1017,25 +1302,276 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, entryPointOverri
       strategy,
       events,
       result: resultState,
+      phase2: markdown && phase2Result
+        ? {
+            successful: phase2Result.successful.length,
+            failed: phase2Result.failed.length,
+            mergedPath: phase2Result.mergedPath,
+          }
+        : null,
     });
     writeTextFile(reportPath, report);
-    artifacts.unshift(absoluteArtifact(reportPath, "durable", "Crawl report"));
+    finalArtifacts.unshift(absoluteArtifact(reportPath, "durable", "Crawl report"));
   }
 
   const summary =
     resultState === "success"
-      ? `Crawl completed within declared strategy boundaries and visited ${visited.size} page(s).`
+      ? `Crawl completed within declared strategy boundaries and visited ${visited.size} page(s)${markdown ? `; ${phase2Result.successful.length} converted to Markdown` : ""}.`
       : resultState === "partial_success"
-        ? `Crawl visited ${visited.size} page(s) with some bounded failures.`
+        ? `Crawl visited ${visited.size} page(s)${markdown ? `; ${phase2Result.successful.length} converted, ${phase2Result.failed.length} failed` : ` with ${failures} fetch failure(s)`}.`
         : "Crawl failed before any page completed successfully.";
   const nextAction =
     resultState === "failure"
       ? "Review the crawl report, strategy selectors, or authentication requirements before retrying."
-      : "Inspect the crawl report and outputs. Extend the site strategy if more bounded traversal is needed.";
+      : "Inspect the crawl outputs. Extend the site strategy if more bounded traversal is needed.";
 
-  return makeResult("crawl", targetUrl, repoRef, summary, artifacts, nextAction, resultState, {
+  return makeResult("crawl", targetUrl, repoRef, summary, finalArtifacts, nextAction, resultState, {
     workflow: "content_retrieval",
-    engine_path: `strategy_registry -> bounded_crawl -> scrapling_preflight:${preflight.status ?? "unknown"}`,
+    engine_path: `strategy_registry -> bounded_crawl -> scrapling_preflight:${preflight.status ?? "unknown"}${markdown ? ` -> markdown_conversion(${phase2Result?.successful.length ?? 0}/${visited.size})` : ""}`,
+  });
+}
+
+function extractAllLinks(htmlPath, baseUrl, opts = {}) {
+  if (!fs.existsSync(htmlPath)) {
+    return [];
+  }
+  const { sameDomain = true, matchPattern = null } = opts;
+  const base = new URL(baseUrl);
+  const html = fs.readFileSync(htmlPath, "utf8");
+  const matches = [...html.matchAll(/<a\s[^>]*href="([^"#]+)"/gi)];
+  const urls = new Set();
+  for (const match of matches) {
+    const href = match[1];
+    try {
+      const url = new URL(href, baseUrl);
+      if (sameDomain && url.hostname !== base.hostname) {
+        continue;
+      }
+      if (matchPattern && !minimatch(url.pathname, matchPattern)) {
+        continue;
+      }
+      urls.add(url.toString());
+    } catch {
+      // skip malformed URLs
+    }
+  }
+  return [...urls];
+}
+
+function minimatch(pathname, pattern) {
+  // Simple glob matcher: supports * and **
+  const regex = pattern
+    .replace(/\*\*/g, "__DOUBLESTAR__")
+    .replace(/\*/g, "[^/]*")
+    .replace(/__DOUBLESTAR__/g, ".*");
+  return new RegExp(`^${regex}$`).test(pathname);
+}
+
+function buildScrapeReport({ targetUrl, repoRef, resolutionMode, events, result, phase2 }) {
+  const lines = [
+    `# Scrape Report`,
+    "",
+    `- Target: ${targetUrl}`,
+    `- Repo ref: ${repoRef}`,
+    `- Resolution: ${resolutionSummary(repoRef, resolutionMode)}`,
+    `- Result: ${result}`,
+    "",
+    "## Traversal",
+  ];
+  for (const event of events) {
+    lines.push(`- ${event}`);
+  }
+  if (phase2) {
+    lines.push("");
+    lines.push("## Phase 2: Markdown Conversion");
+    lines.push(`- Successful: ${phase2.successful}`);
+    lines.push(`- Failed: ${phase2.failed}`);
+    if (phase2.mergedPath) {
+      lines.push(`- Merged output: ${phase2.mergedPath}`);
+    }
+  }
+  return `${lines.join("\n")}\n`;
+}
+
+function runScrape(repoRoot, repoRef, resolutionMode, targetUrl, opts) {
+  const {
+    maxPages = 10,
+    sameDomain = true,
+    matchPattern = null,
+    markdown = true,
+    merge = false,
+    concurrency = 5,
+    fetcherOverride = null,
+    keepHtml = false,
+    reportOverride = null,
+  } = opts;
+
+  const { runDir, reportPath } = buildRunPaths(repoRoot, "scrape", targetUrl);
+  ensureDir(runDir);
+  const manifestPath = path.join(runDir, "manifest.json");
+  const emitReport = shouldEmitReport("scrape", reportOverride);
+
+  const preflight = runScraplingPreflight(repoRoot, true);
+  if (!preflight.ok) {
+    if (emitReport) {
+      const report = buildScrapeReport({
+        targetUrl,
+        repoRef,
+        resolutionMode,
+        events: ["Scrapling CLI preflight failed before scrape traversal."],
+        result: "failure",
+      });
+      writeTextFile(reportPath, report);
+    }
+    const artifacts = [];
+    if (emitReport) {
+      artifacts.push(absoluteArtifact(reportPath, "durable", "Scrape preflight report"));
+    }
+    return makeResult(
+      "scrape",
+      targetUrl,
+      repoRef,
+      "Scrape stopped because Scrapling CLI preflight failed.",
+      artifacts,
+      "Repair the Scrapling CLI environment, then retry scrape.",
+      "failure",
+      {
+        workflow: "content_retrieval",
+        engine_path: `scrapling_preflight:${preflight.status ?? "unavailable"} -> blocked`,
+      },
+    );
+  }
+
+  // Phase 1: Traversal
+  const queue = [targetUrl];
+  const visited = new Set();
+  const events = [];
+  let failures = 0;
+
+  while (queue.length > 0 && visited.size < maxPages) {
+    const url = queue.shift();
+    if (!url || visited.has(url)) {
+      continue;
+    }
+    visited.add(url);
+    const fetcher = fetcherOverride || "get";
+    const pageNum = String(visited.size).padStart(2, "0");
+    const outputPath = path.join(runDir, `${pageNum}.html`);
+    const fetchResult = runScraplingFetch(repoRoot, fetcher, url, outputPath);
+
+    if (fetchResult.ok) {
+      events.push(`Fetched ${url} via ${fetcher}.`);
+      const discovered = extractAllLinks(outputPath, url, { sameDomain, matchPattern });
+      for (const nextUrl of discovered) {
+        if (!visited.has(nextUrl) && !queue.includes(nextUrl)) {
+          queue.push(nextUrl);
+        }
+      }
+      if (discovered.length > 0) {
+        events.push(`Discovered ${discovered.length} new link(s) from ${url}.`);
+      }
+    } else {
+      failures += 1;
+      const errorPath = path.join(runDir, `${pageNum}.stderr.log`);
+      writeTextFile(errorPath, fetchResult.stderr || "Scrapling scrape fetch failed.");
+      events.push(`Failed ${url} via ${fetcher}.`);
+    }
+  }
+
+  const manifest = {
+    command: "scrape",
+    target: targetUrl,
+    repo_ref: repoRef,
+    resolution_mode: resolutionMode,
+    visited: [...visited],
+    max_pages: maxPages,
+    same_domain: sameDomain,
+    match_pattern: matchPattern,
+  };
+
+  // Phase 2: Markdown conversion
+  let phase2Result = null;
+  if (markdown && visited.size > 0) {
+    phase2Result = convertTraversalToMarkdown(repoRoot, runDir, manifest, {
+      fetcherFn: () => fetcherOverride || "get",
+      concurrency,
+      merge,
+      cleanupHtml: !keepHtml,
+      outputName: "scrape-output",
+    });
+    manifest.phase2 = {
+      successful_count: phase2Result.successful.length,
+      failed_count: phase2Result.failed.length,
+      failed_urls: phase2Result.failed.map((f) => f.url),
+      merged_path: phase2Result.mergedPath,
+    };
+  }
+
+  writeTextFile(manifestPath, JSON.stringify(manifest, null, 2));
+
+  const artifacts = [absoluteArtifact(manifestPath, "disposable", "Scrape manifest")];
+
+  if (markdown) {
+    artifacts.push(...collectMarkdownArtifacts(runDir));
+    // Ensure merged file gets a descriptive label if found by collectMarkdownArtifacts
+    for (const { url } of (phase2Result?.failed ?? [])) {
+      const idx = manifest.visited.indexOf(url);
+      if (idx >= 0) {
+        const errorPath = path.join(runDir, `${String(idx + 1).padStart(2, "0")}.md.error.log`);
+        if (fs.existsSync(errorPath)) {
+          artifacts.push(absoluteArtifact(errorPath, "disposable", `Conversion error for ${url}`));
+        }
+      }
+    }
+  } else {
+    for (let i = 0; i < visited.size; i += 1) {
+      const pageNum = String(i + 1).padStart(2, "0");
+      const htmlPath = path.join(runDir, `${pageNum}.html`);
+      if (fs.existsSync(htmlPath)) {
+        artifacts.push(absoluteArtifact(htmlPath, "disposable", `Scraped page ${pageNum}`));
+      }
+    }
+  }
+
+  const traversalOk = visited.size > 0 && failures === 0;
+  const conversionOk = !markdown || (phase2Result && phase2Result.failed.length === 0);
+  const resultState =
+    traversalOk && conversionOk ? "success" : visited.size > failures ? "partial_success" : "failure";
+
+  if (emitReport) {
+    const report = buildScrapeReport({
+      targetUrl,
+      repoRef,
+      resolutionMode,
+      events,
+      result: resultState,
+      phase2: markdown && phase2Result
+        ? {
+            successful: phase2Result.successful.length,
+            failed: phase2Result.failed.length,
+            mergedPath: phase2Result.mergedPath,
+          }
+        : null,
+    });
+    writeTextFile(reportPath, report);
+    artifacts.unshift(absoluteArtifact(reportPath, "durable", "Scrape report"));
+  }
+
+  const summary =
+    resultState === "success"
+      ? `Scrape visited ${visited.size} page(s)${markdown ? ` and converted ${phase2Result.successful.length} to Markdown` : ""}.`
+      : resultState === "partial_success"
+        ? `Scrape visited ${visited.size} page(s)${markdown ? `; ${phase2Result.successful.length} converted, ${phase2Result.failed.length} failed` : ` with ${failures} fetch failure(s)`}.`
+        : "Scrape failed before any page completed successfully.";
+
+  const nextAction =
+    resultState === "failure"
+      ? "Review the scrape report, URL filters, or target availability before retrying."
+      : "Inspect the scrape outputs. Adjust --match or --max-pages if more coverage is needed.";
+
+  return makeResult("scrape", targetUrl, repoRef, summary, artifacts, nextAction, resultState, {
+    workflow: "content_retrieval",
+    engine_path: `scrapling_preflight:${preflight.status ?? "unknown"} -> scrape_traversal(${visited.size} pages)${markdown ? ` -> markdown_conversion(${phase2Result?.successful.length ?? 0}/${visited.size})` : ""}`,
   });
 }
 
@@ -1304,7 +1840,31 @@ function main() {
         if (!parsed.target) {
           throw new Error("crawl requires a target URL.");
         }
-        result = runCrawl(repoRoot, repoRef, resolutionMode, parsed.target, parsed.entryPoint, parsed.maxPages, parsed.report);
+        result = runCrawl(repoRoot, repoRef, resolutionMode, parsed.target, {
+          entryPoint: parsed.entryPoint,
+          maxPages: parsed.maxPages ?? 3,
+          report: parsed.report,
+          markdown: parsed.markdown,
+          merge: parsed.merge,
+          concurrency: parsed.concurrency,
+          keepHtml: parsed.keepHtml,
+        });
+        break;
+      case "scrape":
+        if (!parsed.target) {
+          throw new Error("scrape requires a target URL.");
+        }
+        result = runScrape(repoRoot, repoRef, resolutionMode, parsed.target, {
+          maxPages: parsed.maxPages ?? 10,
+          sameDomain: parsed.sameDomain,
+          matchPattern: parsed.matchPattern,
+          markdown: parsed.markdown,
+          merge: parsed.merge,
+          concurrency: parsed.concurrency,
+          fetcherOverride: parsed.fetcherOverride,
+          keepHtml: parsed.keepHtml,
+          reportOverride: parsed.report,
+        });
         break;
       case "bootstrap-strategy":
         if (!parsed.target) {
