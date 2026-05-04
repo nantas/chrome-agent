@@ -8,3 +8,5 @@ dist/
 coverage/
 .gstack/
 outputs/
+__pycache__/
+*.pyc

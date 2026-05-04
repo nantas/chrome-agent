@@ -1,6 +1,16 @@
 {
   "entries": [
     {
+      "domain": "vampire.survivors.wiki",
+      "description": "Weird Gloop hosted MediaWiki for Vampire Survivors",
+      "protection_level": "low",
+      "page_types": ["static_page", "static_article"],
+      "pagination": ["none"],
+      "entry_points": ["wiki_category"],
+      "anti_crawl_refs": [],
+      "file": "vampire.survivors.wiki/strategy.md"
+    },
+    {
       "domain": "mp.weixin.qq.com",
       "description": "Publicly accessible WeChat article detail pages",
       "protection_level": "low",
