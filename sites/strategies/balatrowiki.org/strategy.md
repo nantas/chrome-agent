@@ -21,6 +21,53 @@ structure:
       requires_auth: false
   entry_points:
     - wiki_article
+api:
+  platform: mediawiki
+  base_url: "https://balatrowiki.org/api.php"
+  capabilities:
+    - page_list
+    - category_lookup
+    - wikitext_parse
+  taxonomy:
+    list_pages:
+      Jokers: "Jokers"
+      Decks: "Decks"
+      Poker_Hands: "Poker_Hands"
+      Card_Modifiers: "Card_Modifiers"
+      Consumables: "Consumables"
+      Tarot_Cards: "Consumables/Tarot_Cards"
+      Planet_Cards: "Consumables/Planet_Cards"
+      Spectral_Cards: "Consumables/Spectral_Cards"
+      Vouchers: "Vouchers"
+      Booster_Packs: "Booster_Packs"
+      Blinds: "Blinds"
+      Tags: "Tags"
+      Stakes: "Stakes"
+      Achievements: "Achievements"
+      Updates: "Updates"
+      Game_Mechanics: "Game_Mechanics"
+    category_filters:
+      - "Disambiguations"
+  filename:
+    replacements:
+      "/": "_"
+      ":": "_"
+  output:
+    frontmatter_fields:
+      - effect
+      - rarity
+      - type
+      - buyprice
+      - sellprice
+      - number
+      - image
+      - unlock
+      - activation
+    template_map:
+      Mult: "**%s Mult**"
+      Chips: "**%s Chips**"
+      hl: "%s"
+      Dollars: "**$%s**"
 extraction:
   selectors:
     title: "#firstHeading"

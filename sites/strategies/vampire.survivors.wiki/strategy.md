@@ -30,6 +30,30 @@ structure:
       requires_auth: false
   entry_points:
     - wiki_category
+api:
+  platform: mediawiki
+  base_url: "https://vampire.survivors.wiki/api.php"
+  capabilities:
+    - page_list
+    - category_lookup
+    - wikitext_parse
+  taxonomy:
+    list_pages:
+      Weapons: "Weapons"
+      Passive_Items: "Passive_Items"
+      Arcanas: "Arcanas"
+      Characters: "Characters"
+      Stages: "Stages"
+      PowerUps: "PowerUps"
+      Pickups: "Pickups"
+    category_filters:
+      - "Disambiguations"
+  filename:
+    replacements:
+      "/": "_"
+      ":": "_"
+  output:
+    frontmatter_fields: []
 extraction:
   selectors:
     title: "#firstHeading"

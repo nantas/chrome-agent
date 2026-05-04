@@ -338,3 +338,53 @@ The system SHALL enforce through AGENTS.md that any new site strategy creation S
 - **WHEN** a new `strategy.md` file is added under `sites/strategies/<domain>/`
 - **THEN** the operator SHALL add a corresponding entry to `sites/strategies/registry.json`
 - **AND** the operator SHALL verify that `domain`, `page_types`, and `file` fields are correct
+
+## MediaWiki API Extraction Delta (from mediawiki-api-extraction change)
+
+### Requirement: API 提取配置
+
+The system SHALL define an optional `api` object in the site strategy YAML frontmatter for sites that expose a CMS API for structured content extraction.
+
+The `api` object SHALL contain:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `platform` | enum | yes | CMS platform identifier. Current valid value: `mediawiki` |
+| `base_url` | string | no | API base URL. When absent, the system SHALL auto-detect via endpoint probing |
+| `capabilities` | string[] | yes | List of supported API operations. Current valid values: `page_list`, `category_lookup`, `wikitext_parse`, `html_parse` |
+| `taxonomy` | object | no | Category-to-directory mapping rules |
+| `filename` | object | no | Filename sanitization rules |
+| `output` | object | no | Output configuration for Markdown generation |
+
+The `api` field SHALL be optional. Its absence SHALL NOT invalidate the strategy file.
+
+### Requirement: API Capabilities 受控词汇表
+
+The system SHALL define a controlled vocabulary for `api.capabilities` values.
+
+| Value | Description |
+|-------|-------------|
+| `page_list` | Site exposes a page listing API (e.g., `action=query&list=allpages`) |
+| `category_lookup` | Site exposes a category lookup API (e.g., `action=query&prop=categories`) |
+| `wikitext_parse` | Site exposes a wikitext parse API (e.g., `action=parse&prop=wikitext`) |
+| `html_parse` | Site exposes an HTML parse API (e.g., `action=parse&prop=text`) |
+
+New values SHALL be added via openspec change to this spec.
+
+### Requirement: API Taxonomy 配置
+
+The system SHALL define the `api.taxonomy` object for category-to-directory mapping.
+
+`api.taxonomy` SHALL contain:
+- `list_pages` (optional): map of page title to target directory path
+- `category_filters` (optional): array of category names to exclude
+
+### Requirement: API Filename 配置
+
+The system SHALL define the `api.filename` object with `replacements` map for filename sanitization.
+
+### Requirement: API Output 配置
+
+The system SHALL define the `api.output` object containing:
+- `frontmatter_fields` (optional): array of infobox template parameter names to extract
+- `template_map` (optional): map of wikitext template names to inline Markdown format strings

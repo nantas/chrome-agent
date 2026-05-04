@@ -1016,7 +1016,7 @@ function nextPaginationUrl(currentUrl, pagination, pageNumber) {
   return null;
 }
 
-function buildCrawlReport({ targetUrl, repoRef, resolutionMode, strategy, events, result, phase2 }) {
+function buildCrawlReport({ targetUrl, repoRef, resolutionMode, strategy, events, result, phase2, extractionMethod, fallbackReason }) {
   const lines = [
     `# Crawl Report`,
     "",
@@ -1025,9 +1025,14 @@ function buildCrawlReport({ targetUrl, repoRef, resolutionMode, strategy, events
     `- Resolution: ${resolutionSummary(repoRef, resolutionMode)}`,
     `- Strategy file: ${strategy ? path.relative(process.cwd(), strategy.path) : "none"}`,
     `- Result: ${result}`,
-    "",
-    "## Traversal",
   ];
+  if (extractionMethod) {
+    lines.push(`- Extraction method: ${extractionMethod}`);
+  }
+  if (fallbackReason) {
+    lines.push(`- Fallback reason: ${fallbackReason}`);
+  }
+  lines.push("", "## Traversal");
   for (const event of events) {
     lines.push(`- ${event}`);
   }
@@ -1132,6 +1137,88 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {}) {
     );
   }
 
+  // --- MediaWiki API route ---
+  const apiConfig = doc?.api;
+  if (apiConfig && apiConfig.platform === "mediawiki") {
+    const extractionScript = path.join(repoRoot, "scripts", "mediawiki-api-extract");
+    if (fs.existsSync(extractionScript)) {
+      console.log("Strategy has api.platform=mediawiki — routing to MediaWiki API extraction pipeline");
+      const apiArgs = [
+        extractionScript,
+        targetUrl,
+        "--strategy", strategy.path,
+        "--output", runDir,
+        "--concurrency", String(concurrency),
+      ];
+      const apiResult = spawnSync("python3", apiArgs, {
+        cwd: repoRoot,
+        encoding: "utf-8",
+        timeout: 600_000,  // 10 min max
+      });
+
+      const exitCode = apiResult.status ?? 1;
+      const isApiSuccess = exitCode === 0;
+      const isApiPartial = exitCode === 1;
+      const isApiFailure = exitCode >= 10;  // API_UNREACHABLE, PHASE_A/B/C_FAILURE
+
+      if (isApiSuccess || isApiPartial) {
+        // Collect artifacts from the output directory
+        const apiArtifacts = [absoluteArtifact(manifestPath, "disposable", "Crawl manifest")];
+        for (const file of fs.readdirSync(runDir, { recursive: true })) {
+          const filePath = path.join(runDir, String(file));
+          if (String(file).endsWith(".md")) {
+            apiArtifacts.push(absoluteArtifact(filePath, "disposable", `API extracted: ${file}`));
+          }
+        }
+        // Add extraction results if present
+        const resultsPath = path.join(runDir, "extraction_results.json");
+        if (fs.existsSync(resultsPath)) {
+          apiArtifacts.push(absoluteArtifact(resultsPath, "disposable", "Extraction results"));
+        }
+
+        const extractionMethod = "mediawiki_api";
+        const resultState = isApiSuccess ? "success" : "partial_success";
+        const summary = isApiSuccess
+          ? `Crawl completed via MediaWiki API extraction pipeline.`
+          : `Crawl completed via MediaWiki API pipeline with partial success (some pages failed).`;
+
+        if (emitReport) {
+          const report = buildCrawlReport({
+            targetUrl, repoRef, resolutionMode, strategy,
+            events: [
+              `Routed to MediaWiki API extraction pipeline (platform=mediawiki).`,
+              `Pipeline exit code: ${exitCode}`,
+            ],
+            result: resultState,
+            extractionMethod,
+          });
+          writeTextFile(reportPath, report);
+          apiArtifacts.unshift(absoluteArtifact(reportPath, "durable", "Crawl report"));
+        }
+
+        return makeResult("crawl", targetUrl, repoRef, summary, apiArtifacts,
+          "Inspect the crawl outputs in the run directory.",
+          resultState, {
+            workflow: "content_retrieval",
+            engine_path: `strategy_registry -> mediawiki_api_pipeline -> exit:${exitCode}`,
+            extraction_method: extractionMethod,
+          });
+      }
+
+      // API failure — log and fall through to Scrapling
+      console.warn(`MediaWiki API pipeline failed (exit code ${exitCode}), falling back to Scrapling`);
+      events = [`MediaWiki API pipeline failed with exit code ${exitCode}. Falling back to Scrapling.`];
+      fallbackReason = `api_pipeline_exit_${exitCode}`;
+    } else {
+      console.warn("mediawiki-api-extract script not found, falling back to Scrapling");
+      events = ["MediaWiki API extraction script not found. Falling back to Scrapling."];
+      fallbackReason = "api_script_missing";
+    }
+  }
+
+  // --- Standard Scrapling crawl path ---
+  let events = [];
+  let fallbackReason = null;
   const preflight = runScraplingPreflight(repoRoot, true);
   if (!preflight.ok) {
     if (emitReport) {
@@ -1169,7 +1256,7 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {}) {
   queue.push({ url: startUrl, page: startPage, paginationIndex: 1 });
   const visited = new Set();
   const artifacts = [];
-  const events = [];
+  // events already declared above (let events)
   let failures = 0;
 
   while (queue.length > 0 && visited.size < maxPages) {
@@ -1309,6 +1396,8 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {}) {
             mergedPath: phase2Result.mergedPath,
           }
         : null,
+      extractionMethod: "scrapling",
+      fallbackReason: fallbackReason,
     });
     writeTextFile(reportPath, report);
     finalArtifacts.unshift(absoluteArtifact(reportPath, "durable", "Crawl report"));
@@ -1328,6 +1417,8 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {}) {
   return makeResult("crawl", targetUrl, repoRef, summary, finalArtifacts, nextAction, resultState, {
     workflow: "content_retrieval",
     engine_path: `strategy_registry -> bounded_crawl -> scrapling_preflight:${preflight.status ?? "unknown"}${markdown ? ` -> markdown_conversion(${phase2Result?.successful.length ?? 0}/${visited.size})` : ""}`,
+    extraction_method: "scrapling",
+    ...(fallbackReason ? { fallback_reason: fallbackReason } : {}),
   });
 }
 

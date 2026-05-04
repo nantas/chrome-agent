@@ -1,6 +1,17 @@
 {
   "entries": [
     {
+      "domain": "balatrowiki.org",
+      "description": "Weird Gloop hosted MediaWiki for Balatro game wiki",
+      "protection_level": "low",
+      "page_types": ["static_article"],
+      "pagination": ["none"],
+      "entry_points": ["wiki_article"],
+      "anti_crawl_refs": [],
+      "file": "balatrowiki.org/strategy.md",
+      "backend": "weird-gloop-mediawiki-1.45"
+    },
+    {
       "domain": "vampire.survivors.wiki",
       "description": "Weird Gloop hosted MediaWiki for Vampire Survivors",
       "protection_level": "low",
@@ -8,7 +19,8 @@
       "pagination": ["none"],
       "entry_points": ["wiki_category"],
       "anti_crawl_refs": [],
-      "file": "vampire.survivors.wiki/strategy.md"
+      "file": "vampire.survivors.wiki/strategy.md",
+      "backend": "weird-gloop-mediawiki-1.45"
     },
     {
       "domain": "mp.weixin.qq.com",
