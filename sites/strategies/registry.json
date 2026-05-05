@@ -71,6 +71,16 @@
       "entry_points": ["mechanic_browse"],
       "anti_crawl_refs": [],
       "file": "boardgamegeek.com/strategy.md"
+    },
+    {
+      "domain": "www.leagueofgamemakers.com",
+      "description": "Self-hosted WordPress blog for board game design articles",
+      "protection_level": "low",
+      "page_types": ["static_article", "static_list"],
+      "pagination": ["url_path", "none"],
+      "entry_points": ["single_post", "category_archive", "tag_archive", "author_archive", "blog_index"],
+      "anti_crawl_refs": [],
+      "file": "www.leagueofgamemakers.com/strategy.md"
     }
   ]
 }
