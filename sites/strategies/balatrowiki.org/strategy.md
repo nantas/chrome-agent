@@ -28,6 +28,12 @@ api:
     - page_list
     - category_lookup
     - wikitext_parse
+  content_profile:
+    discovery_strategy: "allpages"
+    content_acquisition: "wikitext_only"
+    link_resolver: "exact_title_match"
+    template_processor: "simple_substitution"
+    list_page_assembler: "frontmatter_driven"
   taxonomy:
     list_pages:
       Jokers: "Jokers"
