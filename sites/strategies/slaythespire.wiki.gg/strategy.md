@@ -14,11 +14,16 @@ structure:
       content_type: wiki_main_page
       pagination: none
       links_to:
-        - sts2_list_page
-        - sts2_mechanic_page
-        - sts2_character_page
-        - sts2_act_page
-        - sts2_ancient_page
+        - target: sts2_list_page
+          selector: ".mw-parser-output a[href*=\"/wiki/Slay_the_Spire_2:\"]"
+        - target: sts2_mechanic_page
+          selector: ".mw-parser-output a[href*=\"/wiki/Slay_the_Spire_2:\"]"
+        - target: sts2_character_page
+          selector: ".mw-parser-output a[href*=\"/wiki/Slay_the_Spire_2:\"]"
+        - target: sts2_act_page
+          selector: ".mw-parser-output a[href*=\"/wiki/Slay_the_Spire_2:\"]"
+        - target: sts2_ancient_page
+          selector: ".mw-parser-output a[href*=\"/wiki/Slay_the_Spire_2:\"]"
       requires_auth: false
     - id: sts2_list_page
       label: StS2 List Page
@@ -28,7 +33,8 @@ structure:
       content_type: wiki_list_page
       pagination: none
       links_to:
-        - sts2_entity_page
+        - target: sts2_entity_page
+          selector: "#cardsContainer a[href*=\"/wiki/Slay_the_Spire_2:\"], .mw-parser-output a[href*=\"/wiki/Slay_the_Spire_2:\"]"
       requires_auth: false
     - id: sts2_entity_page
       label: StS2 Entity Page
@@ -38,9 +44,12 @@ structure:
       content_type: wiki_article
       pagination: none
       links_to:
-        - sts2_entity_page
-        - sts2_list_page
-        - sts2_mechanic_page
+        - target: sts2_entity_page
+          selector: ".mw-parser-output a[href*=\"/wiki/Slay_the_Spire_2:\"]"
+        - target: sts2_list_page
+          selector: ".mw-parser-output a[href*=\"/wiki/Slay_the_Spire_2:\"]"
+        - target: sts2_mechanic_page
+          selector: ".mw-parser-output a[href*=\"/wiki/Slay_the_Spire_2:\"]"
       requires_auth: false
     - id: sts2_mechanic_page
       label: StS2 Mechanic Page
@@ -50,8 +59,10 @@ structure:
       content_type: wiki_article
       pagination: none
       links_to:
-        - sts2_entity_page
-        - sts2_list_page
+        - target: sts2_entity_page
+          selector: ".mw-parser-output a[href*=\"/wiki/Slay_the_Spire_2:\"]"
+        - target: sts2_list_page
+          selector: ".mw-parser-output a[href*=\"/wiki/Slay_the_Spire_2:\"]"
       requires_auth: false
     - id: sts2_character_page
       label: StS2 Character Page
@@ -61,8 +72,10 @@ structure:
       content_type: wiki_article
       pagination: none
       links_to:
-        - sts2_entity_page
-        - sts2_list_page
+        - target: sts2_entity_page
+          selector: ".mw-parser-output a[href*=\"/wiki/Slay_the_Spire_2:\"]"
+        - target: sts2_list_page
+          selector: ".mw-parser-output a[href*=\"/wiki/Slay_the_Spire_2:\"]"
       requires_auth: false
     - id: sts2_act_page
       label: StS2 Act Page
@@ -72,7 +85,8 @@ structure:
       content_type: wiki_article
       pagination: none
       links_to:
-        - sts2_entity_page
+        - target: sts2_entity_page
+          selector: ".mw-parser-output a[href*=\"/wiki/Slay_the_Spire_2:\"]"
       requires_auth: false
     - id: sts2_ancient_page
       label: StS2 Ancient Page
@@ -82,15 +96,59 @@ structure:
       content_type: wiki_article
       pagination: none
       links_to:
-        - sts2_entity_page
+        - target: sts2_entity_page
+          selector: ".mw-parser-output a[href*=\"/wiki/Slay_the_Spire_2:\"]"
       requires_auth: false
   entry_points:
     - sts2_main_page
+api:
+  platform: mediawiki
+  base_url: "https://slaythespire.wiki.gg/api.php"
+  capabilities:
+    - page_list
+    - category_lookup
+    - html_parse
+  taxonomy:
+    list_pages:
+      Cards_List: "Cards"
+      Relics_List: "Relics"
+      Potions_List: "Potions"
+      Events_List: "Events"
+    category_filters:
+      - "Slay the Spire Wiki"
+      - "Disambiguations"
+  filename:
+    replacements:
+      "/": "_"
+      ":": "_"
+      " ": "_"
+  output:
+    frontmatter_fields: []
+    template_map:
+      C: "[[%s]]"
+      KW: "[[%s]]"
+      R: "[[%s]]"
+      BD: "[[%s]]"
+      Icon: "%s"
 extraction:
+  selectors:
+    title: "#firstHeading"
+    body: ".mw-parser-output"
   image_handling:
     attribute: src
     output_format: markdown_inline
     base_url: https://slaythespire.wiki.gg
+  cleanup:
+    - strip_footer
+    - strip_edit_links
+    - strip_skip_links
+    - strip_dpl_wikitext
+    - strip_empty_parens
+    - convert_nested_images
+    - normalize_internal
+    - strip_category_links
+    - normalize_infobox
+    - fix_separators
 ---
 
 ## Overview
@@ -143,6 +201,7 @@ Only 2 ns=0 links appear on the main page (`Slay the Spire Wiki`, `Editor Portal
 
 - Use `DRUID infobox` template (`Category:Pages with DRUID infoboxes`).
 - Standard wiki article structure with infobox + body sections.
+- Wikitext templates observed: `{{Card Infobox|...}}`, `{{Power Infobox|...}}`, `{{C|...}}`, `{{KW|...}}`, `{{R|...}}`, `{{BD|...}}`, `{{Icon|...}}`, `{{Sequel Disambiguation}}`.
 
 ## Discovery Flow
 
@@ -227,5 +286,6 @@ If API is unavailable, Scrapling `fetch` with `network_idle=true` can attempt th
 - Parse (Cards List): `api.php?action=parse&page=Slay_the_Spire_2:Cards_List` — validated 2026-05-07.
 - Category (Cards, ns=3000): `api.php?action=query&list=categorymembers&cmtitle=Category:Cards&cmnamespace=3000` — validated 2026-05-07.
 - Page categories (Bash): `api.php?action=query&prop=categories&titles=Slay_the_Spire_2:Bash` — validated 2026-05-07.
+- Wikitext (Bash): `api.php?action=query&prop=revisions&rvprop=content&rvslots=main&titles=Slay_the_Spire_2:Bash` — validated 2026-05-07.
 - HTML challenge: Direct curl to `/wiki/Slay_the_Spire_2:Bash` returned 403 with cf-mitigated header — validated 2026-05-07.
 - Reports: `reports/2026-05-07-explore-slaythespire-wiki-gg-wiki-slay-the-spire-2-main.md`.
