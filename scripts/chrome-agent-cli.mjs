@@ -1144,7 +1144,7 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {}) {
     if (fs.existsSync(extractionScript)) {
       console.log("Strategy has api.platform=mediawiki — routing to MediaWiki API extraction pipeline");
       const apiArgs = [
-        extractionScript,
+        "-m", "scripts.mediawiki-api-extract",
         targetUrl,
         "--strategy", strategy.path,
         "--output", runDir,
