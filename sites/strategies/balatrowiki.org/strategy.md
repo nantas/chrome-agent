@@ -34,6 +34,7 @@ api:
     link_resolver: "exact_title_match"
     template_processor: "simple_substitution"
     list_page_assembler: "frontmatter_driven"
+  cross_namespace_discovery: false
   taxonomy:
     list_pages:
       Jokers: "Jokers"

@@ -5,6 +5,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
+from typing import Optional
 from urllib.parse import urlparse
 
 from .client import ApiClient, probe_api_endpoint
@@ -13,13 +14,19 @@ from .phase_b import run_phase_b
 from .phase_c import run_phase_c
 from .strategies import (
     AllPagesDiscoveryStrategy,
+    CategoryMembersDiscoveryStrategy,
     ContentAcquisitionStrategy,
     DiscoveryStrategy,
     ExactTitleLinkResolver,
     FrontmatterDrivenListPageAssembler,
+    HtmlRenderedAcquisitionStrategy,
+    HybridAcquisitionStrategy,
+    HybridListPageAssembler,
     LinkResolver,
     ListPageAssembler,
+    ShortNameLinkResolver,
     SimpleSubstitutionTemplateProcessor,
+    StructuredTemplateProcessor,
     TemplateProcessor,
     WikitextOnlyAcquisitionStrategy,
 )
@@ -38,6 +45,7 @@ EXIT_PHASE_B_FAILURE = 12
 EXIT_PHASE_C_FAILURE = 13
 EXIT_STRATEGY_ERROR = 14
 EXIT_INVALID_ARGS = 20
+EXIT_VALIDATION_FAILURE = 30
 
 
 # ===========================================================================
@@ -61,6 +69,17 @@ def parse_strategy(strategy_path: str) -> dict:
 # ===========================================================================
 # Pipeline strategies container
 # ===========================================================================
+
+@dataclass
+class RateLimitConfig:
+    concurrency: int = 1
+    batch_delay_ms: int = 1000
+    max_retries: int = 5
+    initial_delay_sec: float = 1.0
+    backoff_multiplier: float = 2.0
+    max_delay_sec: float = 60.0
+    jitter: bool = True
+
 
 @dataclass
 class PipelineStrategies:
@@ -92,6 +111,30 @@ _PROFILE_KEY_MAP = {
     "list_page_assembler": "list_page_assembler",
 }
 
+_STRATEGY_REGISTRY = {
+    "discovery": {
+        "allpages": AllPagesDiscoveryStrategy,
+        "category_members": CategoryMembersDiscoveryStrategy,
+    },
+    "content_acquisition": {
+        "wikitext_only": WikitextOnlyAcquisitionStrategy,
+        "hybrid_wikitext_plus_rendered": HybridAcquisitionStrategy,
+        "html_rendered": HtmlRenderedAcquisitionStrategy,
+    },
+    "link_resolver": {
+        "exact_title_match": ExactTitleLinkResolver,
+        "short_name_with_cross_namespace": ShortNameLinkResolver,
+    },
+    "template_processor": {
+        "simple_substitution": SimpleSubstitutionTemplateProcessor,
+        "structured_with_lua_fallback": StructuredTemplateProcessor,
+    },
+    "list_page_assembler": {
+        "frontmatter_driven": FrontmatterDrivenListPageAssembler,
+        "hybrid_frontmatter_and_rendered": HybridListPageAssembler,
+    },
+}
+
 
 def build_pipeline(strategy: dict, domain: str = "") -> PipelineStrategies:
     """Build PipelineStrategies from strategy configuration."""
@@ -106,16 +149,19 @@ def build_pipeline(strategy: dict, domain: str = "") -> PipelineStrategies:
                 profile_key = pk
                 break
         requested_id = content_profile.get(profile_key, default_id) if profile_key else default_id
-        if requested_id != default_id and requested_id not in {default_id}:
-            # Unknown strategy ID — warn and fall back to default
-            log.warning("Unknown strategy ID '%s' for %s, using default '%s'",
-                        requested_id, field, default_id)
-            kwargs[field] = default_cls()
+
+        registry = _STRATEGY_REGISTRY.get(field, {})
+        cls = registry.get(requested_id)
+        if cls is None:
+            if requested_id != default_id:
+                log.warning("Unknown strategy ID '%s' for %s, using default '%s'",
+                            requested_id, field, default_id)
+            cls = default_cls
+
+        if field == "link_resolver":
+            kwargs[field] = cls(domain)
         else:
-            if field == "link_resolver":
-                kwargs[field] = default_cls(domain)
-            else:
-                kwargs[field] = default_cls()
+            kwargs[field] = cls()
 
     return PipelineStrategies(**kwargs)
 
@@ -124,7 +170,7 @@ def build_pipeline(strategy: dict, domain: str = "") -> PipelineStrategies:
 # Validation
 # ===========================================================================
 
-def validate_api_config(api_config: dict | None, strategies: PipelineStrategies) -> str | None:
+def validate_api_config(api_config: Optional[dict], strategies: PipelineStrategies) -> Optional[str]:
     """Validate the api field from strategy frontmatter. Returns error message or None."""
     if api_config is None:
         return "Strategy has no 'api' field"
@@ -142,6 +188,97 @@ def validate_api_config(api_config: dict | None, strategies: PipelineStrategies)
         missing = required - caps
         return f"Missing required capabilities: {missing}"
     return None
+
+
+# ===========================================================================
+# Rate limit configuration resolution
+# ===========================================================================
+
+def _load_anti_crawl_strategy(anti_crawl_id: str) -> Optional[dict]:
+    """Load an anti-crawl strategy file and return its frontmatter."""
+    base_path = os.path.join(os.path.dirname(__file__), "..", "..", "sites", "anti-crawl")
+    file_path = os.path.join(base_path, f"{anti_crawl_id}.md")
+    if not os.path.exists(file_path):
+        return None
+    with open(file_path, "r", encoding="utf-8") as f:
+        content = f.read()
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        return None
+    import yaml
+    return yaml.safe_load(parts[1])
+
+
+def resolve_rate_limit_config(strategy: dict, cli_args: argparse.Namespace) -> RateLimitConfig:
+    """Resolve final rate limit configuration using four-layer priority.
+    
+    Priority (highest to lowest):
+    1. CLI arguments
+    2. Site Strategy local overrides (api.rate_limit)
+    3. Anti-Crawl tier template
+    4. Code safe defaults
+    """
+    config = RateLimitConfig()  # Layer 4: safe defaults
+
+    # Layer 3: Anti-Crawl tier template
+    api_config = strategy.get("api", {})
+    rate_limit_cfg = api_config.get("rate_limit", {})
+    tier_name = rate_limit_cfg.get("tier")
+    
+    if tier_name:
+        anti_crawl_refs = strategy.get("anti_crawl_refs", [])
+        for ref in anti_crawl_refs:
+            ac_strategy = _load_anti_crawl_strategy(ref)
+            if ac_strategy and "rate_limit_tiers" in ac_strategy:
+                tiers = ac_strategy["rate_limit_tiers"]
+                if tier_name in tiers:
+                    tier = tiers[tier_name]
+                    config.concurrency = tier.get("concurrency", config.concurrency)
+                    config.batch_delay_ms = tier.get("batch_delay_ms", config.batch_delay_ms)
+                    retry = tier.get("retry", {})
+                    config.max_retries = retry.get("max_retries", config.max_retries)
+                    config.initial_delay_sec = retry.get("initial_delay_sec", config.initial_delay_sec)
+                    config.backoff_multiplier = retry.get("backoff_multiplier", config.backoff_multiplier)
+                    config.max_delay_sec = retry.get("max_delay_sec", config.max_delay_sec)
+                    config.jitter = retry.get("jitter", config.jitter)
+                    break
+        else:
+            log.warning("Tier '%s' not found in any referenced anti-crawl strategy, using defaults", tier_name)
+
+    # Layer 2: Site Strategy local overrides
+    if "concurrency" in rate_limit_cfg and rate_limit_cfg["concurrency"] is not None:
+        config.concurrency = rate_limit_cfg["concurrency"]
+    if "batch_delay_ms" in rate_limit_cfg and rate_limit_cfg["batch_delay_ms"] is not None:
+        config.batch_delay_ms = rate_limit_cfg["batch_delay_ms"]
+    retry_override = rate_limit_cfg.get("retry", {})
+    if "max_retries" in retry_override and retry_override["max_retries"] is not None:
+        config.max_retries = retry_override["max_retries"]
+    if "initial_delay_sec" in retry_override and retry_override["initial_delay_sec"] is not None:
+        config.initial_delay_sec = retry_override["initial_delay_sec"]
+    if "backoff_multiplier" in retry_override and retry_override["backoff_multiplier"] is not None:
+        config.backoff_multiplier = retry_override["backoff_multiplier"]
+    if "max_delay_sec" in retry_override and retry_override["max_delay_sec"] is not None:
+        config.max_delay_sec = retry_override["max_delay_sec"]
+    if "jitter" in retry_override and retry_override["jitter"] is not None:
+        config.jitter = retry_override["jitter"]
+
+    # Layer 1: CLI arguments (highest priority)
+    if cli_args.concurrency is not None:
+        config.concurrency = cli_args.concurrency
+    if getattr(cli_args, "batch_delay_ms", None) is not None:
+        config.batch_delay_ms = cli_args.batch_delay_ms
+    if getattr(cli_args, "max_retries", None) is not None:
+        config.max_retries = cli_args.max_retries
+    if getattr(cli_args, "backoff_multiplier", None) is not None:
+        config.backoff_multiplier = cli_args.backoff_multiplier
+    if getattr(cli_args, "jitter", None) is not None:
+        config.jitter = cli_args.jitter
+
+    log.info("Resolved rate limit config: concurrency=%d, batch_delay_ms=%d, max_retries=%d, "
+             "backoff_multiplier=%.1f, jitter=%s",
+             config.concurrency, config.batch_delay_ms, config.max_retries,
+             config.backoff_multiplier, config.jitter)
+    return config
 
 
 # ===========================================================================
@@ -181,7 +318,10 @@ def run_pipeline(args: argparse.Namespace) -> int:
             log.error("API endpoint unreachable for %s — cannot proceed, fallback required", domain)
             return EXIT_API_UNREACHABLE
 
-    client = ApiClient(base_url)
+    # Resolve rate limit configuration
+    rate_limit_config = resolve_rate_limit_config(strategy, args)
+
+    client = ApiClient(base_url, rate_limit_config=rate_limit_config)
 
     # Create output directory
     os.makedirs(args.output, exist_ok=True)
@@ -212,7 +352,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
     if "B" in phases or "all" in phases:
         try:
             results, stats = run_phase_b(
-                client, manifest, strategy, args.concurrency, domain,
+                client, manifest, strategy, rate_limit_config, domain,
                 strategies.content_acquisition, strategies.link_resolver, strategies.template_processor
             )
 
@@ -234,19 +374,50 @@ def run_pipeline(args: argparse.Namespace) -> int:
             return EXIT_PHASE_B_FAILURE
     elif "C" in phases:
         results_path = os.path.join(args.output, "extraction_results.json")
-        raise NotImplementedError("Resuming from Phase C only is not yet supported")
+        with open(results_path, "r", encoding="utf-8") as f:
+            saved = json.load(f)
+        # Reconstruct results map from saved data
+        results = {}
+        for title, info in saved.get("pages", {}).items():
+            results[title] = {
+                "title": title,
+                "status": info.get("status"),
+                "error": info.get("error"),
+                "content": info.get("content"),
+                "rendered_html": info.get("rendered_html"),
+                "images": info.get("images"),
+            }
+        log.info("Loaded existing results: %d pages", len(results))
 
     # --- Phase C ---
     if "C" in phases or "all" in phases:
         try:
             phase_c_stats = run_phase_c(
                 args.output, manifest, results, strategy, domain,
-                strategies.list_page_assembler, strategies.link_resolver
+                strategies.list_page_assembler, strategies.link_resolver,
+                client=client
             )
             log.info("Phase C stats: %s", json.dumps(phase_c_stats, indent=2))
         except Exception as e:
             log.error("Phase C failed: %s", e)
             return EXIT_PHASE_C_FAILURE
+
+    # --- L6 Validation ---
+    if args.validate or ("C" in phases or "all" in phases):
+        try:
+            from .strategies import run_validation
+            report = run_validation(args.output, client)
+            total_issues = (len(report.get("broken_links", []))
+                            + len(report.get("empty_content", []))
+                            + len(report.get("unavailable_images", [])))
+            if total_issues > 0:
+                log.warning("L6 validation found %d issues — see validation_report.json", total_issues)
+                if args.validate:
+                    return EXIT_VALIDATION_FAILURE
+        except Exception as e:
+            log.error("L6 validation failed: %s", e)
+            if args.validate:
+                return EXIT_VALIDATION_FAILURE
 
     # Final summary
     if stats:

@@ -84,12 +84,12 @@
 	},
 	{
       "domain": "slaythespire.wiki.gg",
-      "description": "Slay the Spire 2 wiki on wiki.gg, MediaWiki 1.43.6 with custom namespace ns=3000",
+      "description": "Slay the Spire 1 and 2 wiki on wiki.gg, MediaWiki 1.43.6. HTML-rendered API crawl covering ns=0 (StS1), ns=3000 (StS2), and ns=14 (categories).",
       "protection_level": "low",
-      "page_types": ["static_article"],
+      "page_types": ["static_article", "wiki_list_page", "wiki_category"],
       "pagination": ["none"],
-      "entry_points": ["sts2_main_page", "sts2_list_page", "sts2_entity_page"],
-      "anti_crawl_refs": ["default"],
+      "entry_points": ["sts2_main_page", "sts2_list_page", "sts2_entity_page", "category_page"],
+      "anti_crawl_refs": ["default", "rate-limit-api"],
       "file": "slaythespire.wiki.gg/strategy.md"
     }
   ]

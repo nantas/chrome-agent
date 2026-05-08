@@ -101,6 +101,31 @@ Category discovery SHALL use `action=query&prop=categories&cllimit=max` in batch
 - **AND** the captured content SHALL be reserved for Phase C index.md generation
 - **AND** non-list pages SHALL be deferred to Phase B for full extraction
 
+### Requirement: Rate Limit 配置解析
+
+The system SHALL resolve the final rate limit configuration for the MediaWiki API pipeline using a four-layer override priority before executing Phase B.
+
+The four layers, from highest to lowest priority, SHALL be:
+1. **CLI arguments**: `--concurrency`, `--batch-delay-ms`, `--max-retries`, `--backoff-multiplier`, `--jitter`
+2. **Site Strategy local overrides**: `api.rate_limit.{concurrency, batch_delay_ms, retry.*}`
+3. **Anti-Crawl tier template**: The `rate_limit_tiers` tier referenced by `api.rate_limit.tier` from the matching anti-crawl strategy
+4. **Code safe defaults**: `concurrency=1`, `batch_delay_ms=1000`, `retry.max_retries=5`, `retry.initial_delay_sec=1.0`, `retry.backoff_multiplier=2.0`, `retry.max_delay_sec=60.0`, `retry.jitter=true`
+
+The resolution SHALL be performed once at pipeline startup and the resulting configuration SHALL be passed to both the `ApiClient` and `Phase B` executor. The `ApiClient` SHALL use the retry/backoff/jitter parameters for its `_request` method. The Phase B executor SHALL use the `concurrency` and `batch_delay_ms` parameters for its `ThreadPoolExecutor` and batch delay insertion.
+
+#### Scenario: 配置解析在 pipeline 启动时完成
+
+- **WHEN** the pipeline starts with a valid site strategy and optional CLI arguments
+- **THEN** the system SHALL resolve the final rate limit configuration before Phase A execution
+- **AND** the resolved configuration SHALL be logged at INFO level
+- **AND** the same configuration object SHALL be passed to both `ApiClient` and `run_phase_b`
+
+#### Scenario: 无策略配置时使用安全默认值
+
+- **WHEN** the pipeline runs against a site strategy with no `api.rate_limit` field and no CLI overrides
+- **THEN** the system SHALL use code safe defaults for all rate limit parameters
+- **AND** Phase B SHALL execute with `concurrency=1` and `batch_delay_ms=1000`
+
 ### Requirement: Phase B — 内容提取
 
 The system SHALL extract content from each discovered page using the MediaWiki parse API.
@@ -112,14 +137,14 @@ For each page, the system SHALL:
 4. Expand template calls to inline Markdown
 5. Convert image references to absolute URL inline Markdown
 
-Phase B SHALL support concurrent execution with configurable concurrency (default: 5).
+Phase B SHALL support concurrent execution with **configurable concurrency** (resolved via the four-layer priority; safe default: 1).
 
 #### Scenario: Wikitext fetch
 
 - **WHEN** Phase B fetches wikitext for page "Joker"
 - **THEN** the API response SHALL contain template-expanded wikitext in `parse.wikitext.*`
 - **AND** the wikitext SHALL be no larger than 100KB per page
-- **AND** failed fetches SHALL be retried with exponential backoff (1s, 2s, 4s, max 3 retries)
+- **AND** failed fetches SHALL be retried with exponential backoff using the resolved retry parameters
 
 #### Scenario: Infobox frontmatter extraction
 
@@ -149,19 +174,44 @@ Phase B SHALL support concurrent execution with configurable concurrency (defaul
 - **AND** the image URL SHALL use the site's canonical image path (derived from API base URL)
 - **AND** thumbnail size parameters SHALL be stripped from the output URL
 
-#### Scenario: Concurrency and rate limiting
-
-- **WHEN** Phase B executes with concurrency 5
-- **THEN** at most 5 API requests SHALL be in-flight simultaneously
-- **AND** a 200ms delay SHALL be inserted between request batches to avoid triggering rate limits
-- **AND** HTTP 429 responses SHALL trigger exponential backoff with jitter
-
 #### Scenario: Partial failure during extraction
 
 - **WHEN** some pages fail to fetch after all retries
 - **THEN** the system SHALL continue processing remaining pages
 - **AND** failed pages SHALL be recorded with their error reason in the crawl manifest
 - **AND** the final result SHALL be `partial_success` if any pages succeeded
+
+### Requirement: Concurrency and rate limiting
+
+The system SHALL control concurrent API requests and inter-batch delays using the resolved rate limit configuration.
+
+The Phase B executor SHALL:
+1. Create a `ThreadPoolExecutor` with `max_workers` equal to the resolved `concurrency`
+2. Submit page processing futures to the executor
+3. After each completion checkpoint (or after each batch of completions), sleep for `batch_delay_ms / 1000.0` seconds before continuing
+4. Ensure that the batch delay is applied regardless of whether the completed requests succeeded or failed
+
+The `ApiClient` SHALL:
+1. On HTTP 429 or `requests.RequestException`, enter the retry loop
+2. Calculate the wait time using the resolved retry parameters
+3. Apply jitter if `jitter` is true: `delay = delay * (1 + random.uniform(-0.2, 0.2))`
+4. Sleep for the calculated delay before the next attempt
+5. Raise `RuntimeError` only after exhausting all retries
+
+#### Scenario: 批次延迟在成功和失败后都生效
+
+- **WHEN** a batch of 5 requests completes with 3 successes and 2 failures
+- **THEN** the system SHALL wait for the resolved `batch_delay_ms` before processing the next batch
+- **AND** the wait SHALL NOT be skipped because some requests failed
+
+#### Scenario: 429 退避使用配置参数
+
+- **WHEN** an API request returns HTTP 429
+- **AND** the resolved retry configuration is `max_retries=5`, `initial_delay_sec=1.0`, `backoff_multiplier=2.5`, `max_delay_sec=60.0`, `jitter=true`
+- **THEN** the first retry SHALL wait approximately 1.0s (±20% jitter)
+- **AND** the second retry SHALL wait approximately 2.5s (±20% jitter)
+- **AND** the third retry SHALL wait approximately 6.25s (±20% jitter)
+- **AND** delays SHALL cap at 60.0s regardless of further multiplications
 
 ### Requirement: Phase C — 输出组装
 

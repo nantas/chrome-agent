@@ -3,7 +3,7 @@
 import logging
 
 from .client import ApiClient
-from .strategies import DiscoveryStrategy
+from .strategies import DiscoveryStrategy, title_to_filepath
 
 log = logging.getLogger("mediawiki-api-extract")
 
@@ -31,29 +31,44 @@ def run_phase_a(client: ApiClient, strategy: dict, origin: str,
     log.info("List page content fetched for %d pages", len(list_page_content))
 
     # Build manifest
+    namespaces = api.get("namespaces", [api.get("namespace", 0)])
+    if not isinstance(namespaces, list):
+        namespaces = [namespaces]
+
     manifest = {
         "pages": [],
         "list_page_content": {},
+        "namespaces": namespaces,
     }
     for page in pages:
         title = page["title"]
         cats = categories_map.get(title, [])
-        target_dir = discovery_strategy.classify_page(
-            title, cats, list_pages, page_categories, category_filters
-        )
+        ns = page.get("ns", 0)
 
-        filename_config = api.get("filename", {})
-        replacements = filename_config.get("replacements", {})
-        safe_title = title
-        for char, replacement in replacements.items():
-            safe_title = safe_title.replace(char, replacement)
-        safe_title = safe_title.replace(" ", "_")
-        filename = f"{safe_title}.md"
+        # Use semantic directory mapping for path
+        target_dir, filename = title_to_filepath(title, ns)
+
+        # For non-category pages, also run classification for subdirectory hint
+        if ns != 14:
+            classified_dir = discovery_strategy.classify_page(
+                title, cats, list_pages, page_categories, category_filters, namespace=ns
+            )
+            # If classification gives a more specific subdir, append it
+            # Strip namespace prefix if target_dir already provides it
+            if classified_dir and classified_dir != "Misc":
+                if target_dir == "Slay_the_Spire_2" and classified_dir.startswith("StS2/"):
+                    classified_dir = classified_dir[len("StS2/"):]
+                if target_dir == "" and classified_dir.startswith("StS1/"):
+                    classified_dir = classified_dir[len("StS1/"):]
+                if target_dir:
+                    target_dir = f"{target_dir}/{classified_dir}"
+                else:
+                    target_dir = classified_dir
 
         manifest["pages"].append({
             "title": title,
             "pageid": page.get("pageid"),
-            "ns": page.get("ns", 0),
+            "ns": ns,
             "categories": cats,
             "target_directory": target_dir,
             "target_filename": filename,

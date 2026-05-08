@@ -4,15 +4,19 @@
 - Repo ref: env:CHROME_AGENT_REPO
 - Resolution: Resolved via CHROME_AGENT_REPO default (env:CHROME_AGENT_REPO).
 - Workflow: platform_analysis
-- Strategy matched: no
+- Strategy matched: yes
 - Scrapling preflight: available (env)
-- Strategy file: none
-- Gap: no site strategy currently covers this target.
-- Recommended fetcher: unknown until strategy coverage exists.
+- Strategy file: ../agentic/chrome-agent/sites/strategies/slaythespire.wiki.gg/strategy.md
+- Protection level: low
+- Entry points: sts2_main_page
+- Matched page type: sts2_main_page
+- Recommended fetcher: get
+- Anti-crawl refs: default
 
 ## Structure Clues
-- Host: slaythespire.wiki.gg
-- Strategy gap prevents deeper bounded workflow guidance.
+- Domain: slaythespire.wiki.gg
+- Declared pages: sts2_main_page, sts2_list_page, sts2_entity_page, sts2_mechanic_page, sts2_character_page, sts2_act_page, sts2_ancient_page
+- Matched URL pattern: /wiki/Slay_the_Spire_2:Main
 
 ## Next Action
-- Run `chrome-agent explore <url>` as the first step for strategy authoring evidence, then add or refine a `sites/strategies/<domain>/strategy.md` entry.
+- Use `chrome-agent fetch <url>` for content retrieval, or `chrome-agent crawl <url>` when bounded traversal is needed.

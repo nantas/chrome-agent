@@ -1,9 +1,10 @@
 ---
 domain: slaythespire.wiki.gg
-description: Slay the Spire 2 wiki on wiki.gg, a MediaWiki 1.43.6 site with custom namespace (ns=3000) for sequel content
+description: Slay the Spire 1 and 2 wiki on wiki.gg, MediaWiki 1.43.6 with custom namespace (ns=3000) for sequel content. Full-site crawl via HTML-rendered API path.
 protection_level: low
 anti_crawl_refs:
   - default
+  - rate-limit-api
 structure:
   pages:
     - id: sts2_main_page
@@ -108,28 +109,94 @@ api:
     - page_list
     - category_lookup
     - html_parse
+    - wikitext_parse
+    - imageinfo_query
+  namespaces: [0, 3000]
+  content_profile:
+    discovery_strategy: "category_members"
+    content_acquisition: "html_rendered"
+    link_resolver: "short_name_with_cross_namespace"
+    template_processor: "structured_with_lua_fallback"
+    list_page_assembler: "hybrid_frontmatter_and_rendered"
+  image_filtering:
+    list_pages: base_only
+  card_images:
+    full_card_url_pattern: "https://{domain}/images/{filename}"
+    druid_skip_patterns:
+      - "StS2_Bg*"
+      - "StS2_Frame*"
+      - "StS2_Banner*"
+      - "StS2_Type*"
+      - "*Orb.png"
+  card_list_splitting:
+    enabled: true
+    group_by: ["color", "rarity"]
+    output_dir: "{list_dir}/{color}/{rarity}.md"
   taxonomy:
     list_pages:
-      Cards_List: "Cards"
-      Relics_List: "Relics"
-      Potions_List: "Potions"
-      Events_List: "Events"
+      Cards_List: "StS1/Cards"
+      Relics_List: "StS1/Relics"
+      Potions_List: "StS1/Potions"
+      Events_List: "StS1/Events"
+      Slay the Spire 2:Cards_List: "StS2/Cards"
+      Slay the Spire 2:Relics_List: "StS2/Relics"
+      Slay the Spire 2:Potions_List: "StS2/Potions"
+      Slay the Spire 2:Events_List: "StS2/Events"
+    page_categories:
+      Character: "Characters"
+      Ancients: "Ancients"
+      Acts: "Acts"
+      Bosses: "Enemies/Bosses"
+      Elites: "Enemies/Elites"
+      Monsters: "Enemies/Monsters"
+      Minions: "Enemies/Monsters"
+      "Game Mechanics": "Mechanics"
+      Cards: "Cards"
+      Relics: "Relics"
+      Potions: "Potions"
+      Events: "Events"
     category_filters:
       - "Slay the Spire Wiki"
       - "Disambiguations"
+      - "Pages with DRUID infoboxes"
+      - "Pages with hatnotes"
+      - "Pages with broken file links"
+      - "Pages using Tabber parser tag"
+      - "Stubs"
+      - "ToUpdate"
+      - "Candidates for deletion"
+      - "Main page boxes"
   filename:
     replacements:
       "/": "_"
       ":": "_"
       " ": "_"
+  rate_limit:
+    tier: strict
+    batch_delay_ms: 800
+    retry:
+      max_retries: 5
+      backoff_multiplier: 2.5
   output:
-    frontmatter_fields: []
+    link_format: markdown_relative
+    frontmatter_fields:
+      - name
+      - cost
+      - type
+      - rarity
+      - color
+      - image
     template_map:
       C: "[[%s]]"
       KW: "[[%s]]"
       R: "[[%s]]"
       BD: "[[%s]]"
       Icon: "%s"
+      "Card Infobox": ""
+      "Power Infobox": ""
+      "Sequel Disambiguation": ""
+      "Cards": ""
+      "Infobox": ""
 extraction:
   selectors:
     title: "#firstHeading"

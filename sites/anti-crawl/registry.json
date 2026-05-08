@@ -35,8 +35,8 @@
     {
       "id": "rate-limit-api",
       "protection_type": "rate_limit",
-      "sites": ["fanbox.cc"],
-      "detection_summary": "TypeError: Failed to fetch on API calls, no HTTP response, ~2.5h cooldown",
+      "sites": ["fanbox.cc", "slaythespire.wiki.gg"],
+      "detection_summary": "Browser fetch: TypeError: Failed to fetch, no HTTP response, ~2.5h cooldown. MediaWiki API: HTTP 429 with ratelimited JSON error, recoverable with backoff.",
       "primary_engine": "scrapling-fetch",
       "file": "rate-limit-api.md"
     }

@@ -355,6 +355,7 @@ The `api` object SHALL contain:
 | `taxonomy` | object | no | Category-to-directory mapping rules |
 | `filename` | object | no | Filename sanitization rules |
 | `output` | object | no | Output configuration for Markdown generation |
+| `rate_limit` | object | no | Request frequency control configuration (see API Rate Limit requirement) |
 
 The `api` field SHALL be optional. Its absence SHALL NOT invalidate the strategy file.
 
@@ -388,3 +389,89 @@ The system SHALL define the `api.filename` object with `replacements` map for fi
 The system SHALL define the `api.output` object containing:
 - `frontmatter_fields` (optional): array of infobox template parameter names to extract
 - `template_map` (optional): map of wikitext template names to inline Markdown format strings
+
+### Requirement: API Rate Limit 配置
+
+The system SHALL define an optional `rate_limit` object within the `api` block of the site strategy YAML frontmatter for sites that require configurable request frequency control during MediaWiki API extraction.
+
+The `api.rate_limit` object SHALL contain:
+- `tier` (optional, string): The identifier of the anti-crawl tier to use as the baseline template. When specified, the system SHALL resolve the tier from the anti-crawl strategy referenced in `anti_crawl_refs` that defines `rate_limit_tiers`. When absent or when no matching anti-crawl strategy provides tiers, the system SHALL fall back to code-level safe defaults.
+- `concurrency` (optional, int): Override for the tier's `concurrency` value.
+- `batch_delay_ms` (optional, int): Override for the tier's `batch_delay_ms` value.
+- `retry` (optional, object): Override for the tier's retry configuration. Each sub-field is optional and overrides only the corresponding tier field:
+  - `max_retries` (optional, int)
+  - `initial_delay_sec` (optional, float)
+  - `backoff_multiplier` (optional, float)
+  - `max_delay_sec` (optional, float)
+  - `jitter` (optional, boolean)
+
+The system SHALL apply the following four-layer override priority when resolving the final rate limit configuration for the MediaWiki API pipeline:
+1. **CLI arguments** (highest priority): `--concurrency`, `--batch-delay-ms`, `--max-retries`, etc.
+2. **Site Strategy local overrides**: Non-null values in `api.rate_limit.{concurrency,batch_delay_ms,retry.*}`
+3. **Anti-Crawl tier template**: The resolved tier from the matching anti-crawl strategy's `rate_limit_tiers`
+4. **Code safe defaults** (lowest priority): `concurrency=1`, `batch_delay_ms=1000`, `retry.max_retries=5`, `retry.initial_delay_sec=1.0`, `retry.backoff_multiplier=2.0`, `retry.max_delay_sec=60.0`, `retry.jitter=true`
+
+Local overrides in the site strategy SHALL be partial: only explicitly provided fields override the tier template; absent fields SHALL inherit from the tier. The `tier` field itself SHALL be optional.
+
+#### Scenario: Site strategy 引用 anti-crawl tier 并本地覆盖
+
+- **WHEN** a site strategy specifies:
+  ```yaml
+  anti_crawl_refs:
+    - rate-limit-api
+  api:
+    rate_limit:
+      tier: strict
+      batch_delay_ms: 800
+      retry:
+        max_retries: 5
+        backoff_multiplier: 2.5
+  ```
+- **AND** `rate-limit-api.md` defines:
+  ```yaml
+  rate_limit_tiers:
+    strict:
+      concurrency: 1
+      batch_delay_ms: 500
+      retry:
+        max_retries: 3
+        initial_delay_sec: 1.0
+        backoff_multiplier: 2.0
+        max_delay_sec: 60.0
+        jitter: true
+  ```
+- **THEN** the resolved configuration SHALL be:
+  - `concurrency: 1` (inherited from strict tier)
+  - `batch_delay_ms: 800` (overridden by site strategy)
+  - `retry.max_retries: 5` (overridden by site strategy)
+  - `retry.initial_delay_sec: 1.0` (inherited from strict tier)
+  - `retry.backoff_multiplier: 2.5` (overridden by site strategy)
+  - `retry.max_delay_sec: 60.0` (inherited from strict tier)
+  - `retry.jitter: true` (inherited from strict tier)
+
+#### Scenario: Site strategy 不提供 rate_limit 时的安全默认值
+
+- **WHEN** a site strategy has no `api.rate_limit` field
+- **THEN** the MediaWiki API pipeline SHALL use code safe defaults:
+  - `concurrency: 1`
+  - `batch_delay_ms: 1000`
+  - `retry.max_retries: 5`
+  - `retry.initial_delay_sec: 1.0`
+  - `retry.backoff_multiplier: 2.0`
+  - `retry.max_delay_sec: 60.0`
+  - `retry.jitter: true`
+
+#### Scenario: CLI 参数覆盖一切
+
+- **WHEN** the pipeline is invoked with `--concurrency 3 --batch-delay-ms 200`
+- **AND** the site strategy has `api.rate_limit.concurrency: 1`
+- **THEN** the final concurrency SHALL be `3`
+- **AND** the final batch delay SHALL be `200`
+- **AND** all other parameters SHALL still resolve through the four-layer priority for their respective fields
+
+#### Scenario: 引用了 anti-crawl 但 tier 不存在
+
+- **WHEN** a site strategy specifies `tier: very-strict`
+- **AND** the referenced anti-crawl strategy does not define a `very-strict` tier
+- **THEN** the system SHALL emit a warning
+- **AND** fall back to code safe defaults for all rate limit parameters
