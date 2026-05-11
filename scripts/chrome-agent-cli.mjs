@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 
 import fs from "node:fs";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 
@@ -20,6 +21,7 @@ Commands:
   fetch <url>            Run the explicit content-retrieval backend workflow.
   crawl <url>            Run the explicit strategy-guided bounded-crawl backend workflow.
   scrape <url>           Run the explicit strategy-free recursive scraping backend workflow.
+  batch <urls...>        Fetch multiple URLs in parallel using the Obscura serve pool.
   bootstrap-strategy <url> --from <domain> [--profile <name>]
                          Bootstrap a new site strategy from an existing reference strategy.
   doctor                 Validate launcher, repo resolution, repo shape, and Scrapling readiness.
@@ -37,6 +39,8 @@ Command options:
   --concurrency <n>      Phase 2 Markdown conversion concurrency. Default: 5.
   --fetcher <name>       Override Scrapling fetcher for scrape (default: get).
   --keep-html            Retain intermediate HTML files alongside Markdown.
+  --parallel             Use Obscura serve pool for parallel content retrieval (crawl/scrape).
+  --workers <n>          Number of Obscura workers for parallel mode. Default: 5, max: 30.
   --report               Force durable report emission to reports/.
   --no-report            Disable durable report emission for this run.
   --scope <scope>        Clean scope: disposable (default) or all.
@@ -86,6 +90,8 @@ function parseArgs(argv) {
   let concurrency = 5;
   let fetcherOverride = null;
   let keepHtml = false;
+  let parallel = false;
+  let workers = 5;
   const positionals = [];
 
   for (let i = 0; i < passthrough.length; i += 1) {
@@ -204,6 +210,19 @@ function parseArgs(argv) {
       keepHtml = true;
       continue;
     }
+    if (value === "--parallel") {
+      parallel = true;
+      continue;
+    }
+    if (value === "--workers" && i + 1 < passthrough.length) {
+      workers = Number.parseInt(passthrough[i + 1], 10);
+      i += 1;
+      continue;
+    }
+    if (value.startsWith("--workers=")) {
+      workers = Number.parseInt(value.slice("--workers=".length), 10);
+      continue;
+    }
     if (!value.startsWith("-")) {
       positionals.push(value);
     }
@@ -225,8 +244,11 @@ function parseArgs(argv) {
     concurrency: Number.isFinite(concurrency) && concurrency > 0 ? concurrency : 5,
     fetcherOverride,
     keepHtml,
+    parallel,
+    workers: Number.isFinite(workers) && workers > 0 ? Math.min(workers, 30) : 5,
     command: positionals[0] ?? null,
     target: positionals[1] ?? null,
+    positionals,
     internal,
   };
 }
@@ -529,6 +551,357 @@ function runEngineFetch(repoRoot, fetcher, targetUrl, outputPath, extraArgs = []
   return runScraplingFetch(repoRoot, fetcher, targetUrl, outputPath, extraArgs);
 }
 
+// =============================================================================
+// Obscura preflight, serve pool, and concurrent fetch
+// =============================================================================
+
+function runObscuraPreflight(repoRoot, allowInstall) {
+  const managedDir = path.join(os.homedir(), ".cache", "chrome-agent-obscura", "bin");
+  const managedBin = path.join(managedDir, "obscura");
+  const envPath = process.env.OBSCURA_CLI_PATH;
+
+  const result = { ok: false, path: null, version: null, workerOk: false, source: null };
+
+  if (envPath && fs.existsSync(envPath)) {
+    const v = spawnSync(envPath, ["--help"], { encoding: "utf8" });
+    if (v.status === 0) {
+      result.path = envPath;
+      result.source = "env";
+    }
+  }
+
+  if (!result.path && fs.existsSync(managedBin)) {
+    const v = spawnSync(managedBin, ["--help"], { encoding: "utf8" });
+    if (v.status === 0) {
+      result.path = managedBin;
+      result.source = "managed";
+    }
+  }
+
+  if (!result.path && allowInstall) {
+    const installScript = path.join(repoRoot, "scripts", "obscura-cli-preflight.sh");
+    if (fs.existsSync(installScript)) {
+      const install = spawnSync("bash", [installScript], { cwd: repoRoot, encoding: "utf8" });
+      if (install.status === 0 && fs.existsSync(managedBin)) {
+        const v = spawnSync(managedBin, ["--help"], { encoding: "utf8" });
+        if (v.status === 0) {
+          result.path = managedBin;
+          result.source = "installed";
+        }
+      }
+    }
+  }
+
+  if (!result.path) {
+    return result;
+  }
+
+  // Version detection
+  const versionOut = spawnSync(result.path, ["--version"], { encoding: "utf8" });
+  if (versionOut.status === 0) {
+    const m = versionOut.stdout.match(/(\d+\.\d+\.\d+)/);
+    result.version = m ? m[1] : null;
+  }
+
+  // Worker binary check
+  const workerPath = path.join(path.dirname(result.path), "obscura-worker");
+  if (fs.existsSync(workerPath)) {
+    const w = spawnSync(workerPath, ["--help"], { encoding: "utf8" });
+    result.workerOk = w.status === 0;
+  }
+
+  result.ok = true;
+  return result;
+}
+
+function runObscuraFetch(repoRoot, targetUrl, outputPath, extraArgs = []) {
+  ensureDir(path.dirname(outputPath));
+  const preflight = runObscuraPreflight(repoRoot, true);
+  if (!preflight.ok || !preflight.path) {
+    return {
+      ok: false,
+      preflight,
+      summary: "Obscura CLI preflight failed.",
+      stderr: "Obscura binary not available.",
+    };
+  }
+  const args = ["fetch", targetUrl, "--dump", "html", ...extraArgs];
+  const result = spawnSync(preflight.path, args, { cwd: repoRoot, encoding: "utf8" });
+  if (result.status === 0) {
+    fs.writeFileSync(outputPath, result.stdout, "utf8");
+  }
+  return {
+    ok: result.status === 0,
+    preflight,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    command: [preflight.path, ...args].join(" "),
+  };
+}
+
+function isPortAvailable(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", () => resolve(false));
+    server.once("listening", () => {
+      server.close();
+      resolve(true);
+    });
+    server.listen(port, "127.0.0.1");
+  });
+}
+
+async function findAvailablePort(startPort = 9200, maxAttempts = 100) {
+  for (let i = 0; i < maxAttempts; i += 1) {
+    const port = startPort + i;
+    if (await isPortAvailable(port)) {
+      return port;
+    }
+  }
+  throw new Error(`No available port found in range ${startPort}-${startPort + maxAttempts - 1}`);
+}
+
+async function startObscuraServe(obscuraPath, workers, port) {
+  const child = spawn(obscuraPath, ["serve", "--workers", String(workers), "--port", String(port)], {
+    detached: true,
+    stdio: ["ignore", "ignore", "ignore"],
+  });
+
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    try {
+      const resp = await new Promise((resolve, reject) => {
+        const req = net.createConnection({ host: "127.0.0.1", port }, () => {
+          req.write("GET /json/version HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n");
+        });
+        let data = "";
+        req.on("data", (chunk) => { data += chunk; });
+        req.on("end", () => resolve(data));
+        req.on("error", reject);
+        req.setTimeout(500, () => req.destroy());
+      });
+      if (resp.includes("200 OK") || resp.includes("Browser")) {
+        return { process: child, port, workers, obscuraPath };
+      }
+    } catch {
+      // not ready yet
+    }
+    await new Promise((r) => setTimeout(r, 200));
+  }
+
+  try { child.kill("SIGTERM"); } catch { /* ignore */ }
+  throw new Error("Obscura serve failed to become ready within 5 seconds");
+}
+
+function isProcessAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function stopObscuraServe(handle) {
+  const { process: child } = handle;
+  if (!child || !child.pid) return;
+
+  try {
+    process.kill(-child.pid, "SIGTERM");
+  } catch {
+    try {
+      child.kill("SIGTERM");
+    } catch { /* ignore */ }
+  }
+
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    if (!isProcessAlive(child.pid)) {
+      return;
+    }
+  }
+
+  try {
+    process.kill(-child.pid, "SIGKILL");
+  } catch {
+    try {
+      child.kill("SIGKILL");
+    } catch { /* ignore */ }
+  }
+}
+
+async function concurrentFetch(serveHandle, urls, timeout = 15) {
+  const { port, workers, obscuraPath } = serveHandle;
+  const maxConcurrency = Math.min(urls.length, workers);
+  const results = [];
+  let index = 0;
+
+  async function worker() {
+    while (index < urls.length) {
+      const i = index++;
+      const url = urls[i];
+      const start = Date.now();
+      try {
+        const child = spawn(obscuraPath, [
+          "fetch", url,
+          "--dump", "html",
+          "--quiet",
+          "--timeout", String(timeout),
+        ], { encoding: "utf8" });
+
+        let stdout = "";
+        let stderr = "";
+        child.stdout.on("data", (data) => { stdout += data; });
+        child.stderr.on("data", (data) => { stderr += data; });
+
+        const exitCode = await new Promise((resolve) => {
+          child.on("close", resolve);
+          child.on("error", () => resolve(-1));
+        });
+
+        const elapsed = Date.now() - start;
+        if (exitCode !== 0) {
+          results[i] = { url, html: null, elapsed_ms: elapsed, error: stderr || "fetch failed" };
+        } else {
+          results[i] = { url, html: stdout, elapsed_ms: elapsed, error: null };
+        }
+      } catch (err) {
+        results[i] = { url, html: null, elapsed_ms: Date.now() - start, error: err.message };
+      }
+    }
+  }
+
+  const promises = [];
+  for (let w = 0; w < maxConcurrency; w += 1) {
+    promises.push(worker());
+  }
+  await Promise.all(promises);
+  return results;
+}
+
+// Simple HTML-to-Markdown converter for Obscura parallel path
+function htmlToMarkdown(html) {
+  if (!html) return "";
+  let md = html;
+
+  // Remove script/style tags and their contents
+  md = md.replace(/<script[\s\S]*?<\/script>/gi, "");
+  md = md.replace(/<style[\s\S]*?<\/style>/gi, "");
+  md = md.replace(/<nav[\s\S]*?<\/nav>/gi, "");
+  md = md.replace(/<header[\s\S]*?<\/header>/gi, "");
+  md = md.replace(/<footer[\s\S]*?<\/footer>/gi, "");
+
+  // Headings
+  md = md.replace(/<h1[^>]*>([\s\S]*?)<\/h1>/gi, (_, c) => `# ${stripTags(c)}\n\n`);
+  md = md.replace(/<h2[^>]*>([\s\S]*?)<\/h2>/gi, (_, c) => `## ${stripTags(c)}\n\n`);
+  md = md.replace(/<h3[^>]*>([\s\S]*?)<\/h3>/gi, (_, c) => `### ${stripTags(c)}\n\n`);
+  md = md.replace(/<h4[^>]*>([\s\S]*?)<\/h4>/gi, (_, c) => `#### ${stripTags(c)}\n\n`);
+  md = md.replace(/<h5[^>]*>([\s\S]*?)<\/h5>/gi, (_, c) => `##### ${stripTags(c)}\n\n`);
+  md = md.replace(/<h6[^>]*>([\s\S]*?)<\/h6>/gi, (_, c) => `###### ${stripTags(c)}\n\n`);
+
+  // Block elements
+  md = md.replace(/<p[^>]*>([\s\S]*?)<\/p>/gi, (_, c) => `${inlineToMd(c)}\n\n`);
+  md = md.replace(/<div[^>]*>([\s\S]*?)<\/div>/gi, (_, c) => `${inlineToMd(c)}\n\n`);
+  md = md.replace(/<article[^>]*>([\s\S]*?)<\/article>/gi, (_, c) => `${inlineToMd(c)}\n\n`);
+  md = md.replace(/<section[^>]*>([\s\S]*?)<\/section>/gi, (_, c) => `${inlineToMd(c)}\n\n`);
+  md = md.replace(/<blockquote[^>]*>([\s\S]*?)<\/blockquote>/gi, (_, c) => {
+    const text = inlineToMd(c).trim();
+    return text.split("\n").map((l) => `> ${l}`).join("\n") + "\n\n";
+  });
+  md = md.replace(/<pre[^>]*>([\s\S]*?)<\/pre>/gi, (_, c) => `\`\`\`\n${stripTags(c)}\n\`\`\`\n\n`);
+
+  // Lists
+  md = md.replace(/<ul[^>]*>([\s\S]*?)<\/ul>/gi, (_, c) => processList(c, "ul") + "\n");
+  md = md.replace(/<ol[^>]*>([\s\S]*?)<\/ol>/gi, (_, c) => processList(c, "ol") + "\n");
+
+  // Inline elements
+  md = md.replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, (_, c) => `**${inlineToMd(c)}**`);
+  md = md.replace(/<b[^>]*>([\s\S]*?)<\/b>/gi, (_, c) => `**${inlineToMd(c)}**`);
+  md = md.replace(/<em[^>]*>([\s\S]*?)<\/em>/gi, (_, c) => `*${inlineToMd(c)}*`);
+  md = md.replace(/<i[^>]*>([\s\S]*?)<\/i>/gi, (_, c) => `*${inlineToMd(c)}*`);
+  md = md.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, (_, c) => `\`${stripTags(c)}\``);
+  md = md.replace(/<a[^>]+href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href, text) => {
+    const t = inlineToMd(text).trim();
+    if (!t) return "";
+    return `[${t}](${href})`;
+  });
+  md = md.replace(/<img[^>]+src="([^"]*)"[^>]*>/gi, (_, src) => {
+    const altMatch = _.match(/alt="([^"]*)"/);
+    const alt = altMatch ? altMatch[1] : "image";
+    return `![${alt}](${src})`;
+  });
+  md = md.replace(/<br\s*\/?>/gi, "\n");
+  md = md.replace(/<hr\s*\/?>/gi, "\n---\n\n");
+
+  // Tables (simple)
+  md = md.replace(/<table[^>]*>([\s\S]*?)<\/table>/gi, (_, c) => processTable(c));
+
+  // Remove remaining tags
+  md = stripTags(md);
+
+  // Cleanup whitespace
+  md = md.replace(/\n{3,}/g, "\n\n");
+  md = md.replace(/[ \t]+\n/g, "\n");
+  return md.trim();
+}
+
+function stripTags(html) {
+  return html.replace(/<[^>]+>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&nbsp;/g, " ");
+}
+
+function inlineToMd(html) {
+  let md = html;
+  md = md.replace(/<strong[^>]*>([\s\S]*?)<\/strong>/gi, (_, c) => `**${inlineToMd(c)}**`);
+  md = md.replace(/<b[^>]*>([\s\S]*?)<\/b>/gi, (_, c) => `**${inlineToMd(c)}**`);
+  md = md.replace(/<em[^>]*>([\s\S]*?)<\/em>/gi, (_, c) => `*${inlineToMd(c)}*`);
+  md = md.replace(/<i[^>]*>([\s\S]*?)<\/i>/gi, (_, c) => `*${inlineToMd(c)}*`);
+  md = md.replace(/<code[^>]*>([\s\S]*?)<\/code>/gi, (_, c) => `\`${stripTags(c)}\``);
+  md = md.replace(/<a[^>]+href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/gi, (_, href, text) => {
+    const t = inlineToMd(text).trim();
+    if (!t) return "";
+    return `[${t}](${href})`;
+  });
+  md = md.replace(/<br\s*\/?>/gi, "\n");
+  return stripTags(md);
+}
+
+function processList(html, type) {
+  const items = [];
+  const regex = /<li[^>]*>([\s\S]*?)<\/li>/gi;
+  let m;
+  let idx = 1;
+  while ((m = regex.exec(html)) !== null) {
+    const prefix = type === "ol" ? `${idx++}.` : "-";
+    const text = inlineToMd(m[1]).trim();
+    items.push(`${prefix} ${text}`);
+  }
+  return items.join("\n");
+}
+
+function processTable(html) {
+  const rows = [];
+  const rowRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  let rowMatch;
+  while ((rowMatch = rowRegex.exec(html)) !== null) {
+    const cells = [];
+    const cellRegex = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi;
+    let cellMatch;
+    while ((cellMatch = cellRegex.exec(rowMatch[1])) !== null) {
+      cells.push(inlineToMd(cellMatch[1]).trim().replace(/\|/g, "\\|"));
+    }
+    if (cells.length > 0) rows.push(cells);
+  }
+  if (rows.length === 0) return "";
+  const header = rows[0];
+  const separator = header.map(() => "---");
+  const lines = [
+    `| ${header.join(" | ")} |`,
+    `| ${separator.join(" | ")} |`,
+    ...rows.slice(1).map((r) => `| ${r.join(" | ")} |`),
+  ];
+  return lines.join("\n") + "\n\n";
+}
+
 function summarizeContent(outputPath) {
   if (!fs.existsSync(outputPath)) {
     return null;
@@ -609,6 +982,7 @@ function convertTraversalToMarkdown(repoRoot, runDir, manifest, opts = {}) {
     cleanupHtml = true,
     outputName = "output",
     relativize = true,
+    prefetchedHtml = null,
   } = opts;
 
   const visited = manifest.visited ?? [];
@@ -623,6 +997,24 @@ function convertTraversalToMarkdown(repoRoot, runDir, manifest, opts = {}) {
     const mdPath = urlToStructuredPath(url, runDir);
     ensureDir(path.dirname(mdPath));
     urlToPath[url] = mdPath;
+
+    if (prefetchedHtml?.[url]) {
+      // Use Scrapling --ai-targeted via file:// for DOM-quality Markdown conversion
+      const tmpHtmlPath = path.join(runDir, `_tmp_${i}.html`);
+      writeTextFile(tmpHtmlPath, prefetchedHtml[url]);
+      const scraplingResult = runEngineFetch(repoRoot, "get", `file://${tmpHtmlPath}`, mdPath, ["--ai-targeted"]);
+      fs.unlinkSync(tmpHtmlPath);
+      if (scraplingResult.ok) {
+        successful.push({ url, path: mdPath });
+      } else {
+        // Fallback to htmlToMarkdown when Scrapling CLI is unavailable
+        const markdown = htmlToMarkdown(prefetchedHtml[url]);
+        writeTextFile(mdPath, markdown);
+        successful.push({ url, path: mdPath });
+      }
+      continue;
+    }
+
     const fetcher = fetcherFn(url);
     const result = runEngineFetch(repoRoot, fetcher, url, mdPath, ["--ai-targeted"]);
     if (result.ok) {
@@ -1086,7 +1478,7 @@ function buildCrawlReport({ targetUrl, repoRef, resolutionMode, strategy, events
   return `${lines.join("\n")}\n`;
 }
 
-function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {}) {
+async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {}) {
   const {
     entryPoint: entryPointOverride = null,
     maxPages = 3,
@@ -1095,6 +1487,8 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {}) {
     merge = false,
     concurrency = 5,
     keepHtml = false,
+    parallel = false,
+    workers = 5,
   } = opts;
 
   const { runDir, reportPath } = buildRunPaths(repoRoot, "crawl", targetUrl);
@@ -1370,17 +1764,61 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {}) {
 
   // Phase 2: Markdown conversion
   let phase2Result = null;
+  let extractionMethod = "scrapling";
+  let parallelFallbackReason = null;
+
   if (markdown && visited.size > 0) {
-    phase2Result = convertTraversalToMarkdown(repoRoot, runDir, manifest, {
-      fetcherFn: (url) => {
-        const page = pages.find((p) => pagePatternMatches(p, url));
-        return selectFetcher(strategy, page);
-      },
-      concurrency,
-      merge,
-      cleanupHtml: !keepHtml,
-      outputName: "crawl-output",
-    });
+    if (parallel) {
+      const obscuraPreflight = runObscuraPreflight(repoRoot, true);
+      if (obscuraPreflight.ok && obscuraPreflight.workerOk) {
+        try {
+          const port = await findAvailablePort();
+          const serveHandle = await startObscuraServe(obscuraPreflight.path, workers, port);
+          const fetchResults = await concurrentFetch(serveHandle, [...visited], 15);
+          stopObscuraServe(serveHandle);
+
+          const prefetchedHtml = {};
+          for (const r of fetchResults) {
+            if (r.html) {
+              prefetchedHtml[r.url] = r.html;
+            }
+          }
+
+          phase2Result = convertTraversalToMarkdown(repoRoot, runDir, manifest, {
+            fetcherFn: (url) => {
+              const page = pages.find((p) => pagePatternMatches(p, url));
+              return selectFetcher(strategy, page);
+            },
+            concurrency,
+            merge,
+            cleanupHtml: !keepHtml,
+            outputName: "crawl-output",
+            prefetchedHtml,
+          });
+          extractionMethod = "obscura-serve-pool";
+        } catch (err) {
+          console.warn(`Obscura parallel fetch failed: ${err.message}. Falling back to Scrapling serial.`);
+          parallelFallbackReason = err.message;
+        }
+      } else {
+        console.warn("Obscura preflight failed or worker binary missing. Falling back to Scrapling serial.");
+        parallelFallbackReason = "obscura_preflight_unavailable";
+      }
+    }
+
+    if (!phase2Result) {
+      phase2Result = convertTraversalToMarkdown(repoRoot, runDir, manifest, {
+        fetcherFn: (url) => {
+          const page = pages.find((p) => pagePatternMatches(p, url));
+          return selectFetcher(strategy, page);
+        },
+        concurrency,
+        merge,
+        cleanupHtml: !keepHtml,
+        outputName: "crawl-output",
+      });
+    }
+
     manifest.phase2 = {
       successful_count: phase2Result.successful.length,
       failed_count: phase2Result.failed.length,
@@ -1419,6 +1857,9 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {}) {
   const resultState =
     traversalOk && conversionOk ? "success" : visited.size > failures ? "partial_success" : "failure";
 
+  const finalExtractionMethod = extractionMethod;
+  const finalFallbackReason = parallelFallbackReason ?? fallbackReason;
+
   if (emitReport) {
     const report = buildCrawlReport({
       targetUrl,
@@ -1434,8 +1875,8 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {}) {
             mergedPath: phase2Result.mergedPath,
           }
         : null,
-      extractionMethod: "scrapling",
-      fallbackReason: fallbackReason,
+      extractionMethod: finalExtractionMethod,
+      fallbackReason: finalFallbackReason,
     });
     writeTextFile(reportPath, report);
     finalArtifacts.unshift(absoluteArtifact(reportPath, "durable", "Crawl report"));
@@ -1455,8 +1896,8 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {}) {
   return makeResult("crawl", targetUrl, repoRef, summary, finalArtifacts, nextAction, resultState, {
     workflow: "content_retrieval",
     engine_path: `strategy_registry -> bounded_crawl -> scrapling_preflight:${preflight.status ?? "unknown"}${markdown ? ` -> markdown_conversion(${phase2Result?.successful.length ?? 0}/${visited.size})` : ""}`,
-    extraction_method: "scrapling",
-    ...(fallbackReason ? { fallback_reason: fallbackReason } : {}),
+    extraction_method: finalExtractionMethod,
+    ...(finalFallbackReason ? { fallback_reason: finalFallbackReason } : {}),
   });
 }
 
@@ -1522,7 +1963,7 @@ function buildScrapeReport({ targetUrl, repoRef, resolutionMode, events, result,
   return `${lines.join("\n")}\n`;
 }
 
-function runScrape(repoRoot, repoRef, resolutionMode, targetUrl, opts) {
+async function runScrape(repoRoot, repoRef, resolutionMode, targetUrl, opts) {
   const {
     maxPages = 10,
     sameDomain = true,
@@ -1533,6 +1974,8 @@ function runScrape(repoRoot, repoRef, resolutionMode, targetUrl, opts) {
     fetcherOverride = null,
     keepHtml = false,
     reportOverride = null,
+    parallel = false,
+    workers = 5,
   } = opts;
 
   const { runDir, reportPath } = buildRunPaths(repoRoot, "scrape", targetUrl);
@@ -1620,14 +2063,55 @@ function runScrape(repoRoot, repoRef, resolutionMode, targetUrl, opts) {
 
   // Phase 2: Markdown conversion
   let phase2Result = null;
+  let extractionMethod = "scrapling";
+  let parallelFallbackReason = null;
+
   if (markdown && visited.size > 0) {
-    phase2Result = convertTraversalToMarkdown(repoRoot, runDir, manifest, {
-      fetcherFn: () => fetcherOverride || "get",
-      concurrency,
-      merge,
-      cleanupHtml: !keepHtml,
-      outputName: "scrape-output",
-    });
+    if (parallel) {
+      const obscuraPreflight = runObscuraPreflight(repoRoot, true);
+      if (obscuraPreflight.ok && obscuraPreflight.workerOk) {
+        try {
+          const port = await findAvailablePort();
+          const serveHandle = await startObscuraServe(obscuraPreflight.path, workers, port);
+          const fetchResults = await concurrentFetch(serveHandle, [...visited], 15);
+          stopObscuraServe(serveHandle);
+
+          const prefetchedHtml = {};
+          for (const r of fetchResults) {
+            if (r.html) {
+              prefetchedHtml[r.url] = r.html;
+            }
+          }
+
+          phase2Result = convertTraversalToMarkdown(repoRoot, runDir, manifest, {
+            fetcherFn: () => fetcherOverride || "get",
+            concurrency,
+            merge,
+            cleanupHtml: !keepHtml,
+            outputName: "scrape-output",
+            prefetchedHtml,
+          });
+          extractionMethod = "obscura-serve-pool";
+        } catch (err) {
+          console.warn(`Obscura parallel fetch failed: ${err.message}. Falling back to Scrapling serial.`);
+          parallelFallbackReason = err.message;
+        }
+      } else {
+        console.warn("Obscura preflight failed or worker binary missing. Falling back to Scrapling serial.");
+        parallelFallbackReason = "obscura_preflight_unavailable";
+      }
+    }
+
+    if (!phase2Result) {
+      phase2Result = convertTraversalToMarkdown(repoRoot, runDir, manifest, {
+        fetcherFn: () => fetcherOverride || "get",
+        concurrency,
+        merge,
+        cleanupHtml: !keepHtml,
+        outputName: "scrape-output",
+      });
+    }
+
     manifest.phase2 = {
       successful_count: phase2Result.successful.length,
       failed_count: phase2Result.failed.length,
@@ -1701,6 +2185,8 @@ function runScrape(repoRoot, repoRef, resolutionMode, targetUrl, opts) {
   return makeResult("scrape", targetUrl, repoRef, summary, artifacts, nextAction, resultState, {
     workflow: "content_retrieval",
     engine_path: `scrapling_preflight:${preflight.status ?? "unknown"} -> scrape_traversal(${visited.size} pages)${markdown ? ` -> markdown_conversion(${phase2Result?.successful.length ?? 0}/${visited.size})` : ""}`,
+    extraction_method: extractionMethod,
+    ...(parallelFallbackReason ? { fallback_reason: parallelFallbackReason } : {}),
   });
 }
 
@@ -1837,12 +2323,140 @@ function runBootstrapStrategy(repoRoot, repoRef, resolutionMode, targetUrl, from
   );
 }
 
+async function runBatch(repoRoot, repoRef, resolutionMode, urls, opts = {}) {
+  const {
+    workers = 5,
+    timeout = 15,
+    markdown = false,
+    outputDir = null,
+  } = opts;
+
+  if (!urls || urls.length === 0) {
+    return makeResult("batch", null, repoRef, "No URLs provided.", [], "Provide one or more URLs to batch fetch.", "failure");
+  }
+
+  const { runDir, reportPath } = buildRunPaths(repoRoot, "batch", urls[0]);
+  const targetRunDir = outputDir ? path.resolve(outputDir) : runDir;
+  ensureDir(targetRunDir);
+  const manifestPath = path.join(targetRunDir, "manifest.json");
+
+  // Try Obscura first
+  const obscuraPreflight = runObscuraPreflight(repoRoot, true);
+  let results = [];
+  let extractionMethod = "scrapling";
+  let fallbackReason = null;
+
+  if (obscuraPreflight.ok && obscuraPreflight.workerOk) {
+    try {
+      const port = await findAvailablePort();
+      const serveHandle = await startObscuraServe(obscuraPreflight.path, workers, port);
+      const fetchResults = await concurrentFetch(serveHandle, urls, timeout);
+      stopObscuraServe(serveHandle);
+
+      for (let i = 0; i < fetchResults.length; i += 1) {
+        const r = fetchResults[i];
+        const htmlPath = path.join(targetRunDir, `${String(i + 1).padStart(2, "0")}.html`);
+        if (r.html) {
+          fs.writeFileSync(htmlPath, r.html, "utf8");
+        }
+        results.push({
+          url: r.url,
+          htmlPath: r.html ? htmlPath : null,
+          elapsed_ms: r.elapsed_ms,
+          error: r.error,
+        });
+      }
+      extractionMethod = "obscura-serve-pool";
+    } catch (err) {
+      console.warn(`Obscura batch fetch failed: ${err.message}. Falling back to Scrapling serial.`);
+      fallbackReason = err.message;
+    }
+  } else {
+    console.warn("Obscura preflight failed. Falling back to Scrapling serial fetch.");
+    fallbackReason = "obscura_preflight_unavailable";
+  }
+
+  // Fallback to Scrapling serial
+  if (extractionMethod === "scrapling") {
+    for (let i = 0; i < urls.length; i += 1) {
+      const url = urls[i];
+      const htmlPath = path.join(targetRunDir, `${String(i + 1).padStart(2, "0")}.html`);
+      const start = Date.now();
+      const fetchResult = runScraplingFetch(repoRoot, "get", url, htmlPath);
+      const elapsed = Date.now() - start;
+      if (fetchResult.ok) {
+        results.push({ url, htmlPath, elapsed_ms: elapsed, error: null });
+      } else {
+        results.push({ url, htmlPath: null, elapsed_ms: elapsed, error: fetchResult.stderr || "fetch failed" });
+      }
+    }
+  }
+
+  // Optional Markdown conversion — use Scrapling --ai-targeted via file://, fallback to htmlToMarkdown
+  if (markdown) {
+    for (const r of results) {
+      if (r.htmlPath && fs.existsSync(r.htmlPath)) {
+        const html = fs.readFileSync(r.htmlPath, "utf8");
+        const mdPath = r.htmlPath.replace(/\.html$/, ".md");
+        const tmpHtmlPath = path.join(targetRunDir, `_tmp_md_${path.basename(r.htmlPath, ".html")}.html`);
+        writeTextFile(tmpHtmlPath, html);
+        const scraplingResult = runEngineFetch(repoRoot, "get", `file://${tmpHtmlPath}`, mdPath, ["--ai-targeted"]);
+        fs.unlinkSync(tmpHtmlPath);
+        if (!scraplingResult.ok) {
+          // Fallback when Scrapling CLI is unavailable
+          const md = htmlToMarkdown(html);
+          writeTextFile(mdPath, md);
+        }
+      }
+    }
+  }
+
+  const manifest = {
+    command: "batch",
+    urls,
+    repo_ref: repoRef,
+    extraction_method: extractionMethod,
+    results: results.map((r) => ({ url: r.url, elapsed_ms: r.elapsed_ms, error: r.error })),
+  };
+  writeTextFile(manifestPath, JSON.stringify(manifest, null, 2));
+
+  const artifacts = [absoluteArtifact(manifestPath, "disposable", "Batch manifest")];
+  for (let i = 0; i < results.length; i += 1) {
+    const r = results[i];
+    if (r.htmlPath && fs.existsSync(r.htmlPath)) {
+      artifacts.push(absoluteArtifact(r.htmlPath, "disposable", `Batch page ${String(i + 1).padStart(2, "0")}`));
+    }
+    if (markdown) {
+      const mdPath = path.join(targetRunDir, `${String(i + 1).padStart(2, "0")}.md`);
+      if (fs.existsSync(mdPath)) {
+        artifacts.push(absoluteArtifact(mdPath, "disposable", `Batch markdown ${String(i + 1).padStart(2, "0")}`));
+      }
+    }
+  }
+
+  const successCount = results.filter((r) => !r.error).length;
+  const failCount = results.length - successCount;
+  const resultState = failCount === 0 ? "success" : successCount > 0 ? "partial_success" : "failure";
+  const summary =
+    resultState === "success"
+      ? `Batch fetched ${successCount}/${results.length} URLs via ${extractionMethod}.`
+      : `Batch fetched ${successCount}/${results.length} URLs via ${extractionMethod}; ${failCount} failed.`;
+
+  return makeResult("batch", urls.join(", "), repoRef, summary, artifacts, "Inspect batch outputs in the run directory.", resultState, {
+    workflow: "content_retrieval",
+    engine_path: `batch -> ${extractionMethod}`,
+    extraction_method: extractionMethod,
+    ...(fallbackReason ? { fallback_reason: fallbackReason } : {}),
+  });
+}
+
 function runDoctor(repoRoot, repoRef, resolutionMode) {
   const runtimeDir = process.env.CHROME_AGENT_RUNTIME_DIR || path.join(os.homedir(), ".agents", "scripts");
   const binDir = process.env.CHROME_AGENT_BIN_DIR || path.join(os.homedir(), ".local", "bin");
   const runtimePath = path.join(runtimeDir, "chrome-agent.mjs");
   const shimPath = path.join(binDir, "chrome-agent");
   const preflight = runScraplingPreflight(repoRoot, false);
+  const obscuraPreflight = runObscuraPreflight(repoRoot, false);
   const envDefaultPath = process.env.CHROME_AGENT_REPO ? path.resolve(process.env.CHROME_AGENT_REPO) : null;
 
   const checks = [
@@ -1855,6 +2469,8 @@ function runDoctor(repoRoot, repoRef, resolutionMode) {
     },
     { name: "repo_shape", ok: repoShapeIsValid(repoRoot), detail: path.join(repoRoot, "AGENTS.md") },
     { name: "scrapling_preflight", ok: preflight.ok, detail: preflight.resolvedCliPath ?? "unavailable" },
+    { name: "obscura_preflight", ok: obscuraPreflight.ok, detail: obscuraPreflight.path ?? "unavailable" },
+    { name: "obscura_worker", ok: obscuraPreflight.workerOk, detail: obscuraPreflight.path ? path.join(path.dirname(obscuraPreflight.path), "obscura-worker") : "unavailable" },
   ];
 
   const broken = checks.filter((check) => !check.ok);
@@ -1934,7 +2550,7 @@ function runClean(repoRoot, repoRef, scope) {
   );
 }
 
-function main() {
+async function main() {
   const parsed = parseArgs(process.argv.slice(2));
 
   if (!parsed.command || parsed.command === "help" || process.argv.includes("--help") || process.argv.includes("-h")) {
@@ -1969,7 +2585,7 @@ function main() {
         if (!parsed.target) {
           throw new Error("crawl requires a target URL.");
         }
-        result = runCrawl(repoRoot, repoRef, resolutionMode, parsed.target, {
+        result = await runCrawl(repoRoot, repoRef, resolutionMode, parsed.target, {
           entryPoint: parsed.entryPoint,
           maxPages: parsed.maxPages ?? 3,
           report: parsed.report,
@@ -1977,13 +2593,15 @@ function main() {
           merge: parsed.merge,
           concurrency: parsed.concurrency,
           keepHtml: parsed.keepHtml,
+          parallel: parsed.parallel,
+          workers: parsed.workers,
         });
         break;
       case "scrape":
         if (!parsed.target) {
           throw new Error("scrape requires a target URL.");
         }
-        result = runScrape(repoRoot, repoRef, resolutionMode, parsed.target, {
+        result = await runScrape(repoRoot, repoRef, resolutionMode, parsed.target, {
           maxPages: parsed.maxPages ?? 10,
           sameDomain: parsed.sameDomain,
           matchPattern: parsed.matchPattern,
@@ -1993,8 +2611,23 @@ function main() {
           fetcherOverride: parsed.fetcherOverride,
           keepHtml: parsed.keepHtml,
           reportOverride: parsed.report,
+          parallel: parsed.parallel,
+          workers: parsed.workers,
         });
         break;
+      case "batch": {
+        const batchUrls = parsed.positionals.slice(1);
+        if (batchUrls.length === 0) {
+          throw new Error("batch requires one or more target URLs.");
+        }
+        result = await runBatch(repoRoot, repoRef, resolutionMode, batchUrls, {
+          workers: parsed.workers,
+          timeout: parsed.concurrency || 15,
+          markdown: parsed.markdown,
+          outputDir: null,
+        });
+        break;
+      }
       case "bootstrap-strategy":
         if (!parsed.target) {
           throw new Error("bootstrap-strategy requires a target URL.");
@@ -2033,4 +2666,4 @@ function main() {
   }
 }
 
-main();
+await main();

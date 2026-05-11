@@ -33,7 +33,7 @@
         },
         "stability": {
           "score": 0.55,
-          "note": "v0.1.0 with limited release history. CDP implementation is a subset. Needs more site coverage validation."
+          "note": "v0.1.2 with expanded release history. CDP implementation is a subset. Needs more site coverage validation."
         },
         "adaptability": {
           "score": 0.65,
@@ -44,6 +44,29 @@
       "default_rank": 2,
       "best_for": ["dynamic_content", "dynamic_list", "dynamic_grid", "static_article"],
       "contract_spec": "obscura-fetch-contract",
+      "status": "draft"
+    },
+    {
+      "id": "obscura-serve-pool",
+      "type": "cdp_lightweight_pool",
+      "characteristics": {
+        "efficiency": {
+          "score": 0.85,
+          "note": "Rust+V8 worker pool, near-linear scaling to ~15 workers."
+        },
+        "stability": {
+          "score": 0.65,
+          "note": "v0.1.2, tested with 20 concurrent workers, zero failures."
+        },
+        "adaptability": {
+          "score": 0.60,
+          "note": "Dynamic content and SPA, not for high-protection pages."
+        }
+      },
+      "composite_score": 68,
+      "default_rank": 3,
+      "best_for": ["bulk_dynamic", "bulk_list", "batch_fetch", "page_batch"],
+      "contract_spec": "obscura-serve-pool-contract",
       "status": "draft"
     },
     {
@@ -64,7 +87,7 @@
         }
       },
       "composite_score": 66,
-      "default_rank": 3,
+      "default_rank": 4,
       "best_for": ["dynamic_content", "dynamic_list", "search_results"],
       "contract_spec": "scrapling-fetch-contract",
       "status": "frozen"

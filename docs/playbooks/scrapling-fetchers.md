@@ -10,7 +10,8 @@
 |------|------|------|------|-----------|
 | `scrapling-get` | `http` | 1 | 静态页面 | Scrapling CLI preflight |
 | `obscura-fetch` | `cdp_lightweight` | 2 | 轻度动态页/SPA | Obscura CLI preflight |
-| `scrapling-fetch` | `playwright` | 3 | 完整浏览器 | Scrapling CLI preflight |
+| `obscura-serve-pool` | `cdp_lightweight_pool` | 3 | 批量动态页并行抓取 | Obscura CLI preflight |
+| `scrapling-fetch` | `playwright` | 4 | 完整浏览器 | Scrapling CLI preflight |
 | `scrapling-stealthy-fetch` | `playwright_stealth` | 4 | 高保护页面 | Scrapling CLI preflight |
 
 ### Preflight 要求
@@ -95,9 +96,41 @@ obscura fetch <URL> --stealth
 obscura fetch <URL> --obey-robots
 ```
 
+### `obscura-serve-pool` — 批量动态页面并行抓取（cdp_lightweight_pool）
+**适用场景**: 需要并发获取多个动态页面内容的批量场景（crawl/scrape --parallel、batch 命令）。
+- 基于 `obscura serve --workers N` 启动 Rust+V8 worker pool
+- 通过负载均衡器分发并发 `obscura fetch` 请求
+- 默认 5 workers，上限 30，支持 `--workers` 参数调节
+- 返回完整 HTML，与 Scrapling 输出格式兼容
+- 单 URL fetch 仍建议使用 `obscura-fetch`（rank 2），避免 serve 进程开销
+
+**命令格式**:
+```bash
+# batch 命令直接并行 fetch
+chrome-agent batch https://a.com https://b.com https://c.com --workers 3
+
+# crawl/scrape 启用并行模式
+chrome-agent crawl <url> --parallel --workers 5
+chrome-agent scrape <url> --parallel --workers 5
+```
+
+**与 `scrapling-bulk-fetch` 的对比**:
+
+| 维度 | `obscura-serve-pool` | `scrapling-bulk-fetch` |
+|------|----------------------|------------------------|
+| 引擎 | Rust+V8 | Playwright |
+| 内存 | ~50MB/worker | ~443MB/Chromium |
+| 启动开销 | 低（serve 进程复用） | 高（每次启动浏览器） |
+| 适用内容 | 动态列表、SPA、批量文章 | 复杂 JS、需要完整浏览器 API |
+| 反爬能力 | 基础 stealth | 无 stealth |
+
+**选择建议**:
+- 批量动态页且无明显反爬 → `obscura-serve-pool`（更快更轻）
+- 需要完整 Chromium 能力或批量操作 → `scrapling-bulk-fetch`
+
 ### Preflight 要求
 
-使用 `obscura-fetch` 前，必须先执行 Obscura CLI preflight：
+使用 `obscura-fetch` 或 `obscura-serve-pool` 前，必须先执行 Obscura CLI preflight：
 
 ```bash
 # 检查 OBSURA_CLI_PATH 环境变量

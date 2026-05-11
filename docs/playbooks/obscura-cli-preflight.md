@@ -50,11 +50,11 @@ Other platforms fall back to source compilation.
 
 ```bash
 # Example: macOS ARM64
-OBSCURA_VERSION="0.1.0"
+OBSCURA_VERSION="0.1.2"
 INSTALL_DIR="$HOME/.cache/chrome-agent-obscura/bin"
 mkdir -p "$INSTALL_DIR"
 curl -L -o "$INSTALL_DIR/obscura.tar.gz" \
-  "https://github.com/h4ckf0r0day/obscura/releases/download/v${OBSCURA_VERSION}/obscura-${OBSCURA_VERSION}-aarch64-apple-darwin.tar.gz"
+  "https://github.com/h4ckf0r0day/obscura/releases/download/v${OBSCURA_VERSION}/obscura-aarch64-macos.tar.gz"
 tar -xzf "$INSTALL_DIR/obscura.tar.gz" -C "$INSTALL_DIR"
 rm "$INSTALL_DIR/obscura.tar.gz"
 chmod +x "$INSTALL_DIR/obscura"
@@ -116,3 +116,15 @@ After preflight, the caller MUST verify:
 ```
 
 Expected: usage output including `fetch` subcommand.
+
+### Worker Binary Verification
+
+After verifying the main `obscura` binary, also verify `obscura-worker`:
+
+```bash
+"$INSTALL_DIR/obscura-worker" --help
+```
+
+Expected: usage output confirming the worker binary is executable.
+
+If `obscura-worker` is missing after tarball extraction, check that the release archive contains both binaries and re-extract if necessary.
