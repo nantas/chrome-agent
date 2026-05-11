@@ -15,11 +15,14 @@ detection:
       - "#challenge-form"
     has_content: false
 engine_priority:
-  - engine: scrapling-stealthy-fetch
+  - engine: cloakbrowser-fetch
     rank: 1
     config:
-      solve_cloudflare: true
-      network_idle: true
+      headless: true
+      wait_until: domcontentloaded
+      timeout: 30
+      # CloakBrowser auto-resolves Turnstile in 6–15s via source-level fingerprint patches
+      # No manual solve step needed — wait for title to change away from challenge indicators
   - engine: chrome-devtools-mcp
     rank: 2
 success_signals:
@@ -42,17 +45,17 @@ Cloudflare Turnstile is an anti-bot challenge that presents a checkbox or invisi
 
 ## Engine Priority Rationale
 
-- Starts with `scrapling-stealthy-fetch` because `scrapling-get` and `scrapling-fetch` cannot solve Turnstile challenges. The stealthy fetcher's browser fingerprint spoofing and `solve_cloudflare` option are required.
-- `chrome-devtools-mcp` is the diagnostic fallback when stealthy-fetch cannot complete the challenge, providing screenshot and DOM evidence for manual analysis.
+- Starts with `cloakbrowser-fetch` because its 57 C++ source-level Chromium fingerprint patches bypass Cloudflare Turnstile automatically in headless mode (no manual solve step needed).
+- `chrome-devtools-mcp` is the diagnostic fallback when `cloakbrowser-fetch` cannot resolve the challenge within the timeout, providing screenshot and DOM evidence for manual analysis.
 
 ## Known Quirks
 
 - The Turnstile widget may be a checkbox challenge (user clicks "I am human") or an invisible challenge (solved automatically by the browser environment).
-- Invisible challenges are more likely to succeed with `scrapling-stealthy-fetch` because the browser environment is fully emulated.
+- Invisible challenges are more likely to succeed with `cloakbrowser-fetch` because the patched Chromium binary provides native-level fingerprint stealth undetectable by JavaScript fingerprinting.
 - Some sites may present a JS challenge interstitial (non-Turnstile) — those are covered by `cloudflare_challenge` protection type.
 
 ## Evidence
 
 - Validated on `wiki.supercombo.gg/w/Street_Fighter_6` (2026-03-21).
-- Scrapling `stealthy-fetch` with `--solve-cloudflare` successfully reached article content.
+- CloakBrowser `cloakbrowser-fetch` with `wait_until=domcontentloaded` auto-resolves Turnstile and returns full article content (~23,000 chars in ~14s).
 - See `reports/2026-03-21-sf6-supercombo-challenge-signals.txt` for challenge detection signals.

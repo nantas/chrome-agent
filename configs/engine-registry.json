@@ -93,6 +93,29 @@
       "status": "frozen"
     },
     {
+      "id": "cloakbrowser-fetch",
+      "type": "playwright_stealth",
+      "characteristics": {
+        "efficiency": {
+          "score": 0.25,
+          "note": "Playwright-based patched Chromium. ~443MB RSS (Chromium + node), 4-8s cold start. Higher overhead than scrapling-fetch due to additional patched binary."
+        },
+        "stability": {
+          "score": 0.55,
+          "note": "v0.3.27 upstream with active maintenance. 57 C++ patches rebased per Chromium version. macOS Chromium 145 vs Linux/Windows 146 version gap introduces platform variance. Supersedes scrapling-stealthy-fetch."
+        },
+        "adaptability": {
+          "score": 0.80,
+          "note": "Full Chromium capabilities. Handles Cloudflare Turnstile (6-8s auto-resolve), reCAPTCHA v3 (score 0.9), TLS fingerprint detection, SPA, heavy JS. Not suitable for CF non-Turnstile JS challenges without headed mode."
+        }
+      },
+      "composite_score": 62,
+      "default_rank": 4,
+      "best_for": ["high_protection", "turnstile_protected", "recaptcha_protected", "tls_fingerprint_detected", "dynamic_content", "dynamic_list", "spa"],
+      "contract_spec": "cloakbrowser-fetch-contract",
+      "status": "draft"
+    },
+    {
       "id": "scrapling-stealthy-fetch",
       "type": "playwright_stealth",
       "characteristics": {
@@ -113,7 +136,7 @@
       "default_rank": 4,
       "best_for": ["high_protection"],
       "contract_spec": "scrapling-stealthy-fetch-contract",
-      "status": "frozen"
+      "status": "superseded"
     },
     {
       "id": "chrome-devtools-mcp",

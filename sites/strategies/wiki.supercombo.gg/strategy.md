@@ -4,6 +4,8 @@ description: Fighting game wiki pages with Cloudflare Turnstile protection
 protection_level: high
 anti_crawl_refs:
   - cloudflare-turnstile
+engine_preference:
+  preferred: cloakbrowser-fetch
 structure:
   pages:
     - id: wiki_article
@@ -35,19 +37,20 @@ wiki.supercombo.gg is a fighting game wiki with MediaWiki-based article pages. T
 
 ## Extraction Flow
 
-1. Use Scrapling `stealthy-fetch` with `solve_cloudflare: true` as the primary engine.
-2. The stealthy fetcher's browser fingerprint spoofing and Cloudflare challenge solver handle the Turnstile challenge.
+1. Use `cloakbrowser-fetch` as the primary engine (wait until `domcontentloaded`, then allow up to 15s for Turnstile auto-resolution).
+2. CloakBrowser's source-level fingerprint patches (57 C++ Chromium patches) handle the Turnstile challenge automatically in headless mode.
 3. After challenge bypass, extract article content from the rendered page.
-4. For diagnostic needs (when stealthy-fetch fails), escalate to `chrome-devtools-mcp`.
+4. For diagnostic needs (when cloakbrowser-fetch fails), escalate to `chrome-devtools-mcp`.
 
 ## Known Issues
 
 - Earlier managed-browser runs (2026-03-21) were blocked by Cloudflare and never reached article content.
-- Scrapling `stealthy-fetch` with `--solve-cloudflare` successfully solved the Turnstile challenge and reached article content.
+- CloakBrowser (2026-05-11) auto-resolves the Turnstile challenge in 6–14s and returns full article content (~23,000 chars).
 - The Cloudflare challenge details are in `sites/anti-crawl/cloudflare-turnstile.md`.
+- `scrapling-stealthy-fetch` was previously used but is now superseded by `cloakbrowser-fetch`.
 
 ## Evidence
 
 - Validated on `wiki.supercombo.gg/w/Street_Fighter_6`.
-- Scrapling smoke check confirmed `stealthy-fetch` with `solve_cloudflare` works.
-- Reports: `reports/2026-03-21-sf6-supercombo-challenge-signals.txt`.
+- CloakBrowser smoke check confirmed auto-resolution: title="SuperCombo Wiki", content=23,021 chars, total time=14.42s.
+- Legacy reports (2026-03-21): `reports/2026-03-21-sf6-supercombo-challenge-signals.txt`.

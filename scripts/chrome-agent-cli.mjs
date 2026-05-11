@@ -413,16 +413,16 @@ function selectFetcher(strategy, page) {
   if (preferred === "scrapling-fetch") {
     return "fetch";
   }
-  if (preferred === "scrapling-stealthy-fetch") {
-    return "stealthy-fetch";
+  if (preferred === "scrapling-stealthy-fetch" || preferred === "cloakbrowser-fetch") {
+    return "cloakbrowser";
   }
 
   const protection = strategy?.protection_level ?? strategy?.document?.protection_level;
   const antiCrawlRefs = new Set([...(strategy?.anti_crawl_refs ?? []), ...(page?.anti_crawl_refs ?? [])]);
   const pageType = page?.type ?? null;
 
-  if (antiCrawlRefs.has("cloudflare-turnstile") || protection === "high") {
-    return "stealthy-fetch";
+  if (antiCrawlRefs.has("cloudflare-turnstile") || antiCrawlRefs.has("recaptcha") || protection === "high") {
+    return "cloakbrowser";
   }
   if (
     protection === "authenticated" ||
@@ -489,6 +489,44 @@ function runScraplingFetch(repoRoot, fetcher, targetUrl, outputPath, extraArgs =
     stderr: result.stderr ?? "",
     command: [preflight.resolvedCliPath, ...args].join(" "),
   };
+}
+
+function runCloakbrowserFetch(repoRoot, targetUrl, outputPath, extraArgs = []) {
+  ensureDir(path.dirname(outputPath));
+
+  const preflight = spawnSync("bash", ["./scripts/cloakbrowser-preflight.sh"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  if (preflight.status !== 0) {
+    return {
+      ok: false,
+      preflight: { ok: false },
+      summary: "CloakBrowser preflight failed. Install with: pip install cloakbrowser",
+      stderr: `${preflight.stdout ?? ""}${preflight.stderr ?? ""}`.trim(),
+    };
+  }
+
+  const args = ["python3", "scripts/cloakbrowser_fetcher.py", targetUrl, "--output", outputPath, "--json", ...extraArgs];
+  const result = spawnSync(args[0], args.slice(1), {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  return {
+    ok: result.status === 0,
+    preflight: { ok: true },
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    command: args.join(" "),
+  };
+}
+
+/** Route to the appropriate engine based on fetcher name */
+function runEngineFetch(repoRoot, fetcher, targetUrl, outputPath, extraArgs = []) {
+  if (fetcher === "cloakbrowser") {
+    return runCloakbrowserFetch(repoRoot, targetUrl, outputPath, extraArgs);
+  }
+  return runScraplingFetch(repoRoot, fetcher, targetUrl, outputPath, extraArgs);
 }
 
 function summarizeContent(outputPath) {
@@ -586,7 +624,7 @@ function convertTraversalToMarkdown(repoRoot, runDir, manifest, opts = {}) {
     ensureDir(path.dirname(mdPath));
     urlToPath[url] = mdPath;
     const fetcher = fetcherFn(url);
-    const result = runScraplingFetch(repoRoot, fetcher, url, mdPath, ["--ai-targeted"]);
+    const result = runEngineFetch(repoRoot, fetcher, url, mdPath, ["--ai-targeted"]);
     if (result.ok) {
       successful.push({ url, path: mdPath });
     } else {
@@ -771,7 +809,7 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
   if (!strategy) {
     ensureDir(runDir);
     const htmlPath = path.join(runDir, "sample.html");
-    htmlFetchResult = runScraplingFetch(repoRoot, "get", targetUrl, htmlPath);
+    htmlFetchResult = runEngineFetch(repoRoot, "get", targetUrl, htmlPath);
     if (htmlFetchResult.ok && fs.existsSync(htmlPath)) {
       const htmlContent = fs.readFileSync(htmlPath, "utf8");
       backend = detectBackend(repoRoot, htmlContent, targetUrl);
@@ -892,7 +930,7 @@ function runFetch(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride) 
   const { strategy } = findStrategy(repoRoot, targetUrl);
   const matchingPage = strategy ? findMatchingPage(strategy.document, targetUrl) : null;
   const fetcher = selectFetcher(strategy, matchingPage);
-  const fetchResult = runScraplingFetch(repoRoot, fetcher, targetUrl, outputPath, ["--ai-targeted"]);
+  const fetchResult = runEngineFetch(repoRoot, fetcher, targetUrl, outputPath, ["--ai-targeted"]);
 
   if (fetchResult.stderr) {
     writeTextFile(logPath, fetchResult.stderr);
@@ -1268,7 +1306,7 @@ function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {}) {
     const fetcher = selectFetcher(strategy, item.page);
     const pageSlug = `${String(visited.size).padStart(2, "0")}-${item.page.id}`;
     const outputPath = path.join(runDir, `${pageSlug}.html`);
-    const fetchResult = runScraplingFetch(repoRoot, fetcher, item.url, outputPath);
+    const fetchResult = runEngineFetch(repoRoot, fetcher, item.url, outputPath);
 
     if (fetchResult.ok) {
       artifacts.push(absoluteArtifact(outputPath, "disposable", `Crawled page ${item.page.id}`));
@@ -1548,7 +1586,7 @@ function runScrape(repoRoot, repoRef, resolutionMode, targetUrl, opts) {
     const fetcher = fetcherOverride || "get";
     const pageNum = String(visited.size).padStart(2, "0");
     const outputPath = path.join(runDir, `${pageNum}.html`);
-    const fetchResult = runScraplingFetch(repoRoot, fetcher, url, outputPath);
+    const fetchResult = runEngineFetch(repoRoot, fetcher, url, outputPath);
 
     if (fetchResult.ok) {
       events.push(`Fetched ${url} via ${fetcher}.`);

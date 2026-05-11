@@ -3,14 +3,16 @@
 ## Capability 对齐（已确认）
 
 - Capability: `scrapling-stealthy-fetch-contract`
-- 来源: `proposal.md`
-- 变更类型: new
-- 用户确认摘要: 对话中确认——stealthy-fetch 引擎契约 + Cloudflare Turnstile smoke check（evidence: wiki.supercombo.gg）。stealthy-fetch = fetch + 指纹伪装 + CF 挑战处理
+- 来源: `proposal.md` + `integrate-cloakbrowser-engine` change
+- 变更类型: removed (superseded)
+- 用户确认摘要: `scrapling-stealthy-fetch` 被 `cloakbrowser-fetch` 替代，标记为 superseded。保留 spec 供历史引用
 
 ## 规范真源声明
 
-- 本文件是该 capability 在本次 change 中的行为规范真源
-- design / tasks / verification 必须引用本文件
+- 本文件是该 capability 的行为规范真源（已 superseded）
+- 本 capability 已被 superseded，不再作为活跃引擎的行为依据
+- 活跃替代：`cloakbrowser-fetch-contract` (`openspec/specs/cloakbrowser-fetch-contract/spec.md`)
+- design / tasks / verification 必须引用本文件（历史参考）
 - 项目页面回写不得替代本文件
 
 ## ADDED Requirements
