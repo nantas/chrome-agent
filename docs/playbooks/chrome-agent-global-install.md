@@ -107,6 +107,26 @@ Expected result:
 - `runtime_ok`
 - `skill_ok`
 - doctor result with `success` or a clearly scoped `partial_success`/`failure` remediation
+- doctor output includes `repo_freshness` check (ok when source repo is current with `origin/main`)
+
+## Version Freshness Check
+
+`chrome-agent doctor` automatically checks whether the source repository is current with `origin/main` by running `git fetch origin main` (timeout: 10 seconds).
+
+Behavior:
+
+- **Source repo current** (`HEAD == origin/main`): `repo_freshness` check is ok. No action needed.
+- **Source repo behind with tracked file changes**: doctor auto-updates global runtime (`~/.agents/scripts/chrome-agent.mjs`) and skill (`~/.agents/skills/chrome-agent/SKILL.md`), writes the current HEAD hash to `~/.agents/scripts/.chrome-agent-installed-hash`, and returns `partial_success` with a skill reload hint.
+- **Source repo behind but no tracked files changed**: `repo_freshness` is ok. The `behind but no tracked files changed` detail indicates no update is needed.
+- **Network failure / non-git repo / detached HEAD**: check is skipped (marked ok). Does not block workflow.
+
+Tracked files for auto-update:
+
+- `scripts/chrome-agent-runtime.mjs`
+- `scripts/chrome-agent-cli.mjs`
+- `skills/chrome-agent/SKILL.md`
+
+When doctor returns `partial_success` with a skill reload hint, the operator must reload the skill (restart the session or re-read the skill file) before proceeding.
 
 ## Operator Notes
 

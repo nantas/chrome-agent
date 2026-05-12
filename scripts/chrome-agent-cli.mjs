@@ -2450,6 +2450,147 @@ async function runBatch(repoRoot, repoRef, resolutionMode, urls, opts = {}) {
   });
 }
 
+const TRACKED_FILES_FOR_UPDATE = [
+  "scripts/chrome-agent-runtime.mjs",
+  "scripts/chrome-agent-cli.mjs",
+  "skills/chrome-agent/SKILL.md",
+];
+
+function runGitFetchCheck(repoRoot) {
+  const gitDir = path.join(repoRoot, ".git");
+  if (!fs.existsSync(gitDir)) {
+    return { ok: true, detail: "skipped: not a git repo", stale: false };
+  }
+
+  // git fetch origin main (timeout 10s)
+  const fetchResult = spawnSync(
+    "git",
+    ["fetch", "origin", "main"],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+      timeout: 10000,
+      killSignal: "SIGTERM",
+    },
+  );
+
+  if (fetchResult.error || fetchResult.status !== 0) {
+    const reason = fetchResult.error?.code === "ETIMEDOUT" ? "timeout" : (fetchResult.stderr?.trim() || "unknown");
+    return { ok: true, detail: `skipped: fetch failed (${reason})`, stale: false };
+  }
+
+  // Check detached HEAD
+  const headBranch = spawnSync("git", ["symbolic-ref", "-q", "HEAD"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  if (headBranch.status !== 0) {
+    return { ok: true, detail: "skipped: detached HEAD", stale: false };
+  }
+
+  // Compare HEAD vs origin/main
+  const headRev = spawnSync("git", ["rev-parse", "HEAD"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  const mainRev = spawnSync("git", ["rev-parse", "origin/main"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+
+  if (headRev.status !== 0 || mainRev.status !== 0) {
+    return { ok: true, detail: "skipped: rev-parse failed", stale: false };
+  }
+
+  const headHash = headRev.stdout.trim();
+  const mainHash = mainRev.stdout.trim();
+
+  if (headHash === mainHash) {
+    return { ok: true, detail: headHash, stale: false };
+  }
+
+  return { ok: false, detail: `behind: HEAD ${headHash.slice(0, 8)} vs origin/main ${mainHash.slice(0, 8)}`, stale: true, headHash, mainHash };
+}
+
+function runTrackedFilesCheck(repoRoot) {
+  const diffResult = spawnSync(
+    "git",
+    ["diff", "--name-only", "HEAD", "origin/main"],
+    {
+      cwd: repoRoot,
+      encoding: "utf8",
+    },
+  );
+
+  if (diffResult.status !== 0) {
+    return { ok: true, detail: "skipped: git diff failed", changedFiles: [] };
+  }
+
+  const changed = diffResult.stdout.trim().split("\n").filter(Boolean);
+  const changedSet = new Set(changed);
+  const trackedChanged = TRACKED_FILES_FOR_UPDATE.filter((f) => changedSet.has(f));
+
+  if (trackedChanged.length === 0) {
+    return { ok: true, detail: "behind but no tracked files changed", changedFiles: [] };
+  }
+
+  return { ok: false, detail: `tracked files changed: ${trackedChanged.join(", ")}`, changedFiles: trackedChanged };
+}
+
+function runAutoUpdateGlobalFiles(repoRoot, changedFiles) {
+  const runtimeDir = process.env.CHROME_AGENT_RUNTIME_DIR || path.join(os.homedir(), ".agents", "scripts");
+  const skillDir = path.join(os.homedir(), ".agents", "skills", "chrome-agent");
+  const errors = [];
+
+  try { ensureDir(runtimeDir); } catch (e) { errors.push(`mkdir ${runtimeDir}: ${e.message}`); }
+  try { ensureDir(skillDir); } catch (e) { errors.push(`mkdir ${skillDir}: ${e.message}`); }
+
+  if (errors.length > 0) {
+    return { ok: false, detail: errors.join("; ") };
+  }
+
+  if (changedFiles.includes("scripts/chrome-agent-runtime.mjs") || changedFiles.includes("scripts/chrome-agent-cli.mjs")) {
+    const src = path.join(repoRoot, "scripts", "chrome-agent-runtime.mjs");
+    const dst = path.join(runtimeDir, "chrome-agent.mjs");
+    try {
+      fs.copyFileSync(src, dst);
+    } catch (e) {
+      errors.push(`copy runtime: ${e.message}`);
+    }
+  }
+
+  if (changedFiles.includes("skills/chrome-agent/SKILL.md")) {
+    const src = path.join(repoRoot, "skills", "chrome-agent", "SKILL.md");
+    const dst = path.join(skillDir, "SKILL.md");
+    try {
+      fs.copyFileSync(src, dst);
+    } catch (e) {
+      errors.push(`copy skill: ${e.message}`);
+    }
+  }
+
+  // Write installed hash
+  if (errors.length === 0) {
+    const headRev = spawnSync("git", ["rev-parse", "HEAD"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    if (headRev.status === 0) {
+      const hashPath = path.join(runtimeDir, ".chrome-agent-installed-hash");
+      try {
+        fs.writeFileSync(hashPath, `${headRev.stdout.trim()}\n`, "utf8");
+      } catch (e) {
+        errors.push(`write hash: ${e.message}`);
+      }
+    }
+  }
+
+  if (errors.length > 0) {
+    return { ok: false, detail: errors.join("; ") };
+  }
+  return { ok: true, detail: "updated" };
+}
+
 function runDoctor(repoRoot, repoRef, resolutionMode) {
   const runtimeDir = process.env.CHROME_AGENT_RUNTIME_DIR || path.join(os.homedir(), ".agents", "scripts");
   const binDir = process.env.CHROME_AGENT_BIN_DIR || path.join(os.homedir(), ".local", "bin");
@@ -2473,25 +2614,55 @@ function runDoctor(repoRoot, repoRef, resolutionMode) {
     { name: "obscura_worker", ok: obscuraPreflight.workerOk, detail: obscuraPreflight.path ? path.join(path.dirname(obscuraPreflight.path), "obscura-worker") : "unavailable" },
   ];
 
+  // Repo freshness check
+  const freshnessResult = runGitFetchCheck(repoRoot);
+  checks.push({ name: "repo_freshness", ok: freshnessResult.ok, detail: freshnessResult.detail });
+
+  // If stale, check tracked files and auto-update if needed
+  let skillReloadRequired = false;
+  if (freshnessResult.stale) {
+    const trackedResult = runTrackedFilesCheck(repoRoot);
+    if (trackedResult.changedFiles.length > 0) {
+      const updateResult = runAutoUpdateGlobalFiles(repoRoot, trackedResult.changedFiles);
+      checks.push({ name: "global_skill_updated", ok: updateResult.ok, detail: updateResult.detail });
+      if (updateResult.ok) {
+        skillReloadRequired = true;
+      }
+    } else {
+      // Behind but no tracked files changed — override to ok
+      const lastIdx = checks.length - 1;
+      checks[lastIdx] = { name: "repo_freshness", ok: true, detail: trackedResult.detail };
+    }
+  }
+
   const broken = checks.filter((check) => !check.ok);
   const resultState = broken.length === 0 ? "success" : preflight.ok || repoShapeIsValid(repoRoot) ? "partial_success" : "failure";
+
+  let summary;
+  let nextAction;
+  if (broken.length === 0) {
+    summary = `Launcher and repository prerequisites are healthy. ${resolutionSummary(repoRef, resolutionMode)}`;
+    nextAction = "none";
+  } else if (skillReloadRequired) {
+    summary = `Doctor found ${broken.length} issue(s): ${broken.map((check) => check.name).join(", ")}. Global skill and runtime files have been auto-updated.`;
+    nextAction = "Global skill and runtime files have been updated. Please reload the skill (restart the session or re-read the skill file), then retry your command.";
+  } else {
+    summary = `Doctor found ${broken.length} issue(s): ${broken.map((check) => check.name).join(", ")}.`;
+    nextAction = "Install the global launcher, set CHROME_AGENT_REPO or supply an explicit --repo <path|repo://id>, and repair Scrapling CLI availability.";
+  }
 
   return makeResult(
     "doctor",
     "runtime",
     repoRef,
-    broken.length === 0
-      ? `Launcher and repository prerequisites are healthy. ${resolutionSummary(repoRef, resolutionMode)}`
-      : `Doctor found ${broken.length} issue(s): ${broken.map((check) => check.name).join(", ")}.`,
+    summary,
     checks.map((check) => ({
       path: check.detail,
       lifecycle: "durable",
       description: check.name,
       action: check.ok ? "checked" : "missing",
     })),
-    broken.length === 0
-      ? "none"
-      : "Install the global launcher, set CHROME_AGENT_REPO or supply an explicit --repo <path|repo://id>, and repair Scrapling CLI availability.",
+    nextAction,
     resultState,
     {
       checks,

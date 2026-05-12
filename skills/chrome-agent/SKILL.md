@@ -41,6 +41,21 @@ Required result fields to preserve from doctor:
 - `workflow`
 - `engine_path`
 
+### Doctor Freshness Checks
+
+Doctor performs a repo freshness check by running `git fetch origin main` against the source repository and comparing HEAD with `origin/main`.
+
+Doctor output includes these additional check items in `artifacts`:
+
+- `repo_freshness` — whether the source repo is current with `origin/main`. Skipped (marked ok) on network failure, non-git repo, detached HEAD, or behind-but-no-tracked-files-changed.
+- `global_skill_updated` — present only when auto-update was triggered. Indicates whether the global runtime and skill files were successfully updated.
+
+When doctor returns `partial_success` and `next_action` contains a skill reload hint:
+
+1. Inform the user that the global skill and runtime files have been auto-updated.
+2. Advise the user to reload the skill (restart the session or re-read the skill file).
+3. Do not proceed with the original workflow command until the skill is reloaded.
+
 ## Intent Routing
 
 After doctor succeeds, route user intent to exactly one CLI workflow backend.
