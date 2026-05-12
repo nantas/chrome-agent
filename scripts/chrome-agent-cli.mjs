@@ -2509,6 +2509,17 @@ function runGitFetchCheck(repoRoot) {
     return { ok: true, detail: headHash, stale: false };
   }
 
+  // Check if HEAD is behind (ancestor of) origin/main, not ahead
+  const ancestorCheck = spawnSync("git", ["merge-base", "--is-ancestor", "HEAD", "origin/main"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  // exit 0 = HEAD is ancestor of origin/main => HEAD is behind or equal (equal already handled)
+  // exit 1 = HEAD is NOT ancestor => HEAD is ahead or diverged
+  if (ancestorCheck.status !== 0) {
+    return { ok: true, detail: `ahead: HEAD ${headHash.slice(0, 8)} vs origin/main ${mainHash.slice(0, 8)}`, stale: false };
+  }
+
   return { ok: false, detail: `behind: HEAD ${headHash.slice(0, 8)} vs origin/main ${mainHash.slice(0, 8)}`, stale: true, headHash, mainHash };
 }
 
