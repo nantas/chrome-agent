@@ -475,3 +475,60 @@ Local overrides in the site strategy SHALL be partial: only explicitly provided 
 - **AND** the referenced anti-crawl strategy does not define a `very-strict` tier
 - **THEN** the system SHALL emit a warning
 - **AND** fall back to code safe defaults for all rate limit parameters
+
+### Requirement: platform_variant 字段定义
+
+The system SHALL define an optional `platform_variant` field within the `api` object of site strategy YAML frontmatter.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `api.platform_variant` | enum | no | MediaWiki platform variant identifier. Valid values: `standard` (default), `fandom`, `wiki-gg` |
+
+`api.platform_variant` SHALL be optional. When not specified, the default value SHALL be `standard`.
+
+#### Scenario: Fandom variant declaration
+
+- **WHEN** a site strategy specifies `api.platform: mediawiki` and `api.platform_variant: fandom`
+- **THEN** the pipeline SHALL recognize this as a Fandom variant
+- **AND** SHALL pass the variant value to all pipeline phases
+
+#### Scenario: Default variant
+
+- **WHEN** a site strategy specifies `api.platform: mediawiki` but does not specify `api.platform_variant`
+- **THEN** the pipeline SHALL use `standard` as the default
+- **AND** behavior SHALL be identical to pre-variant pipeline behavior
+
+### Requirement: content_profile ID 引用完整性约束
+
+The system SHALL require that all values in `api.content_profile` reference IDs registered in `_STRATEGY_REGISTRY` (located at `scripts/mediawiki-api-extract/pipeline/orchestrate.py`).
+
+Each `content_profile` field SHALL only reference IDs that exist in the corresponding dimension of `_STRATEGY_REGISTRY`.
+
+Current registered IDs (reference only — `_STRATEGY_REGISTRY` is the authoritative source):
+
+| Dimension | Valid IDs |
+|-----------|----------|
+| `discovery_strategy` | `allpages`, `category_members` |
+| `content_acquisition` | `wikitext_only`, `hybrid_wikitext_plus_rendered`, `html_rendered` |
+| `link_resolver` | `exact_title_match`, `short_name_with_cross_namespace` |
+| `template_processor` | `simple_substitution`, `structured_with_lua_fallback` |
+| `list_page_assembler` | `frontmatter_driven`, `hybrid_frontmatter_and_rendered` |
+
+#### Scenario: Valid ID reference
+
+- **WHEN** a site strategy specifies `content_profile.link_resolver: "exact_title_match"`
+- **THEN** the pipeline SHALL use `ExactTitleLinkResolver` normally
+- **AND** SHALL not emit any warning
+
+#### Scenario: Invalid ID reference
+
+- **WHEN** a site strategy specifies `content_profile.link_resolver: "short_name"`
+- **AND** `short_name` does not exist in `_STRATEGY_REGISTRY["link_resolver"]`
+- **THEN** the pipeline SHALL reject execution with `EXIT_STRATEGY_ERROR`
+- **AND** error message SHALL indicate the invalid ID and available options
+
+#### Scenario: Partial content_profile
+
+- **WHEN** a site strategy specifies only some `content_profile` fields
+- **THEN** unspecified fields SHALL use defaults from `DEFAULT_STRATEGIES`
+- **AND** only specified fields SHALL be validated for ID reference integrity
