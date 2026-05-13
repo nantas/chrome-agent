@@ -9,7 +9,9 @@ log = logging.getLogger("mediawiki-api-extract")
 
 
 def run_phase_a(client: ApiClient, strategy: dict, origin: str,
-                discovery_strategy: DiscoveryStrategy) -> dict:
+                discovery_strategy: DiscoveryStrategy,
+                *,
+                platform_variant: str = "standard") -> dict:
     """Execute Phase A: Page Discovery. Returns manifest dict."""
     api = strategy.get("api", {})
     taxonomy = api.get("taxonomy", {})
@@ -17,9 +19,42 @@ def run_phase_a(client: ApiClient, strategy: dict, origin: str,
     page_categories = taxonomy.get("page_categories", {})
     category_filters = taxonomy.get("category_filters", [])
 
-    log.info("Phase A: Discovering pages...")
+    log.info("Phase A: Discovering pages... (platform_variant=%s)", platform_variant)
     pages = discovery_strategy.discover_pages(client, strategy)
     log.info("Discovered %d pages", len(pages))
+
+    # Fandom translation page filtering
+    if platform_variant == "fandom":
+        before = len(pages)
+        pages = [p for p in pages if not (p["title"].endswith("/tr") or p["title"].endswith("_tr"))]
+        filtered_tr = before - len(pages)
+        if filtered_tr > 0:
+            log.info("Filtered %d translation pages (_tr)", filtered_tr)
+
+        # Fandom page existence verification via prop=info
+        if platform_variant == "fandom" and pages:
+            titles = [p["title"] for p in pages]
+            existing_pages = []
+            batch_size = 50
+            for i in range(0, len(titles), batch_size):
+                batch = titles[i:i + batch_size]
+                try:
+                    data = client.query(prop="info", titles="|".join(batch))
+                    query_pages = data.get("query", {}).get("pages", {})
+                    missing_titles = set()
+                    for _pid, pinfo in query_pages.items():
+                        if "missing" in pinfo:
+                            missing_titles.add(pinfo.get("title", ""))
+                    existing_pages.extend(p for p in pages[i:i + batch_size] if p["title"] not in missing_titles)
+                except Exception as e:
+                    log.warning("prop=info batch verification failed for batch %d-%d: %s", i, i + batch_size, e)
+                    existing_pages.extend(pages[i:i + batch_size])
+            before_verify = len(pages)
+            pages = existing_pages
+            filtered_missing = before_verify - len(pages)
+            if filtered_missing > 0:
+                pct = filtered_missing / before_verify * 100
+                log.info("Filtered %d pages (missing in prop=info, %.1f%%)", filtered_missing, pct)
 
     page_titles = [p["title"] for p in pages]
     log.info("Phase A: Discovering categories for %d pages...", len(page_titles))

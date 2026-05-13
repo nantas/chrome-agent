@@ -1,0 +1,30 @@
+# Template: custom
+---
+domain: ""
+description: ""
+protection_level: low
+anti_crawl_refs: []
+structure:
+  pages: []
+  entry_points: []
+api: null
+extraction:
+  engine: scrapling-get
+  selectors:
+    content: "body"
+    title: "title"
+    nav: "body"
+  cleanup: []
+  text_normalization: []
+---
+
+# Custom Strategy
+
+## Platform Notes
+
+No matching platform template found. Fallback scaffold — requires manual review and configuration.
+
+## Extraction Rules
+
+- Content selector: `body` (fallback)
+- Manual review required for all selectors and cleanup rules

@@ -1,0 +1,31 @@
+# Template: static-site
+---
+domain: ""
+description: ""
+protection_level: low
+anti_crawl_refs: []
+structure:
+  pages: []
+  entry_points: []
+api: null
+extraction:
+  engine: scrapling-get
+  selectors:
+    content: "main"
+    title: "title"
+    nav: "nav"
+  cleanup: []
+  text_normalization:
+    - normalize_blank_lines
+---
+
+# Static Site Strategy
+
+## Platform Notes
+
+Plain static HTML site. No API detected. Assume clean HTML.
+
+## Extraction Rules
+
+- Content selector: `main` or `article` or `body`
+- Minimal cleanup (assume clean HTML)

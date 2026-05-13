@@ -220,7 +220,7 @@ def run_validation(output_dir: str, client=None) -> dict:
 from .discovery import AllPagesDiscoveryStrategy, CategoryMembersDiscoveryStrategy
 from .acquisition import WikitextOnlyAcquisitionStrategy, HybridAcquisitionStrategy, HtmlRenderedAcquisitionStrategy
 from .link_resolver import ExactTitleLinkResolver, ShortNameLinkResolver
-from .template import SimpleSubstitutionTemplateProcessor, StructuredTemplateProcessor
+from .template import SimpleSubstitutionTemplateProcessor, StructuredTemplateProcessor, FandomInfoboxTemplateProcessor
 from .list_assembler import FrontmatterDrivenListPageAssembler, HybridListPageAssembler
 
 # Re-export converters for backward compatibility

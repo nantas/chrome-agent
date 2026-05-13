@@ -104,6 +104,7 @@ structure:
     - sts2_main_page
 api:
   platform: mediawiki
+  platform_variant: wiki-gg
   base_url: "https://slaythespire.wiki.gg/api.php"
   capabilities:
     - page_list

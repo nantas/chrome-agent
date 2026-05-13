@@ -1,0 +1,40 @@
+{
+  "entries": [
+    {
+      "id": "mediawiki",
+      "platform": "mediawiki",
+      "protection_level": "low",
+      "file": "mediawiki.yaml"
+    },
+    {
+      "id": "mediawiki-fandom",
+      "platform": "mediawiki-fandom",
+      "protection_level": "high",
+      "file": "mediawiki-fandom.yaml"
+    },
+    {
+      "id": "mediawiki-wiki-gg",
+      "platform": "mediawiki-wiki-gg",
+      "protection_level": "low",
+      "file": "mediawiki-wiki-gg.yaml"
+    },
+    {
+      "id": "static-site",
+      "platform": "static-site",
+      "protection_level": "low",
+      "file": "static-site.yaml"
+    },
+    {
+      "id": "wordpress",
+      "platform": "wordpress",
+      "protection_level": "low",
+      "file": "wordpress.yaml"
+    },
+    {
+      "id": "custom",
+      "platform": "custom",
+      "protection_level": "low",
+      "file": "custom.yaml"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+# Template: mediawiki
+---
+domain: ""
+description: ""
+protection_level: low
+anti_crawl_refs:
+  - default
+structure:
+  pages: []
+  entry_points: []
+api:
+  type: mediawiki
+  base_url: ""
+  version: ""
+  content_profile:
+    discovery_strategy: allpages
+    content_acquisition: wikitext_only
+    link_resolver: exact_title_match
+    template_processor: simple_substitution
+    list_page_assembler: frontmatter_driven
+  capabilities: []
+extraction:
+  engine: scrapling-get
+  selectors:
+    content: "#mw-content-text"
+    title: "#firstHeading"
+    nav: ".mw-parser-output"
+  cleanup:
+    - strip_edit_sections
+    - strip_toc
+  text_normalization:
+    - fix_spaces
+    - normalize_blank_lines
+---
+
+# MediaWiki Strategy
+
+## Platform Notes
+
+Generic MediaWiki site. Server-side rendered static HTML. API available at `/api.php`.
+
+## Extraction Rules
+
+- Content selector: `#mw-content-text`
+- Remove edit sections and TOC before conversion
+- Resolve internal wiki links to `.md` files

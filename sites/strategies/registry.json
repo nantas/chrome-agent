@@ -4,9 +4,15 @@
       "domain": "balatrowiki.org",
       "description": "Weird Gloop hosted MediaWiki for Balatro game wiki",
       "protection_level": "low",
-      "page_types": ["static_article"],
-      "pagination": ["none"],
-      "entry_points": ["wiki_article"],
+      "page_types": [
+        "static_article"
+      ],
+      "pagination": [
+        "none"
+      ],
+      "entry_points": [
+        "wiki_article"
+      ],
       "anti_crawl_refs": [],
       "file": "balatrowiki.org/strategy.md",
       "backend": "weird-gloop-mediawiki-1.45"
@@ -15,9 +21,16 @@
       "domain": "vampire.survivors.wiki",
       "description": "Weird Gloop hosted MediaWiki for Vampire Survivors",
       "protection_level": "low",
-      "page_types": ["static_page", "static_article"],
-      "pagination": ["none"],
-      "entry_points": ["wiki_category"],
+      "page_types": [
+        "static_page",
+        "static_article"
+      ],
+      "pagination": [
+        "none"
+      ],
+      "entry_points": [
+        "wiki_category"
+      ],
       "anti_crawl_refs": [],
       "file": "vampire.survivors.wiki/strategy.md",
       "backend": "weird-gloop-mediawiki-1.45"
@@ -26,9 +39,15 @@
       "domain": "mp.weixin.qq.com",
       "description": "Publicly accessible WeChat article detail pages",
       "protection_level": "low",
-      "page_types": ["static_article"],
-      "pagination": ["none"],
-      "entry_points": ["public_article"],
+      "page_types": [
+        "static_article"
+      ],
+      "pagination": [
+        "none"
+      ],
+      "entry_points": [
+        "public_article"
+      ],
       "anti_crawl_refs": [],
       "file": "mp.weixin.qq.com/strategy.md"
     },
@@ -36,39 +55,77 @@
       "domain": "x.com",
       "description": "Public tweet detail and hashtag/search pages",
       "protection_level": "variable",
-      "page_types": ["dynamic_content", "search_results"],
-      "pagination": ["none", "scroll_infinite"],
-      "entry_points": ["public_tweet", "hashtag_search"],
-      "anti_crawl_refs": ["login-wall-redirect"],
+      "page_types": [
+        "dynamic_content",
+        "search_results"
+      ],
+      "pagination": [
+        "none",
+        "scroll_infinite"
+      ],
+      "entry_points": [
+        "public_tweet",
+        "hashtag_search"
+      ],
+      "anti_crawl_refs": [
+        "login-wall-redirect"
+      ],
       "file": "x.com/strategy.md"
     },
     {
       "domain": "wiki.supercombo.gg",
       "description": "Fighting game wiki pages with Cloudflare Turnstile protection",
       "protection_level": "high",
-      "page_types": ["static_article"],
-      "pagination": ["none"],
-      "entry_points": ["wiki_article"],
-      "anti_crawl_refs": ["cloudflare-turnstile"],
+      "page_types": [
+        "static_article"
+      ],
+      "pagination": [
+        "none"
+      ],
+      "entry_points": [
+        "wiki_article"
+      ],
+      "anti_crawl_refs": [
+        "cloudflare-turnstile"
+      ],
       "file": "wiki.supercombo.gg/strategy.md"
     },
     {
       "domain": "fanbox.cc",
       "description": "pixivFANBOX authenticated content retrieval and file download",
       "protection_level": "authenticated",
-      "page_types": ["dynamic_list", "dynamic_content", "binary_file"],
-      "pagination": ["url_parameter"],
-      "entry_points": ["creator_post_list"],
-      "anti_crawl_refs": ["cookie-auth-session", "rate-limit-api"],
+      "page_types": [
+        "dynamic_list",
+        "dynamic_content",
+        "binary_file"
+      ],
+      "pagination": [
+        "url_parameter"
+      ],
+      "entry_points": [
+        "creator_post_list"
+      ],
+      "anti_crawl_refs": [
+        "cookie-auth-session",
+        "rate-limit-api"
+      ],
       "file": "fanbox.cc/strategy.md"
     },
     {
       "domain": "boardgamegeek.com",
       "description": "BoardGameGeek browse listing and detail pages for board game mechanics",
       "protection_level": "high",
-      "page_types": ["dynamic_list", "dynamic_content"],
-      "pagination": ["url_parameter", "none"],
-      "entry_points": ["mechanic_browse"],
+      "page_types": [
+        "dynamic_list",
+        "dynamic_content"
+      ],
+      "pagination": [
+        "url_parameter",
+        "none"
+      ],
+      "entry_points": [
+        "mechanic_browse"
+      ],
       "anti_crawl_refs": [],
       "file": "boardgamegeek.com/strategy.md"
     },
@@ -76,21 +133,69 @@
       "domain": "www.leagueofgamemakers.com",
       "description": "Self-hosted WordPress blog for board game design articles",
       "protection_level": "low",
-      "page_types": ["static_article", "static_list"],
-      "pagination": ["url_path", "none"],
-      "entry_points": ["single_post", "category_archive", "tag_archive", "author_archive", "blog_index"],
+      "page_types": [
+        "static_article",
+        "static_list"
+      ],
+      "pagination": [
+        "url_path",
+        "none"
+      ],
+      "entry_points": [
+        "single_post",
+        "category_archive",
+        "tag_archive",
+        "author_archive",
+        "blog_index"
+      ],
       "anti_crawl_refs": [],
       "file": "www.leagueofgamemakers.com/strategy.md"
-	},
-	{
+    },
+    {
       "domain": "slaythespire.wiki.gg",
       "description": "Slay the Spire 1 and 2 wiki on wiki.gg, MediaWiki 1.43.6. HTML-rendered API crawl covering ns=0 (StS1), ns=3000 (StS2), and ns=14 (categories).",
       "protection_level": "low",
-      "page_types": ["static_article", "wiki_list_page", "wiki_category"],
-      "pagination": ["none"],
-      "entry_points": ["sts2_main_page", "sts2_list_page", "sts2_entity_page", "category_page"],
-      "anti_crawl_refs": ["default", "rate-limit-api"],
+      "page_types": [
+        "static_article",
+        "wiki_list_page",
+        "wiki_category"
+      ],
+      "pagination": [
+        "none"
+      ],
+      "entry_points": [
+        "sts2_main_page",
+        "sts2_list_page",
+        "sts2_entity_page",
+        "category_page"
+      ],
+      "anti_crawl_refs": [
+        "default",
+        "rate-limit-api"
+      ],
       "file": "slaythespire.wiki.gg/strategy.md"
+    },
+    {
+      "domain": "neonabyss.fandom.com",
+      "description": "Fandom-hosted MediaWiki 1.43.8 game wiki for Neon Abyss. Cloudflare Managed Challenge on HTML; open MediaWiki API. Dual-content model with summary list pages and individual entity pages.",
+      "protection_level": "high",
+      "page_types": [
+        "static_article",
+        "wiki_list_page"
+      ],
+      "pagination": [
+        "none"
+      ],
+      "entry_points": [
+        "wiki_main_page",
+        "wiki_category",
+        "wiki_article"
+      ],
+      "anti_crawl_refs": [
+        "default",
+        "rate-limit-api"
+      ],
+      "file": "neonabyss.fandom.com/strategy.md"
     }
   ]
 }

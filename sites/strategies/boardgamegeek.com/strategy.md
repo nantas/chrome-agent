@@ -4,8 +4,8 @@ description: BoardGameGeek browse listing and detail pages for board game mechan
 protection_level: high
 anti_crawl_refs: []
 engine_preference:
-  preferred: scrapling-stealthy-fetch
-  reason: "BGG returns HTTP 403 on scrapling-get; scrapling-stealthy-fetch with stealth features is needed to bypass bot detection"
+  preferred: cloakbrowser-fetch
+  reason: "BGG returns HTTP 403 on scrapling-get; cloakbrowser-fetch with stealth features is needed to bypass bot detection"
 structure:
   pages:
     - id: mechanic_browse
@@ -15,7 +15,7 @@ structure:
       type: dynamic_list
       anti_crawl_refs: []
       engine_preference:
-        preferred: scrapling-stealthy-fetch
+        preferred: cloakbrowser-fetch
         reason: "BGG browse page blocks simple HTTP fetches with 403"
       content_type: list
       pagination:
@@ -33,7 +33,7 @@ structure:
       type: dynamic_content
       anti_crawl_refs: []
       engine_preference:
-        preferred: scrapling-stealthy-fetch
+        preferred: cloakbrowser-fetch
         reason: "BGG detail pages also blocked by bot detection"
       content_type: article_with_attachments
       pagination: none
@@ -68,21 +68,21 @@ BoardGameGeek's browse/boardgamemechanic page lists all board game mechanics wit
 
 ## Extraction Flow
 
-1. Use `scrapling-stealthy-fetch` with the `/browse/boardgamemechanic` URL.
+1. Use `cloakbrowser-fetch` with the `/browse/boardgamemechanic` URL.
 2. Extract all mechanic links from the table.
-3. For each mechanic link, fetch detail page with `scrapling-stealthy-fetch`.
+3. For each mechanic link, fetch detail page with `cloakbrowser-fetch`.
 4. Extract: mechanic name, description, top games list.
 5. Save each detail as a separate output.
 
 ## Known Issues
 
 - First tried `scrapling-get` (2026-05-02): HTTP 403, empty content.
-- `scrapling-stealthy-fetch` is the recommended first engine.
+- `cloakbrowser-fetch` is the recommended first engine.
 - Pagination parameter returns duplicate content; no need to paginate.
 - 192 detail pages may take significant time to crawl.
 
 ## Evidence
 
 - 2026-05-02: `fetch` via `scrapling-get` returned 403 with 0-byte `content.md`.
-- 2026-05-02: `fetch` via `scrapling-stealthy-fetch` returned full browse list and acting detail page.
+- 2026-05-02: `fetch` via `cloakbrowser-fetch` returned full browse list and acting detail page.
 - 2026-05-02: `explore` confirmed no site strategy existed before this creation.

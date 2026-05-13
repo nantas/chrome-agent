@@ -1,0 +1,58 @@
+# Template: mediawiki-fandom
+---
+domain: ""
+description: ""
+protection_level: high
+anti_crawl_refs:
+  - default
+  - rate-limit-api
+structure:
+  pages: []
+  entry_points: []
+api:
+  type: mediawiki
+  platform_variant: fandom
+  base_url: ""
+  version: ""
+  content_profile:
+    discovery_strategy: category_members
+    content_acquisition: html_rendered
+    link_resolver: short_name_with_cross_namespace
+    template_processor: fandom_infobox
+    list_page_assembler: hybrid_frontmatter_and_rendered
+  rate_limit:
+    tier: strict
+  capabilities: []
+extraction:
+  engine: cloakbrowser-fetch
+  selectors:
+    content: "#mw-content-text"
+    title: "#firstHeading"
+    nav: ".mw-parser-output"
+  cleanup:
+    - fix_lazyload_images
+    - strip_fandom_infobox_tables
+    - convert_ambox_to_text
+    - unwrap_image_wrappers
+    - strip_edit_sections
+    - strip_toc
+  text_normalization:
+    - fix_spaces
+    - normalize_blank_lines
+    - deduplicate_words
+---
+
+# Fandom MediaWiki Strategy
+
+## Platform Notes
+
+Fandom-hosted MediaWiki. Cloudflare Managed Challenge on HTML pages; MediaWiki API endpoints are typically unaffected. Lazy-loaded images with base64 placeholders.
+
+## Extraction Rules
+
+- Content selector: `#mw-content-text`
+- Fix lazyload images: replace `data:image/gif;base64` src with `data-src`
+- Remove Fandom infobox visual tables (portable-infobox, item-table-* classes)
+- Convert ambox notices to text
+- Unwrap image wrapper links
+- Resolve internal wiki links to `.md` files

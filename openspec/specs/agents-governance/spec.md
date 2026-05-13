@@ -222,3 +222,23 @@ The system SHALL treat persistent shell-environment changes as user-approved act
 - **WHEN** the workflow determines that adding `SCRAPLING_CLI_PATH` to `/Users/nantas-agent/.zshenv` would improve future runs
 - **THEN** it SHALL ask the user for confirmation before writing
 - **AND** it SHALL continue without persistent shell modification if the user declines
+
+### Requirement: Pipeline Strategy Schema 治理章节
+
+The system SHALL include a Pipeline Strategy Schema 治理 subsection within AGENTS.md, placed after the 策略库治理（Strategy Library Governance） section.
+
+该章节 SHALL 包含以下内容：
+
+1. **权威来源声明**：声明 `_STRATEGY_REGISTRY`（位于 `scripts/mediawiki-api-extract/pipeline/orchestrate.py`）为策略 ID 的唯一权威来源
+2. **策略文件约束**：`content_profile` 字段只能引用已注册 ID；Pipeline 启动时 hard-fail 校验
+3. **扩展协议**：实现 → 注册 → 引用的严格顺序
+4. **Registry 变更约束**：删除/重命名 ID 前必须反向检查
+5. **当前注册 ID 清单**：各维度的合法 ID 列表（快速参考，不替代代码权威）
+6. **platform_variant 声明**：可选字段用于 MediaWiki 平台子类型化（fandom / wiki-gg / standard）
+
+#### Scenario: 章节位置与内容
+
+- **WHEN** 用户或 agent 阅读 AGENTS.md
+- **THEN** Pipeline Strategy Schema 治理章节 SHALL 位于策略库治理之后
+- **AND** SHALL 包含权威来源、约束、扩展协议、ID 清单和 variant 声明
+- **AND** SHALL 明确引用 `scripts/mediawiki-api-extract/pipeline/orchestrate.py` 作为 `_STRATEGY_REGISTRY` 的权威位置

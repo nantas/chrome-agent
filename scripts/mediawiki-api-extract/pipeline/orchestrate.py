@@ -18,6 +18,7 @@ from ..strategies import (
     ContentAcquisitionStrategy,
     DiscoveryStrategy,
     ExactTitleLinkResolver,
+    FandomInfoboxTemplateProcessor,
     FrontmatterDrivenListPageAssembler,
     HtmlRenderedAcquisitionStrategy,
     HybridAcquisitionStrategy,
@@ -128,12 +129,48 @@ _STRATEGY_REGISTRY = {
     "template_processor": {
         "simple_substitution": SimpleSubstitutionTemplateProcessor,
         "structured_with_lua_fallback": StructuredTemplateProcessor,
+        "fandom_infobox": FandomInfoboxTemplateProcessor,
     },
     "list_page_assembler": {
         "frontmatter_driven": FrontmatterDrivenListPageAssembler,
         "hybrid_frontmatter_and_rendered": HybridListPageAssembler,
     },
 }
+
+# Public API for external consumers (bootstrap-strategy, validation)
+STRATEGY_REGISTRY = _STRATEGY_REGISTRY
+PROFILE_KEY_MAP = _PROFILE_KEY_MAP
+
+
+def derive_capabilities(content_profile: dict) -> list[str]:
+    """Derive pipeline capabilities from content_profile strategy IDs.
+
+    Reads required_capabilities from discovery and content_acquisition
+    strategy instances, returns sorted union.
+    """
+    caps: set[str] = set()
+    for field in ("discovery", "content_acquisition"):
+        # Find the content_profile key for this dimension
+        profile_key = None
+        for pk, fk in _PROFILE_KEY_MAP.items():
+            if fk == field:
+                profile_key = pk
+                break
+
+        # Resolve strategy ID: explicit > default
+        default_id = DEFAULT_STRATEGIES[field][0]
+        strategy_id = content_profile.get(profile_key, default_id) if profile_key else default_id
+
+        registry = _STRATEGY_REGISTRY.get(field, {})
+        cls = registry.get(strategy_id)
+        if cls is None:
+            raise ValueError(
+                f"Strategy ID '{strategy_id}' not registered in '{field}'. "
+                f"Available: {list(registry.keys())}"
+            )
+        caps |= cls().required_capabilities
+
+    return sorted(caps)
 
 
 def build_pipeline(strategy: dict, domain: str = "") -> PipelineStrategies:
@@ -153,10 +190,10 @@ def build_pipeline(strategy: dict, domain: str = "") -> PipelineStrategies:
         registry = _STRATEGY_REGISTRY.get(field, {})
         cls = registry.get(requested_id)
         if cls is None:
-            if requested_id != default_id:
-                log.warning("Unknown strategy ID '%s' for %s, using default '%s'",
-                            requested_id, field, default_id)
-            cls = default_cls
+            raise ValueError(
+                f"Strategy ID '{requested_id}' not registered in '{field}'. "
+                f"Available: {list(registry.keys())}"
+            )
 
         if field == "link_resolver":
             kwargs[field] = cls(domain)
@@ -294,11 +331,15 @@ def run_pipeline(args: argparse.Namespace) -> int:
         log.error("Failed to parse strategy: %s", e)
         return EXIT_STRATEGY_ERROR
 
-    # Build pipeline strategies
+    # Build pipeline strategies (with schema validation)
     domain = strategy.get("domain", urlparse(args.url).hostname)
     origin = f"https://{domain}"
 
-    strategies = build_pipeline(strategy, domain)
+    try:
+        strategies = build_pipeline(strategy, domain)
+    except ValueError as e:
+        log.error("Strategy schema validation failed: %s", e)
+        return EXIT_STRATEGY_ERROR
 
     # Validate API config
     api_config = strategy.get("api")
@@ -321,6 +362,10 @@ def run_pipeline(args: argparse.Namespace) -> int:
     # Resolve rate limit configuration
     rate_limit_config = resolve_rate_limit_config(strategy, args)
 
+    # Resolve platform variant
+    platform_variant = strategy.get("api", {}).get("platform_variant", "standard")
+    log.info("Platform variant: %s", platform_variant)
+
     client = ApiClient(base_url, rate_limit_config=rate_limit_config)
 
     # Create output directory
@@ -332,7 +377,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
     # --- Phase A ---
     if "A" in phases or "all" in phases:
         try:
-            manifest = run_phase_a(client, strategy, origin, strategies.discovery)
+            manifest = run_phase_a(client, strategy, origin, strategies.discovery,
+                                       platform_variant=platform_variant)
             manifest_path = os.path.join(args.output, "page_manifest.json")
             with open(manifest_path, "w", encoding="utf-8") as f:
                 json.dump(manifest, f, indent=2, ensure_ascii=False)
@@ -353,7 +399,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
         try:
             results, stats = run_phase_b(
                 client, manifest, strategy, rate_limit_config, domain,
-                strategies.content_acquisition, strategies.link_resolver, strategies.template_processor
+                strategies.content_acquisition, strategies.link_resolver, strategies.template_processor,
+                platform_variant=platform_variant
             )
 
             if stats["failure_rate"] > 0.5:

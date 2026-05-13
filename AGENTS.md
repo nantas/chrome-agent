@@ -59,6 +59,18 @@
 
 路由信号：默认走 Content Retrieval；prompt 包含 `分析、调试、证据、总结经验、平台、结构、抓取规则、复现` 等信号时走 Platform/Page Analysis；两种信号同时出现时优先 Platform/Page Analysis。
 
+**Explore Deep Discovery（策略缺口路径）**：当 `explore <url>` 未命中已有策略时，不再仅返回"strategy gap"，而是自动执行 deep discovery 管线：
+1. **引擎链探测**（ProbeChain）：依次尝试 `scrapling-get` → `obscura-fetch` → `cloakbrowser-fetch` → `chrome-devtools-mcp`
+2. **API 发现**（ApiDiscovery）：探测 `/api.php`、`/wp-json`、`/graphql`、`/sitemap.xml`、`/robots.txt`
+3. **结构映射**（StructureMapper）：提取 nav 栏目（≤10）、页面类型（home/list/article/gallery）、内容结构（表格/infobox/列表）
+4. **保护识别**（ProtectionIdentifier）：基于引擎链错误 + HTML 特征判断保护机制
+5. **策略模板选择**：从 `sites/templates/` 选择最佳匹配模板（mediawiki / mediawiki-fandom / static-site / custom）
+6. **Scaffold 生成**：填充 frontmatter 并写入 `sites/strategies/<domain>/strategy.md`
+7. **样本转换与自检**（S1-S7）：转换样本、运行自检、最多 2 轮 auto-remediation
+8. **冻结**：用户确认后移除 scaffold 标记、追加 `sites/strategies/registry.json`
+
+该路径由 `scripts/explore/` Python 模块实现，CLI 通过 `python3 scripts/explore/main.py` 调用。若 deep discovery 失败，CLI 仍 fallback 到原有 detectBackend + bootstrap-strategy 建议行为。
+
 所有以 Scrapling 为起点的路径在真正执行前都必须先做 Scrapling CLI preflight：先检查 `SCRAPLING_CLI_PATH`，再检查默认受管安装 `$HOME/.cache/chrome-agent-scrapling/bin/scrapling`，仍缺失时先执行安装保障；只有 preflight 成功后，才能进入 fetcher 选择或 MCP 启动。
 
 若 preflight 无法恢复 CLI，可报告安装/配置失败，但不得伪装成已经进入 Scrapling-first 工作流。
@@ -202,6 +214,65 @@ sites/
 - **bootstrap 生成的策略必须 review**：生成的 `strategy.md` 包含 `<!-- Bootstrapped from ...; review recommended -->` 标记，使用前必须完成验证并替换为实际操作细节
 
 更多细节参见 `sites/README.md`。
+
+### Pipeline Strategy Schema 治理
+
+#### 权威来源
+
+`scripts/mediawiki-api-extract/pipeline/orchestrate.py` 中的 `_STRATEGY_REGISTRY` 是策略 ID 的唯一权威来源。
+
+每个 `content_profile` 维度的合法值由 `_STRATEGY_REGISTRY` 中对应维度的 key 定义。
+
+#### 策略文件约束
+
+- 策略文件的 `api.content_profile` 各字段只能引用 `_STRATEGY_REGISTRY` 中对应维度已注册的 ID
+- Pipeline 启动时执行 hard-fail 校验：引用未注册 ID 导致 `EXIT_STRATEGY_ERROR`，不降级执行
+- `bootstrap-strategy` 输出时同步校验：写入策略文件前检查所有 `content_profile` ID 的有效性
+- 未指定 `content_profile` 的策略文件使用 `DEFAULT_STRATEGIES` 默认值，不触发校验
+
+#### 扩展协议
+
+新增策略实现必须严格遵守以下顺序：
+
+1. **实现 Strategy 类**（继承或实现对应接口 Protocol）
+2. **注册到 `_STRATEGY_REGISTRY`** 对应维度的 dict 中
+3. **在策略文件中引用**已注册的 ID
+
+严禁在 Step 2（注册）之前执行 Step 3（策略文件引用）。违反此顺序的策略文件引用会被 pipeline 的启动校验拒绝。
+
+#### 当前注册 ID 清单
+
+> 此清单为快速参考，不替代 `_STRATEGY_REGISTRY` 作为权威来源。以代码为准。
+
+| 维度 | 合法 ID |
+|------|--------|
+| `discovery` | `allpages`, `category_members` |
+| `content_acquisition` | `wikitext_only`, `hybrid_wikitext_plus_rendered`, `html_rendered` |
+| `link_resolver` | `exact_title_match`, `short_name_with_cross_namespace` |
+| `template_processor` | `simple_substitution`, `structured_with_lua_fallback` |
+| `list_page_assembler` | `frontmatter_driven`, `hybrid_frontmatter_and_rendered` |
+
+#### Registry 变更约束
+
+删除或重命名 registry 中的 ID 前必须：
+
+1. 扫描所有 `sites/strategies/*/strategy.md` 确认无策略文件引用该 ID
+2. 更新任何引用该 ID 的策略文件
+3. 同步更新 `sites/templates/` 中的模板文件（如模板包含该 ID）
+
+新增 registry ID 无此约束（新增是向后兼容的）。
+
+#### platform_variant 声明
+
+策略文件的 `api` 对象中可选声明 `platform_variant` 字段，用于 MediaWiki 平台子类型化：
+
+| 值 | 描述 |
+|------|------|
+| `fandom` | Fandom-hosted MediaWiki |
+| `wiki-gg` | wiki.gg-hosted MediaWiki |
+| `standard` | 标准 MediaWiki（默认值，未指定时使用） |
+
+Pipeline 在 `run_pipeline()` 中解析此字段并传递给各阶段函数。当前阶段仅接受和记录，不实现行为分支。
 
 ## 8. 引擎扩展治理（Engine Extension Governance）
 

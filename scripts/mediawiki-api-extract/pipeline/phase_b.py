@@ -4,7 +4,7 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from ..client import ApiClient
+from ..client import ApiClient, PageNotFoundError
 from ..strategies import ContentAcquisitionStrategy, HtmlRenderedAcquisitionStrategy, HtmlToMarkdownConverter, LinkResolver, TemplateProcessor
 from ..strategies import convert_wikitext_to_markdown
 
@@ -24,6 +24,11 @@ def process_single_page(client: ApiClient, page_info: dict, manifest_pages: list
 
     try:
         raw = content_strategy.fetch_page_content(client, title, {})
+    except PageNotFoundError:
+        log.info("Page not found, skipping: %s", title)
+        return {"title": title, "status": "skipped", "error": None, "reason": "page_not_found"}
+
+    try:
 
         # HTML-rendered path
         if isinstance(content_strategy, HtmlRenderedAcquisitionStrategy):
@@ -75,7 +80,7 @@ def _process_html_page(raw: dict, title: str, source_dir: str, source_url: str,
                        domain: str, manifest_pages: list[dict],
                        frontmatter_fields: list[str]) -> dict:
     """Process a page using HTML-rendered content."""
-    html = raw.get("html", "")
+    html = raw.get("html") or ""
     if not html:
         return {"title": title, "status": "empty", "error": "Empty HTML"}
 
@@ -156,7 +161,9 @@ def run_phase_b(client: ApiClient, manifest: dict, strategy: dict,
                 rate_limit_config, domain: str,
                 content_strategy: ContentAcquisitionStrategy,
                 link_resolver: LinkResolver,
-                template_processor: TemplateProcessor) -> tuple[dict, dict]:
+                template_processor: TemplateProcessor,
+                *,
+                platform_variant: str = "standard") -> tuple[dict, dict]:
     """Execute Phase B: Content Extraction.
 
     Returns:
@@ -172,13 +179,14 @@ def run_phase_b(client: ApiClient, manifest: dict, strategy: dict,
     results = {}
     success_count = 0
     failure_count = 0
+    skipped_count = 0
     all_warnings = []
 
     concurrency = rate_limit_config.concurrency if rate_limit_config else 1
     batch_delay_sec = (rate_limit_config.batch_delay_ms / 1000.0) if rate_limit_config else 1.0
 
-    log.info("Phase B: Extracting content for %d pages (concurrency=%d, batch_delay_ms=%d)...",
-             len(pages), concurrency, rate_limit_config.batch_delay_ms if rate_limit_config else 1000)
+    log.info("Phase B: Extracting content for %d pages (concurrency=%d, batch_delay_ms=%d, platform_variant=%s)...",
+             len(pages), concurrency, rate_limit_config.batch_delay_ms if rate_limit_config else 1000, platform_variant)
 
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
         futures = {}
@@ -199,6 +207,9 @@ def run_phase_b(client: ApiClient, manifest: dict, strategy: dict,
                     success_count += 1
                     if result.get("warnings"):
                         all_warnings.extend(result["warnings"])
+                elif result["status"] == "skipped":
+                    skipped_count += 1
+                    log.info("Page %s: skipped (%s)", title, result.get("reason", "unknown"))
                 else:
                     failure_count += 1
                     log.warning("Page %s: %s", title, result.get("error", "unknown error"))
@@ -206,21 +217,22 @@ def run_phase_b(client: ApiClient, manifest: dict, strategy: dict,
                 results[title] = {"title": title, "status": "error", "error": str(e)}
                 failure_count += 1
 
-            done = success_count + failure_count
+            done = success_count + failure_count + skipped_count
             if done % 50 == 0:
-                log.info("Phase B progress: %d/%d (success=%d, failure=%d)",
-                         done, len(pages), success_count, failure_count)
+                log.info("Phase B progress: %d/%d (success=%d, skipped=%d, failure=%d)",
+                         done, len(pages), success_count, skipped_count, failure_count)
 
             time.sleep(batch_delay_sec)
 
     stats = {
         "total": len(pages),
         "success": success_count,
+        "skipped": skipped_count,
         "failure": failure_count,
         "failure_rate": failure_count / len(pages) if pages else 0,
         "warnings": all_warnings,
     }
-    log.info("Phase B complete: %d success, %d failure (%.1f%% failure rate)",
-             success_count, failure_count, stats["failure_rate"] * 100)
+    log.info("Phase B complete: %d success, %d skipped, %d failure (%.1f%% failure rate)",
+             success_count, skipped_count, failure_count, stats["failure_rate"] * 100)
 
     return results, stats

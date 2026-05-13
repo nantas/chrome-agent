@@ -1,0 +1,41 @@
+---
+domain: ""
+description: ""
+protection_level: low
+anti_crawl_refs:
+  - default
+structure:
+  pages: []
+  entry_points: []
+api:
+  type: wordpress
+  base_url: ""
+  version: ""
+  capabilities: []
+extraction:
+  engine: scrapling-get
+  selectors:
+    content: "article, .entry-content, .post-content, main"
+    title: "h1.entry-title, .post-title, title"
+    nav: "nav, .main-navigation, .menu"
+  cleanup:
+    - strip_comments
+    - strip_sidebars
+    - strip_ads
+  text_normalization:
+    - fix_spaces
+    - normalize_blank_lines
+---
+
+# WordPress Strategy
+
+## Platform Notes
+
+WordPress site with REST API at `/wp-json/`. Content typically in `article` or `.entry-content`. Standard theme structures vary; verify selectors per site.
+
+## Extraction Rules
+
+- Content selector: `article`, `.entry-content`, `.post-content`, or `main`
+- Remove comment sections and sidebar widgets
+- Remove ad blocks if present
+- Normalize spaces and blank lines

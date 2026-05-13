@@ -1,0 +1,50 @@
+# Template: mediawiki-wiki-gg
+---
+domain: ""
+description: ""
+protection_level: low
+anti_crawl_refs:
+  - default
+  - rate-limit-api
+structure:
+  pages: []
+  entry_points: []
+api:
+  type: mediawiki
+  platform_variant: wiki-gg
+  base_url: ""
+  version: ""
+  content_profile:
+    discovery_strategy: category_members
+    content_acquisition: hybrid_wikitext_plus_rendered
+    link_resolver: short_name_with_cross_namespace
+    template_processor: structured_with_lua_fallback
+    list_page_assembler: hybrid_frontmatter_and_rendered
+  rate_limit:
+    tier: strict
+  capabilities: []
+extraction:
+  engine: scrapling-get
+  selectors:
+    content: "#mw-content-text"
+    title: "#firstHeading"
+    nav: ".mw-parser-output"
+  cleanup:
+    - strip_edit_sections
+    - strip_toc
+  text_normalization:
+    - fix_spaces
+    - normalize_blank_lines
+---
+
+# wiki.gg MediaWiki Strategy
+
+## Platform Notes
+
+wiki.gg-hosted MediaWiki. Typically low protection, MediaWiki API available.
+
+## Extraction Rules
+
+- Content selector: `#mw-content-text`
+- Remove edit sections and TOC before conversion
+- Resolve internal wiki links to `.md` files

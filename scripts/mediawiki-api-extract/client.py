@@ -15,6 +15,20 @@ except ImportError:
 log = logging.getLogger("mediawiki-api-extract")
 
 
+class PageNotFoundError(Exception):
+    """Raised when the MediaWiki API reports a page does not exist.
+
+    Triggered by error codes: 'missingtitle', 'nosuchpage'.
+    These are business-level exceptions that can be safely skipped
+    during bulk extraction rather than treated as fatal errors.
+    """
+
+    def __init__(self, page_title: str, code: str = "missingtitle"):
+        self.page_title = page_title
+        self.code = code
+        super().__init__(f"Page not found: {page_title} (code={code})")
+
+
 class ApiClient:
     """Low-level MediaWiki API client with retry logic."""
 
@@ -59,6 +73,11 @@ class ApiClient:
                 resp.raise_for_status()
                 data = resp.json()
                 if "error" in data:
+                    error_code = data["error"].get("code", "")
+                    if error_code in ("missingtitle", "nosuchpage"):
+                        # Extract page title from request params for context
+                        page_title = params.get("page", "")
+                        raise PageNotFoundError(page_title, error_code)
                     raise RuntimeError(f"API error: {data['error']}")
                 return data
             except (requests.RequestException, json.JSONDecodeError) as e:

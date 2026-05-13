@@ -25,6 +25,8 @@ Commands:
   bootstrap-strategy <url> --from <domain> [--profile <name>]
                          Bootstrap a new site strategy from an existing reference strategy.
   doctor                 Validate launcher, repo resolution, repo shape, and Scrapling readiness.
+  freeze <scaffold-path>  Finalize a strategy scaffold: remove marker, update registry, generate report.
+  iterate <scaffold-path> Re-run sample conversion with updated extraction rules after user feedback.
   clean [--scope all]    Remove disposable outputs by default.
 
 Command options:
@@ -1198,13 +1200,37 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
 
   let backend = null;
   let htmlFetchResult = null;
+  let discoveryResult = null;
   if (!strategy) {
     ensureDir(runDir);
-    const htmlPath = path.join(runDir, "sample.html");
-    htmlFetchResult = runEngineFetch(repoRoot, "get", targetUrl, htmlPath);
-    if (htmlFetchResult.ok && fs.existsSync(htmlPath)) {
-      const htmlContent = fs.readFileSync(htmlPath, "utf8");
-      backend = detectBackend(repoRoot, htmlContent, targetUrl);
+
+    // Phase 1: Try deep discovery pipeline (new)
+    try {
+      const ddResult = spawnSync("python3", [
+        path.join(repoRoot, "scripts", "explore", "main.py"),
+        repoRoot,
+        targetUrl,
+        "--run-dir", runDir,
+      ], {
+        cwd: repoRoot,
+        encoding: "utf8",
+        maxBuffer: 50 * 1024 * 1024,
+      });
+      if (ddResult.status === 0 && ddResult.stdout) {
+        discoveryResult = JSON.parse(ddResult.stdout);
+      }
+    } catch (err) {
+      // Deep discovery failed; fall through to legacy behavior
+    }
+
+    // Legacy fallback if deep discovery unavailable
+    if (!discoveryResult) {
+      const htmlPath = path.join(runDir, "sample.html");
+      htmlFetchResult = runEngineFetch(repoRoot, "get", targetUrl, htmlPath);
+      if (htmlFetchResult.ok && fs.existsSync(htmlPath)) {
+        const htmlContent = fs.readFileSync(htmlPath, "utf8");
+        backend = detectBackend(repoRoot, htmlContent, targetUrl);
+      }
     }
   }
 
@@ -1226,6 +1252,68 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
     artifacts.push(absoluteArtifact(reportPath, "durable", "Explore report"));
   }
   if (!strategy) {
+    // New deep discovery path
+    if (discoveryResult) {
+      const probe = discoveryResult.probe_chain ?? {};
+      const apis = discoveryResult.api_discovery ?? [];
+      const struct = discoveryResult.structure_mapping ?? {};
+      const prot = discoveryResult.protection ?? {};
+      const scaffold = discoveryResult.scaffold ?? {};
+      const samples = discoveryResult.samples ?? [];
+      const selfCheck = discoveryResult.self_check ?? {};
+
+      const successEngine = probe.success_engine ?? "none";
+      const apiTypes = apis.map((a) => a.type).join(", ") || "none detected";
+      const pageType = struct.page_type ?? "unknown";
+      const protectionType = prot.type ?? "none";
+
+      const summaryLines = [
+        `No matching site strategy exists yet; deep discovery completed.`,
+        `Success engine: ${successEngine}.`,
+        `APIs detected: ${apiTypes}.`,
+        `Page type: ${pageType}.`,
+        `Protection: ${protectionType}.`,
+      ];
+      if (scaffold.path) {
+        summaryLines.push(`Strategy scaffold: ${scaffold.path}.`);
+      }
+
+      const nextAction = scaffold.path
+        ? `Review the generated scaffold at ${scaffold.path}, confirm samples, and run chrome-agent freeze ${scaffold.path} when ready.`
+        : `Create or refine a site strategy for ${new URL(targetUrl).hostname}.`;
+
+      const extraFields = {
+        workflow: "platform_analysis",
+        engine_path: `strategy_registry -> strategy_gap -> deep_discovery:${successEngine} -> protection:${protectionType}`,
+        discovery: {
+          engine_chain: probe.results ?? [],
+          api: apis,
+          content_profile: struct,
+          protection: prot,
+          scale: apis.find((a) => a.pages !== undefined)
+            ? { pages: apis.find((a) => a.pages !== undefined).pages }
+            : null,
+        },
+        scaffold: scaffold.path
+          ? { path: scaffold.path, template_id: scaffold.template_id }
+          : null,
+        samples: samples.map((s) => s.title),
+        self_check: selfCheck,
+      };
+
+      return makeResult(
+        "explore",
+        targetUrl,
+        repoRef,
+        summaryLines.join(" "),
+        artifacts,
+        nextAction,
+        "partial_success",
+        extraFields,
+      );
+    }
+
+    // Legacy fallback path
     if (backend && (backend.reusable_strategies ?? []).length > 0) {
       const fromDomain = backend.reusable_strategies[0];
       return makeResult(
@@ -2323,6 +2411,127 @@ function runBootstrapStrategy(repoRoot, repoRef, resolutionMode, targetUrl, from
   );
 }
 
+function runFreeze(repoRoot, repoRef, resolutionMode, scaffoldPath) {
+  const absScaffoldPath = path.resolve(repoRoot, scaffoldPath);
+  if (!fs.existsSync(absScaffoldPath)) {
+    return makeResult(
+      "freeze",
+      scaffoldPath,
+      repoRef,
+      `Scaffold not found: ${absScaffoldPath}`,
+      [],
+      "Provide a valid path to a generated strategy.md scaffold.",
+      "failure",
+    );
+  }
+
+  const result = spawnSync("python3", [
+    path.join(repoRoot, "scripts", "explore", "freeze.py"),
+    repoRoot,
+    absScaffoldPath,
+  ], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+
+  if (result.status !== 0) {
+    return makeResult(
+      "freeze",
+      scaffoldPath,
+      repoRef,
+      `Freeze failed: ${result.stderr.trim() || result.stdout.trim()}`,
+      [],
+      "Check that the scaffold has valid frontmatter and the repo structure is intact.",
+      "failure",
+    );
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    parsed = { stdout: result.stdout.trim() };
+  }
+
+  const artifacts = [
+    absoluteArtifact(absScaffoldPath, "durable", "Frozen strategy"),
+  ];
+  if (parsed.report_path) {
+    artifacts.push(absoluteArtifact(parsed.report_path, "durable", "Freeze report"));
+  }
+
+  return makeResult(
+    "freeze",
+    scaffoldPath,
+    repoRef,
+    `Strategy frozen for domain '${parsed.domain || "?"}'. Registry updated.`,
+    artifacts,
+    "none",
+    "success",
+    {
+      workflow: "strategy_freeze",
+      engine_path: `freeze -> scaffold:${path.basename(absScaffoldPath)}`,
+    },
+  );
+}
+
+function runIterate(repoRoot, repoRef, resolutionMode, scaffoldPath) {
+  const absScaffoldPath = path.resolve(repoRoot, scaffoldPath);
+  if (!fs.existsSync(absScaffoldPath)) {
+    return makeResult(
+      "iterate",
+      scaffoldPath,
+      repoRef,
+      `Scaffold not found: ${absScaffoldPath}`,
+      [],
+      "Provide a valid path to a strategy.md file.",
+      "failure",
+    );
+  }
+
+  const result = spawnSync("python3", [
+    path.join(repoRoot, "scripts", "explore", "iterate.py"),
+    repoRoot,
+    absScaffoldPath,
+  ], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+
+  if (result.status !== 0) {
+    return makeResult(
+      "iterate",
+      scaffoldPath,
+      repoRef,
+      `Iteration failed: ${result.stderr.trim() || result.stdout.trim()}`,
+      [],
+      "Check scaffold validity and re-run.",
+      "failure",
+    );
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    parsed = { stdout: result.stdout.trim() };
+  }
+
+  return makeResult(
+    "iterate",
+    scaffoldPath,
+    repoRef,
+    `Sample conversion re-run completed. ${parsed.success || 0}/${parsed.total || "?"} samples updated.`,
+    [absoluteArtifact(absScaffoldPath, "durable", "Updated strategy")],
+    "Review updated samples and run chrome-agent freeze <scaffold-path> when ready.",
+    "success",
+    {
+      workflow: "strategy_iterate",
+      engine_path: `iterate -> scaffold:${path.basename(absScaffoldPath)}`,
+    },
+  );
+}
+
 async function runBatch(repoRoot, repoRef, resolutionMode, urls, opts = {}) {
   const {
     workers = 5,
@@ -2818,6 +3027,18 @@ async function main() {
           throw new Error("bootstrap-strategy requires --from <domain>.");
         }
         result = runBootstrapStrategy(repoRoot, repoRef, resolutionMode, parsed.target, parsed.fromDomain, parsed.profile, parsed.report);
+        break;
+      case "freeze":
+        if (!parsed.target) {
+          throw new Error("freeze requires a scaffold path.");
+        }
+        result = runFreeze(repoRoot, repoRef, resolutionMode, parsed.target);
+        break;
+      case "iterate":
+        if (!parsed.target) {
+          throw new Error("iterate requires a scaffold path.");
+        }
+        result = runIterate(repoRoot, repoRef, resolutionMode, parsed.target);
         break;
       case "doctor":
         result = runDoctor(repoRoot, repoRef, resolutionMode);
