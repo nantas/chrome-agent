@@ -1,0 +1,72 @@
+{
+  "$schema": "engine-versions",
+  "description": "Centralized version manifest for chrome-agent engine dependencies. Each entry declares the expected version, detection method, and update source.",
+  "last_updated": "2026-05-15",
+
+  "engines": {
+    "scrapling": {
+      "expected_version": "0.4.7",
+      "type": "pip",
+      "detection": {
+        "method": "python_importlib",
+        "command": "python -c \"from importlib.metadata import version; print(version('scrapling'))\"",
+        "managed_path": "$HOME/.cache/chrome-agent-scrapling/bin/python"
+      },
+      "update": {
+        "method": "uv_reinstall",
+        "managed_path": "$HOME/.cache/chrome-agent-scrapling",
+        "note": "Re-provision the managed venv via scripts/scrapling-cli.sh preflight"
+      },
+      "files": []
+    },
+
+    "obscura": {
+      "expected_version": "0.1.2",
+      "type": "precompiled_binary",
+      "detection": {
+        "method": "file_hash",
+        "binaries": [
+          {
+            "name": "obscura",
+            "path": "$HOME/.cache/chrome-agent-obscura/bin/obscura",
+            "expected_size": 59747760,
+            "expected_md5": "5146536476fdd566f34626b6596323a0"
+          },
+          {
+            "name": "obscura-worker",
+            "path": "$HOME/.cache/chrome-agent-obscura/bin/obscura-worker",
+            "expected_size": 57849712,
+            "expected_md5": "c5f719916b426e35ad9328156ee05312"
+          }
+        ]
+      },
+      "update": {
+        "method": "github_release",
+        "repo": "h4ckf0r0day/obscura",
+        "platform_map": {
+          "Darwin-arm64": "obscura-aarch64-macos.tar.gz",
+          "Darwin-x86_64": "obscura-x86_64-macos.tar.gz",
+          "Linux-x86_64": "obscura-x86_64-linux.tar.gz"
+        },
+        "install_dir": "$HOME/.cache/chrome-agent-obscura/bin"
+      },
+      "files": []
+    },
+
+    "cloakbrowser": {
+      "expected_version": "0.3.27",
+      "type": "pip_module",
+      "detection": {
+        "method": "python_attribute",
+        "command": "python3 -c \"import cloakbrowser; print(cloakbrowser.__version__)\"",
+        "managed_path": null
+      },
+      "update": {
+        "method": "pip_install",
+        "package": "cloakbrowser",
+        "note": "pip install --upgrade cloakbrowser; Chromium binary auto-downloads on first use"
+      },
+      "files": []
+    }
+  }
+}

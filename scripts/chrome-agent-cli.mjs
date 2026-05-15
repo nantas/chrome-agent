@@ -2766,7 +2766,7 @@ function runAutoUpdateGlobalFiles(repoRoot, changedFiles) {
   try { ensureDir(skillDir); } catch (e) { errors.push(`mkdir ${skillDir}: ${e.message}`); }
 
   if (errors.length > 0) {
-    return { ok: false, detail: errors.join("; ") };
+    return { ok: false, detail: errors.join(";") };
   }
 
   if (changedFiles.includes("scripts/chrome-agent-runtime.mjs") || changedFiles.includes("scripts/chrome-agent-cli.mjs")) {
@@ -2798,7 +2798,8 @@ function runAutoUpdateGlobalFiles(repoRoot, changedFiles) {
     if (headRev.status === 0) {
       const hashPath = path.join(runtimeDir, ".chrome-agent-installed-hash");
       try {
-        fs.writeFileSync(hashPath, `${headRev.stdout.trim()}\n`, "utf8");
+        fs.writeFileSync(hashPath, `${headRev.stdout.trim()}
+`, "utf8");
       } catch (e) {
         errors.push(`write hash: ${e.message}`);
       }
@@ -2806,9 +2807,29 @@ function runAutoUpdateGlobalFiles(repoRoot, changedFiles) {
   }
 
   if (errors.length > 0) {
-    return { ok: false, detail: errors.join("; ") };
+    return { ok: false, detail: errors.join(";") };
   }
   return { ok: true, detail: "updated" };
+}
+
+function runEngineVersionCheck(repoRoot) {
+  const scriptPath = path.join(repoRoot, "scripts", "engine-version-check.sh");
+  if (!fs.existsSync(scriptPath)) {
+    return { all_ok: true, engines: [] };
+  }
+  const result = spawnSync("bash", [scriptPath, "--json"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    timeout: 30_000,
+  });
+  if (!result.stdout) {
+    return { all_ok: true, engines: [] };
+  }
+  try {
+    return JSON.parse(result.stdout);
+  } catch {
+    return { all_ok: true, engines: [] };
+  }
 }
 
 function runDoctor(repoRoot, repoRef, resolutionMode) {
@@ -2819,6 +2840,7 @@ function runDoctor(repoRoot, repoRef, resolutionMode) {
   const preflight = runScraplingPreflight(repoRoot, false);
   const obscuraPreflight = runObscuraPreflight(repoRoot, false);
   const envDefaultPath = process.env.CHROME_AGENT_REPO ? path.resolve(process.env.CHROME_AGENT_REPO) : null;
+  const versionCheck = runEngineVersionCheck(repoRoot);
 
   const checks = [
     { name: "runtime_script", ok: fs.existsSync(runtimePath), detail: runtimePath },
@@ -2855,6 +2877,15 @@ function runDoctor(repoRoot, repoRef, resolutionMode) {
     }
   }
 
+  // Add version check results as doctor checks
+  for (const ve of versionCheck.engines) {
+    checks.push({
+      name: `version_${ve.engine}`,
+      ok: !ve.needs_update,
+      detail: `${ve.engine}: ${ve.detected ?? "not installed"} (expected: ${ve.expected})`,
+    });
+  }
+
   const broken = checks.filter((check) => !check.ok);
   const resultState = broken.length === 0 ? "success" : preflight.ok || repoShapeIsValid(repoRoot) ? "partial_success" : "failure";
 
@@ -2889,6 +2920,7 @@ function runDoctor(repoRoot, repoRef, resolutionMode) {
       resolution_mode: resolutionMode,
       workflow: "runtime_support",
       engine_path: `doctor -> repo_resolution:${resolutionMode} -> scrapling_preflight:${preflight.status ?? "unavailable"}`,
+      version_check: versionCheck,
     },
   );
 }
