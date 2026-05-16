@@ -1121,7 +1121,7 @@ function shouldEmitReport(command, reportOverride) {
   return command === "explore";
 }
 
-function buildExploreReport({ targetUrl, strategy, matchingPage, repoRef, resolutionMode, preflight, recommendedFetcher, backend = null, htmlFetchResult = null }) {
+function buildExploreReport({ targetUrl, strategy, matchingPage, repoRef, resolutionMode, preflight, recommendedFetcher }) {
   const lines = [
     `# Explore Report`,
     "",
@@ -1141,14 +1141,7 @@ function buildExploreReport({ targetUrl, strategy, matchingPage, repoRef, resolu
     lines.push(`- Anti-crawl refs: ${[...(strategy.anti_crawl_refs ?? []), ...(matchingPage?.anti_crawl_refs ?? [])].join(", ") || "none"}`);
   } else {
     lines.push("- Strategy file: none");
-    if (backend) {
-      lines.push(`- Detected backend: ${backend.label}`);
-      lines.push(`- Backend ID: ${backend.id}`);
-      lines.push(`- Reusable strategies: ${(backend.reusable_strategies ?? []).join(", ") || "none"}`);
-      lines.push("- Gap: no site strategy currently covers this target, but a known backend was detected.");
-    } else {
-      lines.push("- Gap: no site strategy currently covers this target.");
-    }
+    lines.push("- Gap: no site strategy currently covers this target.");
     lines.push("- Recommended fetcher: unknown until strategy coverage exists.");
   }
   lines.push("");
@@ -1165,11 +1158,6 @@ function buildExploreReport({ targetUrl, strategy, matchingPage, repoRef, resolu
   lines.push("## Next Action");
   if (strategy) {
     lines.push("- Use `chrome-agent fetch <url>` for content retrieval, or `chrome-agent crawl <url>` when bounded traversal is needed.");
-  } else if (backend && (backend.reusable_strategies ?? []).length > 0) {
-    const fromDomain = backend.reusable_strategies[0];
-    lines.push(`- Detected backend: ${backend.label}.`);
-    lines.push(`- Reusable strategy candidates: ${backend.reusable_strategies.join(", ")}.`);
-    lines.push(`- Run \`chrome-agent bootstrap-strategy ${targetUrl} --from ${fromDomain}\` to generate a strategy from a known reference.`);
   } else {
     lines.push("- Run `chrome-agent explore <url>` as the first step for strategy authoring evidence, then add or refine a `sites/strategies/<domain>/strategy.md` entry.");
   }
@@ -1191,6 +1179,24 @@ function makeResult(command, target, repoRef, summary, artifacts, nextAction, re
   };
 }
 
+function runExplorePythonDepsCheck(repoRoot) {
+  try {
+    const result = spawnSync("python3", ["-c", "import bs4, yaml; print('ok')"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      timeout: 15000,
+    });
+    if (result.status === 0 && (result.stdout || "").trim() === "ok") {
+      return { ok: true, detail: "bs4, yaml available" };
+    }
+    const stderr = (result.stderr || "").trim();
+    const missing = stderr.includes("bs4") || stderr.includes("beautifulsoup4") ? "bs4" : "yaml";
+    return { ok: false, detail: `missing: ${missing}. Install: pip3 install beautifulsoup4 pyyaml` };
+  } catch (err) {
+    return { ok: false, detail: `python3 check failed: ${err.message}` };
+  }
+}
+
 function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride) {
   const { runDir, reportPath } = buildRunPaths(repoRoot, "explore", targetUrl);
   const { strategy } = findStrategy(repoRoot, targetUrl);
@@ -1198,154 +1204,137 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
   const preflight = runScraplingPreflight(repoRoot, false);
   const recommendedFetcher = strategy ? selectFetcher(strategy, matchingPage) : null;
 
-  let backend = null;
-  let htmlFetchResult = null;
   let discoveryResult = null;
   if (!strategy) {
-    ensureDir(runDir);
-
-    // Phase 1: Try deep discovery pipeline (new)
-    try {
-      const ddResult = spawnSync("python3", [
-        path.join(repoRoot, "scripts", "explore", "main.py"),
-        repoRoot,
-        targetUrl,
-        "--run-dir", runDir,
-      ], {
-        cwd: repoRoot,
-        encoding: "utf8",
-        maxBuffer: 50 * 1024 * 1024,
-      });
-      if (ddResult.status === 0 && ddResult.stdout) {
-        discoveryResult = JSON.parse(ddResult.stdout);
-      }
-    } catch (err) {
-      // Deep discovery failed; fall through to legacy behavior
-    }
-
-    // Legacy fallback if deep discovery unavailable
-    if (!discoveryResult) {
-      const htmlPath = path.join(runDir, "sample.html");
-      htmlFetchResult = runEngineFetch(repoRoot, "get", targetUrl, htmlPath);
-      if (htmlFetchResult.ok && fs.existsSync(htmlPath)) {
-        const htmlContent = fs.readFileSync(htmlPath, "utf8");
-        backend = detectBackend(repoRoot, htmlContent, targetUrl);
-      }
-    }
-  }
-
-  const report = buildExploreReport({
-    targetUrl,
-    strategy,
-    matchingPage,
-    repoRef,
-    resolutionMode,
-    preflight,
-    recommendedFetcher,
-    backend,
-    htmlFetchResult,
-  });
-  const emitReport = shouldEmitReport("explore", reportOverride);
-  const artifacts = [];
-  if (emitReport) {
-    writeTextFile(reportPath, report);
-    artifacts.push(absoluteArtifact(reportPath, "durable", "Explore report"));
-  }
-  if (!strategy) {
-    // New deep discovery path
-    if (discoveryResult) {
-      const probe = discoveryResult.probe_chain ?? {};
-      const apis = discoveryResult.api_discovery ?? [];
-      const struct = discoveryResult.structure_mapping ?? {};
-      const prot = discoveryResult.protection ?? {};
-      const scaffold = discoveryResult.scaffold ?? {};
-      const samples = discoveryResult.samples ?? [];
-      const selfCheck = discoveryResult.self_check ?? {};
-
-      const successEngine = probe.success_engine ?? "none";
-      const apiTypes = apis.map((a) => a.type).join(", ") || "none detected";
-      const pageType = struct.page_type ?? "unknown";
-      const protectionType = prot.type ?? "none";
-
-      const summaryLines = [
-        `No matching site strategy exists yet; deep discovery completed.`,
-        `Success engine: ${successEngine}.`,
-        `APIs detected: ${apiTypes}.`,
-        `Page type: ${pageType}.`,
-        `Protection: ${protectionType}.`,
-      ];
-      if (scaffold.path) {
-        summaryLines.push(`Strategy scaffold: ${scaffold.path}.`);
-      }
-
-      const nextAction = scaffold.path
-        ? `Review the generated scaffold at ${scaffold.path}, confirm samples, and run chrome-agent freeze ${scaffold.path} when ready.`
-        : `Create or refine a site strategy for ${new URL(targetUrl).hostname}.`;
-
-      const extraFields = {
-        workflow: "platform_analysis",
-        engine_path: `strategy_registry -> strategy_gap -> deep_discovery:${successEngine} -> protection:${protectionType}`,
-        discovery: {
-          engine_chain: probe.results ?? [],
-          api: apis,
-          content_profile: struct,
-          protection: prot,
-          scale: apis.find((a) => a.pages !== undefined)
-            ? { pages: apis.find((a) => a.pages !== undefined).pages }
-            : null,
-        },
-        scaffold: scaffold.path
-          ? { path: scaffold.path, template_id: scaffold.template_id }
-          : null,
-        samples: samples.map((s) => s.title),
-        self_check: selfCheck,
-      };
-
+    // Preflight: check Python deps before spawning deep discovery
+    const depsCheck = runExplorePythonDepsCheck(repoRoot);
+    if (!depsCheck.ok) {
       return makeResult(
         "explore",
         targetUrl,
         repoRef,
-        summaryLines.join(" "),
-        artifacts,
-        nextAction,
-        "partial_success",
-        extraFields,
-      );
-    }
-
-    // Legacy fallback path
-    if (backend && (backend.reusable_strategies ?? []).length > 0) {
-      const fromDomain = backend.reusable_strategies[0];
-      return makeResult(
-        "explore",
-        targetUrl,
-        repoRef,
-        emitReport
-          ? `No matching site strategy exists yet; detected backend ${backend.label} and identified reusable strategy candidates.`
-          : `No matching site strategy exists yet; detected backend ${backend.label}.`,
-        artifacts,
-        `Run chrome-agent bootstrap-strategy ${targetUrl} --from ${fromDomain} to generate a strategy from a known reference.`,
-        "partial_success",
+        `Deep discovery pipeline dependencies are missing: ${depsCheck.detail}`,
+        [],
+        depsCheck.detail,
+        "failure",
         {
           workflow: "platform_analysis",
-          engine_path: `strategy_registry -> strategy_gap -> backend_detection:${backend.id} -> scrapling_preflight:${preflight.status ?? "unavailable"}`,
+          engine_path: "strategy_registry -> strategy_gap -> preflight_failed",
         },
       );
     }
+
+    ensureDir(runDir);
+
+    // Phase 1: Run deep discovery pipeline (no silent catch)
+    const ddResult = spawnSync("python3", [
+      path.join(repoRoot, "scripts", "explore", "main.py"),
+      repoRoot,
+      targetUrl,
+      "--run-dir", runDir,
+    ], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      maxBuffer: 50 * 1024 * 1024,
+    });
+    if (ddResult.status === 0 && ddResult.stdout) {
+      try {
+        discoveryResult = JSON.parse(ddResult.stdout);
+      } catch (parseErr) {
+        return makeResult(
+          "explore",
+          targetUrl,
+          repoRef,
+          `Deep discovery pipeline returned invalid JSON: ${String(parseErr.message).slice(0, 200)}`,
+          [],
+          "Check the deep discovery pipeline output for errors.",
+          "failure",
+          {
+            workflow: "platform_analysis",
+            engine_path: "strategy_registry -> strategy_gap -> deep_discovery_failed",
+          },
+        );
+      }
+    } else {
+      const stderr = (ddResult.stderr || "").slice(0, 500);
+      return makeResult(
+        "explore",
+        targetUrl,
+        repoRef,
+        `Deep discovery pipeline failed (exit ${ddResult.status ?? "unknown"}): ${stderr}`,
+        [],
+        stderr || "Check the deep discovery pipeline output for errors.",
+        "failure",
+        {
+          workflow: "platform_analysis",
+          engine_path: "strategy_registry -> strategy_gap -> deep_discovery_failed",
+        },
+      );
+    }
+
+    // Legacy fallback if deep discovery unavailable — removed
+  }
+
+  const emitReport = shouldEmitReport("explore", reportOverride);
+  const artifacts = [];
+  if (!strategy) {
+    // Deep discovery path (always populated — preflight/pipeline failure returns early)
+    const probe = discoveryResult.probe_chain ?? {};
+    const apis = discoveryResult.api_discovery ?? [];
+    const struct = discoveryResult.structure_mapping ?? {};
+    const prot = discoveryResult.protection ?? {};
+    const scaffold = discoveryResult.scaffold ?? {};
+    const samples = discoveryResult.samples ?? [];
+    const selfCheck = discoveryResult.self_check ?? {};
+
+    const successEngine = probe.success_engine ?? "none";
+    const apiTypes = apis.map((a) => a.type).join(", ") || "none detected";
+    const pageType = struct.page_type ?? "unknown";
+    const protectionType = prot.type ?? "none";
+
+    const summaryLines = [
+      `No matching site strategy exists yet; deep discovery completed.`,
+      `Success engine: ${successEngine}.`,
+      `APIs detected: ${apiTypes}.`,
+      `Page type: ${pageType}.`,
+      `Protection: ${protectionType}.`,
+    ];
+    if (scaffold.path) {
+      summaryLines.push(`Strategy scaffold: ${scaffold.path}.`);
+    }
+
+    const nextAction = scaffold.path
+      ? `Review the generated scaffold at ${scaffold.path}, confirm samples, and run chrome-agent freeze ${scaffold.path} when ready.`
+      : `Create or refine a site strategy for ${new URL(targetUrl).hostname}.`;
+
+    const extraFields = {
+      workflow: "platform_analysis",
+      engine_path: `strategy_registry -> strategy_gap -> deep_discovery:${successEngine} -> protection:${protectionType}`,
+      discovery: {
+        engine_chain: probe.results ?? [],
+        api: apis,
+        content_profile: struct,
+        protection: prot,
+        scale: apis.find((a) => a.pages !== undefined)
+          ? { pages: apis.find((a) => a.pages !== undefined).pages }
+          : null,
+      },
+      scaffold: scaffold.path
+        ? { path: scaffold.path, template_id: scaffold.template_id }
+        : null,
+      samples: samples.map((s) => s.title),
+      self_check: selfCheck,
+    };
+
     return makeResult(
       "explore",
       targetUrl,
       repoRef,
-      emitReport
-        ? "No matching site strategy exists yet; explore identified a strategy gap and saved a durable report."
-        : "No matching site strategy exists yet; explore identified a strategy gap.",
+      summaryLines.join(" "),
       artifacts,
-      `Create or refine a site strategy for ${new URL(targetUrl).hostname}, then retry fetch or crawl.`,
+      nextAction,
       "partial_success",
-      {
-        workflow: "platform_analysis",
-        engine_path: `strategy_registry -> strategy_gap -> scrapling_preflight:${preflight.status ?? "unavailable"}`,
-      },
+      extraFields,
     );
   }
 
@@ -2861,6 +2850,9 @@ function runDoctor(repoRoot, repoRef, resolutionMode) {
   checks.push({ name: "repo_freshness", ok: freshnessResult.ok, detail: freshnessResult.detail });
 
   // If stale, check tracked files and auto-update if needed
+  const exploreDepsCheck = runExplorePythonDepsCheck(repoRoot);
+  checks.push({ name: "explore_deps", ok: exploreDepsCheck.ok, detail: exploreDepsCheck.detail });
+
   let skillReloadRequired = false;
   if (freshnessResult.stale) {
     const trackedResult = runTrackedFilesCheck(repoRoot);

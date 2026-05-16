@@ -25,7 +25,6 @@ class HtmlToMarkdownConverter:
         ".toc",
         "#toc",
         ".hatnote",
-        ".druid-infobox",
     )
 
     _BLOCK_TAGS = {
@@ -33,8 +32,12 @@ class HtmlToMarkdownConverter:
         "hr", "ol", "p", "pre", "table", "ul",
     }
 
-    def __init__(self, wiki_domain: str = "slaythespire.wiki.gg"):
+    def __init__(self, wiki_domain: str, extraction_config: dict | None = None):
         self.wiki_domain = wiki_domain
+        self.config = extraction_config or {}
+        # Read cleanup selectors from config, fall back to class defaults
+        config_cleanup = self.config.get("cleanup_selectors", [])
+        self._REMOVAL_SELECTORS = tuple(config_cleanup) if config_cleanup else self._REMOVAL_SELECTORS
         self.title_to_path: dict[str, tuple[str, str]] = {}
 
     def build_link_index(self, manifest_pages: list[dict]):
@@ -62,12 +65,11 @@ class HtmlToMarkdownConverter:
             if parent:
                 parent.decompose()
 
-        for node in parser.css('img[src*="StS2_Bg"], img[src*="StS2_Frame"], img[src*="StS2_Banner"], img[src*="StS2_Type"]'):
-            node.decompose()
-        for node in parser.css('img[src*="StS2_Card"][src*="Orb"]'):
-            node.decompose()
-        for node in parser.css('img[src*="Art.png"]'):
-            node.decompose()
+        # Config-driven image filtering
+        skip_patterns = self.config.get("image_filtering", {}).get("skip_patterns", [])
+        for pattern in skip_patterns:
+            for node in parser.css(f'img[src*="{pattern}"]'):
+                node.decompose()
 
         for node in parser.css("[style]"):
             style = node.attributes.get("style", "")
@@ -392,22 +394,20 @@ class HtmlToMarkdownConverter:
     # ------------------------------------------------------------------
 
     def _regex_clean(self, html: str) -> str:
-        html = re.sub(r'<div class="mw-editsection"[^\u003e]*>.*?</div>', '', html, flags=re.DOTALL)
-        html = re.sub(r'<div[^\u003e]*id="toc"[^\u003e]*>.*?</div>', '', html, flags=re.DOTALL)
-        html = re.sub(r'<div[^\u003e]*class="toc"[^\u003e]*>.*?</div>', '', html, flags=re.DOTALL)
-        html = re.sub(r'<div[^\u003e]*class="hatnote"[^\u003e]*>.*?</div>', '', html, flags=re.DOTALL)
-        html = re.sub(r'<img[^>]*src="[^"]*StS2_Bg[^"]*"[^>]*/?>', '', html)
-        html = re.sub(r'<img[^>]*src="[^"]*StS2_Frame[^"]*"[^>]*/?>', '', html)
-        html = re.sub(r'<img[^>]*src="[^"]*StS2_Banner[^"]*"[^>]*/?>', '', html)
-        html = re.sub(r'<img[^>]*src="[^"]*StS2_Type[^"]*"[^>]*/?>', '', html)
-        html = re.sub(r'<img[^>]*src="[^"]*StS2_Card[^"]*Orb[^"]*"[^>]*/?>', '', html)
-        html = re.sub(r'<img[^>]*src="[^"]*Art.png[^"]*"[^>]*/?>', '', html)
-        html = re.sub(r'<[^\u003e]*style="[^"]*display:\s*none[^"]*"[^\u003e]*>.*?</\w+\u003e', '', html, flags=re.DOTALL)
+        html = re.sub(r'<div class="mw-editsection"[^>]*>.*?</div>', '', html, flags=re.DOTALL)
+        html = re.sub(r'<div[^>]*id="toc"[^>]*>.*?</div>', '', html, flags=re.DOTALL)
+        html = re.sub(r'<div[^>]*class="toc"[^>]*>.*?</div>', '', html, flags=re.DOTALL)
+        html = re.sub(r'<div[^>]*class="hatnote"[^>]*>.*?</div>', '', html, flags=re.DOTALL)
+        # Config-driven image filtering via regex
+        skip_patterns = self.config.get("image_filtering", {}).get("skip_patterns", [])
+        for pattern in skip_patterns:
+            html = re.sub(rf'<img[^>]*src="[^"]*{re.escape(pattern)}[^"]*"[^>]*/?>', '', html)
+        html = re.sub(r'<[^>]*style="[^"]*display:\s*none[^"]*"[^>]*>.*?</\w+>', '', html, flags=re.DOTALL)
         return html
 
     def _regex_convert(self, html: str) -> str:
         text = re.sub(r'<br\s*/?>', '\n', html, flags=re.IGNORECASE)
         text = re.sub(r'</p>\s*<p>', '\n\n', text, flags=re.IGNORECASE)
-        text = re.sub(r'<[^\u003e]+>', '', text)
+        text = re.sub(r'<[^>]+>', '', text)
         text = re.sub(r'\n{3,}', '\n\n', text)
         return text.strip()

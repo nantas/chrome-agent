@@ -196,6 +196,27 @@
         "rate-limit-api"
       ],
       "file": "neonabyss.fandom.com/strategy.md"
+    },
+    {
+      "domain": "bindingofisaacrebirth.wiki.gg",
+      "description": "The Binding of Isaac: Rebirth Wiki on wiki.gg — MediaWiki 1.43.6 with all DLC content in ns=0",
+      "protection_level": "low",
+      "page_types": [
+        "static_article",
+        "static_page"
+      ],
+      "pagination": [
+        "none"
+      ],
+      "entry_points": [
+        "wiki_main_page"
+      ],
+      "anti_crawl_refs": [
+        "default",
+        "rate-limit-api"
+      ],
+      "file": "bindingofisaacrebirth.wiki.gg/strategy.md",
+      "backend": "wiki-gg-mediawiki-1.43"
     }
   ]
 }

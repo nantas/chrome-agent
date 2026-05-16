@@ -16,7 +16,8 @@ def process_single_page(client: ApiClient, page_info: dict, manifest_pages: list
                         template_map: dict[str, str],
                         content_strategy: ContentAcquisitionStrategy,
                         link_resolver: LinkResolver,
-                        template_processor: TemplateProcessor) -> dict:
+                        template_processor: TemplateProcessor,
+                        extraction_config: dict | None = None) -> dict:
     """Process a single page: fetch content and convert to Markdown."""
     title = page_info["title"]
     source_dir = page_info["target_directory"]
@@ -29,7 +30,7 @@ def process_single_page(client: ApiClient, page_info: dict, manifest_pages: list
         if isinstance(content_strategy, HtmlRenderedAcquisitionStrategy):
             return _process_html_page(
                 raw, title, source_dir, source_url, domain,
-                manifest_pages, frontmatter_fields
+                manifest_pages, frontmatter_fields, extraction_config
             )
 
         # Wikitext path (default)
@@ -73,13 +74,14 @@ def process_single_page(client: ApiClient, page_info: dict, manifest_pages: list
 
 def _process_html_page(raw: dict, title: str, source_dir: str, source_url: str,
                        domain: str, manifest_pages: list[dict],
-                       frontmatter_fields: list[str]) -> dict:
+                       frontmatter_fields: list[str],
+                       extraction_config: dict | None = None) -> dict:
     """Process a page using HTML-rendered content."""
     html = raw.get("html", "")
     if not html:
         return {"title": title, "status": "empty", "error": "Empty HTML"}
 
-    converter = HtmlToMarkdownConverter(wiki_domain=domain)
+    converter = HtmlToMarkdownConverter(wiki_domain=domain, extraction_config=extraction_config)
     converter.build_link_index(manifest_pages)
 
     cleaned = converter.clean_html(html)
@@ -180,13 +182,16 @@ def run_phase_b(client: ApiClient, manifest: dict, strategy: dict,
     log.info("Phase B: Extracting content for %d pages (concurrency=%d, batch_delay_ms=%d)...",
              len(pages), concurrency, rate_limit_config.batch_delay_ms if rate_limit_config else 1000)
 
+    extraction_config = strategy.get("extraction", {})
+
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
         futures = {}
         for page in pages:
             future = executor.submit(
                 process_single_page, client, page, pages,
                 domain, frontmatter_fields, template_map,
-                content_strategy, link_resolver, template_processor
+                content_strategy, link_resolver, template_processor,
+                extraction_config
             )
             futures[future] = page["title"]
 

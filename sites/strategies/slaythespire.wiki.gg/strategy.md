@@ -206,6 +206,19 @@ extraction:
     attribute: src
     output_format: markdown_inline
     base_url: https://slaythespire.wiki.gg
+  cleanup_selectors:
+    - ".mw-editsection"
+    - ".toc"
+    - "#toc"
+    - ".hatnote"
+    - ".druid-infobox"
+  image_filtering:
+    skip_patterns:
+      - "StS2_Bg"
+      - "StS2_Frame"
+      - "StS2_Banner"
+      - "StS2_Type"
+      - "Art.png"
   cleanup:
     - strip_footer
     - strip_edit_links

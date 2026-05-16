@@ -5,6 +5,7 @@
 - Capability: `pipeline-converters`
 - 来源: `proposal.md` / 已确认 capabilities
 - 变更类型: `modified`
+- 用户确认摘要: `HtmlToMarkdownConverter` 移除 StS 硬编码；`wiki_domain` 参数化；cleanup selector 和 image filter 从 `extraction` 配置段读取
 
 ## 规范真源声明
 
@@ -12,66 +13,26 @@
 - design / tasks / verification 必须引用本文件
 - 项目页面回写不得替代本文件
 
-## MODIFIED Requirements
-
-### Requirement: converters-as-independent-package
-`HtmlToMarkdownConverter`、`convert_wikitext_to_markdown`、`extract_card_stats`、`split_card_list_pages` SHALL 位于 `scripts/mediawiki_api_extract/converters/` 子包中，可被外部代码直接导入，无需启动管线或导入 `ApiClient`。
-
-#### Scenario: import-html-converter-standalone
-- **WHEN** 外部脚本执行 `from scripts.mediawiki_api_extract.converters import HtmlToMarkdownConverter`
-- **THEN** 导入 SHALL 成功，无需安装或配置 `ApiClient`
-
-#### Scenario: import-wikitext-converter-standalone
-- **WHEN** 外部脚本执行 `from scripts.mediawiki_api_extract.converters import convert_wikitext_to_markdown`
-- **THEN** 导入 SHALL 成功
-
-### Requirement: strategies-split-by-role
-策略类 SHALL 按 Discovery、Acquisition、LinkResolver、TemplateProcessor、ListPageAssembler 五种角色分别位于 `scripts/mediawiki_api_extract/strategies/` 子包的独立模块中。
-
-#### Scenario: import-strategy-from-submodule
-- **WHEN** 外部代码执行 `from scripts.mediawiki_api_extract.strategies.discovery import AllPagesDiscoveryStrategy`
-- **THEN** 导入 SHALL 成功，行为与原 `strategies.py` 中的实现一致
-
-### Requirement: backward-compatible-reexports
-`strategies/__init__.py` SHALL 重新导出所有策略类和转换器，使 `from scripts.mediawiki_api_extract.strategies import HtmlToMarkdownConverter` 等原有导入路径继续可用。
-
-#### Scenario: legacy-import-path
-- **WHEN** 既有代码执行 `from scripts.mediawiki_api_extract.strategies import HtmlToMarkdownConverter`
-- **THEN** 导入 SHALL 成功，返回与 converters 子包中相同的类
-
-#### Scenario: phase-b-import-path
-- **WHEN** `phase_b.py` 执行 `from .strategies import HtmlToMarkdownConverter, convert_wikitext_to_markdown`
-- **THEN** 导入 SHALL 成功，功能不变
-
-### Requirement: pipeline-orchestration-extracted
-`run_pipeline`、`build_pipeline`、`parse_strategy`、`resolve_rate_limit_config` SHALL 位于 `scripts/mediawiki_api_extract/pipeline/` 子包中，`pipeline.py` 重命名为 `pipeline/orchestrate.py`。
-
-#### Scenario: main-imports-pipeline
-- **WHEN** `__main__.py` 执行 `from .pipeline import run_pipeline`（通过 `pipeline/__init__.py` re-export）
-- **THEN** 导入 SHALL 成功，管线行为不变
-
-### Requirement: no-behavior-change
-拆分后所有既有管线的输出 SHALL 与拆分前完全一致（相同输入产生相同 .md 文件）。
-
-#### Scenario: full-pipeline-output-unchanged
-- **WHEN** 对相同站点策略运行全量管线（Phase A→B→C）
-- **THEN** 输出 .md 文件内容 SHALL 与拆分前逐字节一致
+## ADDED Requirements
 
 ### Requirement: domain-parameterization
 
 `HtmlToMarkdownConverter.__init__` SHALL accept `wiki_domain` as a required parameter and SHALL NOT default to any specific domain name.
 
 #### Scenario: domain-required
+
 - **WHEN** `HtmlToMarkdownConverter` is instantiated without a `wiki_domain` argument
 - **THEN** the constructor SHALL raise a `TypeError`
 - **THEN** no default value (`"slaythespire.wiki.gg"` or any other) SHALL be applied
 
 #### Scenario: domain-explicit
+
 - **WHEN** `HtmlToMarkdownConverter(wiki_domain="example.wiki.gg")` is instantiated
 - **THEN** `self.wiki_domain` SHALL be `"example.wiki.gg"`
 - **THEN** all link normalization SHALL use the provided domain
 
 #### Scenario: domain-from-strategy
+
 - **WHEN** the converter is instantiated by pipeline code (Phase B/C) or standalone extraction
 - **THEN** `wiki_domain` SHALL be read from the strategy's `api.base_url` (extracted hostname) or `domain` field
 - **THEN** the pipeline SHALL pass `wiki_domain` to the converter constructor explicitly
@@ -81,21 +42,25 @@
 `HtmlToMarkdownConverter` SHALL read cleanup selectors and image filter patterns from an `extraction_config` dictionary passed at construction time, rather than from hardcoded selector strings.
 
 #### Scenario: cleanup-from-extraction-config
+
 - **WHEN** `HtmlToMarkdownConverter` is instantiated with `extraction_config` containing `cleanup_selectors` list
 - **THEN** `self._REMOVAL_SELECTORS` SHALL be set from `cleanup_selectors`
 - **THEN** if `cleanup_selectors` is absent or empty, a default set SHALL be used: `(".mw-editsection", ".toc", "#toc", ".hatnote")`
 
 #### Scenario: image-filter-from-extraction-config
+
 - **WHEN** `extraction_config` contains `image_filtering.skip_patterns` list
 - **THEN** `clean_html()` SHALL remove `<img>` elements whose `src` attribute matches any pattern in the list
 - **THEN** if `image_filtering.skip_patterns` is absent or empty, no image filtering SHALL be applied (no hardcoded patterns)
 - **THEN** no StS2-specific patterns (`StS2_Bg`, `StS2_Frame`, etc.) SHALL be hardcoded in the converter
 
 #### Scenario: strategy-passes-extraction-config
+
 - **WHEN** a strategy file defines `extraction.cleanup_selectors` and `extraction.image_filtering.skip_patterns`
 - **THEN** the pipeline SHALL pass these values to `HtmlToMarkdownConverter` at instantiation
 - **THEN** the converter SHALL apply the configured cleanup without any site-specific hardcoded overrides
 
 #### Scenario: sts-backward-compatibility
+
 - **WHEN** the slaythespire.wiki.gg strategy provides `extraction.cleanup_selectors` and `extraction.image_filtering.skip_patterns` that replicate the previously hardcoded StS2 rules
 - **THEN** the converter's output for StS pages SHALL be identical to the pre-change output

@@ -24,7 +24,8 @@ log = logging.getLogger("mediawiki-api-extract")
 
 def fetch_and_convert(url: str, domain: str, output: str,
                       mode: str = "html",
-                      manifest_pages: Optional[list[dict]] = None) -> str:
+                      manifest_pages: Optional[list[dict]] = None,
+                      extraction_config: Optional[dict] = None) -> str:
     """Fetch a single page and convert to Markdown.
 
     Args:
@@ -57,7 +58,7 @@ def fetch_and_convert(url: str, domain: str, output: str,
         except Exception:
             images = []
 
-        converter = HtmlToMarkdownConverter(wiki_domain=domain)
+        converter = HtmlToMarkdownConverter(wiki_domain=domain, extraction_config=extraction_config)
         if manifest_pages:
             converter.build_link_index(manifest_pages)
         cleaned = converter.clean_html(html)
@@ -119,7 +120,8 @@ def fetch_and_convert(url: str, domain: str, output: str,
 
 
 def reconvert_file(filepath: str, domain: str,
-                   manifest_pages: Optional[list[dict]] = None) -> str:
+                   manifest_pages: Optional[list[dict]] = None,
+                   extraction_config: Optional[dict] = None) -> str:
     """Re-convert an existing file using HtmlToMarkdownConverter.
 
     Args:
@@ -153,7 +155,7 @@ def reconvert_file(filepath: str, domain: str,
         return fetch_and_convert(source_url, domain, filepath, mode="html", manifest_pages=manifest_pages)
 
     # If no source_url, just re-convert the existing HTML-like content
-    converter = HtmlToMarkdownConverter(wiki_domain=domain)
+    converter = HtmlToMarkdownConverter(wiki_domain=domain, extraction_config=extraction_config)
     if manifest_pages:
         converter.build_link_index(manifest_pages)
 

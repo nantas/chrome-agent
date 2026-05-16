@@ -218,18 +218,17 @@ The system SHALL mark the existing `scrapling-first-browser-workflow` spec as su
 The system SHALL treat persistent shell-environment changes as user-approved actions, not as implicit workflow side effects.
 
 #### Scenario: Request to persist Scrapling CLI path
-
 - **WHEN** the workflow determines that adding `SCRAPLING_CLI_PATH` to `/Users/nantas-agent/.zshenv` would improve future runs
 - **THEN** it SHALL ask the user for confirmation before writing
 - **AND** it SHALL continue without persistent shell modification if the user declines
 
 ### Requirement: Pipeline Strategy Schema 治理章节
 
-The system SHALL include a Pipeline Strategy Schema 治理 subsection within AGENTS.md, placed after the 策略库治理（Strategy Library Governance） section.
+The system SHALL include a Pipeline Strategy Schema 治理 subsection within AGENTS.md, placed after the 策略库治理（Strategy Library Governance）section.
 
 该章节 SHALL 包含以下内容：
 
-1. **权威来源声明**：声明 `_STRATEGY_REGISTRY`（位于 `scripts/mediawiki-api-extract/pipeline/orchestrate.py`）为策略 ID 的唯一权威来源
+1. **权威来源声明**：声明 `_STRATEGY_REGISTRY`（位于 `scripts/mediawiki_api_extract/pipeline/orchestrate.py`）为策略 ID 的唯一权威来源
 2. **策略文件约束**：`content_profile` 字段只能引用已注册 ID；Pipeline 启动时 hard-fail 校验
 3. **扩展协议**：实现 → 注册 → 引用的严格顺序
 4. **Registry 变更约束**：删除/重命名 ID 前必须反向检查
@@ -241,4 +240,35 @@ The system SHALL include a Pipeline Strategy Schema 治理 subsection within AGE
 - **WHEN** 用户或 agent 阅读 AGENTS.md
 - **THEN** Pipeline Strategy Schema 治理章节 SHALL 位于策略库治理之后
 - **AND** SHALL 包含权威来源、约束、扩展协议、ID 清单和 variant 声明
-- **AND** SHALL 明确引用 `scripts/mediawiki-api-extract/pipeline/orchestrate.py` 作为 `_STRATEGY_REGISTRY` 的权威位置
+- **AND** SHALL 明确引用 `scripts/mediawiki_api_extract/pipeline/orchestrate.py` 作为 `_STRATEGY_REGISTRY` 的权威位置
+
+### Requirement: explore-crawl-confirmation-gate
+
+AGENTS.md SHALL include an «Explore→Crawl Confirmation Gate» section within the Governance Rules area. This section SHALL define the mandatory confirmation sequence an agent must follow after `explore` identifies a strategy gap, before proceeding to `crawl` or `fetch`.
+
+The section SHALL state:
+
+1. When `explore` returns `partial_success` with a strategy gap, the agent MUST follow the Explore Workflow Gates defined in the chrome-agent skill.
+2. The agent MUST NOT proceed directly to `crawl` or `fetch` without user confirmation.
+3. The agent MUST present at minimum: structure analysis, sample conversions, and self-check results.
+4. When `explore` returns `failure`, the agent MUST surface the exact failure reason and remediation, MUST NOT fabricate a strategy or workaround, and MUST NOT attempt to fall back to a different extraction path without user approval.
+
+#### Scenario: agent-reads-confirmation-gate
+
+- **WHEN** an agent reads AGENTS.md after `explore` returns a strategy gap
+- **THEN** the agent SHALL find an explicit rule prohibiting direct progression to `crawl` or `fetch`
+- **THEN** the rule SHALL reference the chrome-agent skill for the detailed gate sequence
+- **THEN** the rule SHALL enumerate minimum requirements: structure analysis, sample conversions, self-check results
+
+#### Scenario: explore-failure-prohibition
+
+- **WHEN** `explore` returns `result: "failure"`
+- **THEN** the agent SHALL NOT attempt to create a strategy, run any extraction pipeline, or invent a workaround
+- **THEN** the agent SHALL surface the failure reason and suggested remediation from the explore result as-is
+- **THEN** the agent SHALL wait for user direction before taking any further action on the target URL
+
+#### Scenario: section-placement
+
+- **WHEN** AGENTS.md is rendered
+- **THEN** the «Explore→Crawl Confirmation Gate» section SHALL appear within the Governance Rules area
+- **THEN** it SHALL be placed after the existing «Intent Routing» subsection (which defines the route rules for fetch/explore/crawl) and before any subsequent governance section

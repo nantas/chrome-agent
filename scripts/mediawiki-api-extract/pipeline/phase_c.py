@@ -5,7 +5,7 @@ import os
 import re
 import time
 
-from ..strategies import HtmlToMarkdownConverter, LinkResolver, ListPageAssembler
+from ..strategies import LinkResolver, ListPageAssembler
 from ..strategies import split_card_list_pages
 
 log = logging.getLogger("mediawiki-api-extract")

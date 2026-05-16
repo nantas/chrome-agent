@@ -98,3 +98,30 @@
 #### Scenario: skill-docs-updated
 - **WHEN** 用户阅读更新后的 SKILL.md
 - **THEN** 可以了解到：当 doctor 返回 `partial_success` 且 next_action 包含 skill 重载提示时，应告知用户重载 skill 后重试当前命令
+
+### Requirement: explore-python-deps-check
+
+`chrome-agent doctor` SHALL include an `explore_deps` check item that verifies the Python packages required by `scripts/explore/main.py` are importable.
+
+The check SHALL execute `python3 -c "import bs4, yaml; print('ok')"` and evaluate the exit code.
+
+#### Scenario: explore-deps-available
+- **WHEN** both `bs4` and `yaml` are importable (exit code 0)
+- **THEN** the `explore_deps` check item SHALL be marked `ok: true`
+- **THEN** `detail` SHALL read `"bs4, yaml available"`
+
+#### Scenario: explore-deps-missing
+- **WHEN** either `bs4` or `yaml` is not importable (non-zero exit code)
+- **THEN** the `explore_deps` check item SHALL be marked `ok: false`
+- **THEN** `detail` SHALL read `"missing: bs4 or yaml. Install: pip3 install beautifulsoup4 pyyaml"`
+
+#### Scenario: doctor-result-with-explore-deps-failure
+- **WHEN** `explore_deps` is `ok: false` and no other checks are broken
+- **THEN** doctor's overall `result` SHALL be `"partial_success"`
+- **THEN** `summary` SHALL include `explore_deps` in the list of failed checks
+- **THEN** `next_action` SHALL include the installation command for the missing packages
+
+#### Scenario: python3-not-found
+- **WHEN** the `python3` binary is not available or the spawn fails for any reason other than import error
+- **THEN** the `explore_deps` check item SHALL be marked `ok: false`
+- **THEN** `detail` SHALL include the spawn error reason

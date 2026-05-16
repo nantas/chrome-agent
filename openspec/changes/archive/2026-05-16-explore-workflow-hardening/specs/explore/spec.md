@@ -3,9 +3,9 @@
 ## Capability 对齐（已确认）
 
 - Capability: `explore`
-- 来源: `proposal.md`
+- 来源: `proposal.md` / 已确认 capabilities
 - 变更类型: `modified`
-- 用户确认摘要: 从"仅返回 strategy gap"升级为"执行完整探索工作流"，向后兼容已有策略命中场景
+- 用户确认摘要: 加固 explore 后端的错误处理——移除静默 try/catch 和 legacy fallback，deep discovery 管线失败时返回明确 failure 而非降级到 "strategy gap"
 
 ## 规范真源声明
 
@@ -22,11 +22,13 @@ The system SHALL route `explore` into the full deep-discovery workflow when no s
 Deep discovery SHALL be the only path for strategy-gap scenarios. The legacy backend-detection fallback (HTML fetch → DOM fingerprint → bootstrap recommendation) SHALL NOT be invoked.
 
 #### Scenario: strategy-matched
+
 - **WHEN** `explore <url>` is called and a strategy exists in the registry for the domain
 - **THEN** the system SHALL continue with the existing behavior (load strategy, return structured report)
 - **THEN** no change in this scenario
 
 #### Scenario: strategy-gap
+
 - **WHEN** `explore <url>` is called and no strategy exists for the domain
 - **THEN** the system SHALL NOT simply return "strategy gap"
 - **THEN** the system SHALL NOT invoke legacy backend-detection fallback
@@ -38,35 +40,22 @@ Deep discovery SHALL be the only path for strategy-gap scenarios. The legacy bac
 - **THEN** the system SHALL present results for user review
 - **THEN** on approval, the system SHALL freeze the strategy
 
-### Requirement: explore-output-format
-
-The system SHALL produce consistent structured output with additional fields for the new deep-discovery workflow.
-
-#### Scenario: output-format-extended
-- **WHEN** deep discovery is complete
-- **THEN** the output SHALL include the standard fields (`result`, `command`, `target`, `summary`, `artifacts`, `next_action`, `workflow`, `engine_path`)
-- **THEN** the output SHALL additionally include:
-  - `discovery.engine_chain[]` — results from each engine probe
-  - `discovery.api` — detected API configuration
-  - `discovery.content_profile` — page type classification, nav sections, template patterns
-  - `discovery.protection` — identified protection mechanism
-  - `discovery.scale` — estimated site scale (if API available)
-  - `scaffold.path` — path to generated strategy scaffold (if applicable)
-  - `samples[]` — list of sample page titles selected for conversion
-  - `self_check.summary` — per-sample and overall pass/fail summary
+## ADDED Requirements
 
 ### Requirement: explore-preflight-failure
 
 When deep discovery pipeline dependencies are missing, the system SHALL return a clear failure result with actionable remediation, not a degraded "strategy gap" report.
 
 #### Scenario: python-deps-missing
+
 - **WHEN** `runExplore()` checks Python dependencies (`bs4`, `yaml`) and one or more are not importable
 - **THEN** the system SHALL return `result: "failure"` with `summary` containing the missing package names and installation command
 - **THEN** `next_action` SHALL include an exact `pip3 install` command
 - **THEN** `engine_path` SHALL include `strategy_registry -> strategy_gap -> preflight_failed`
-- **THEN** the system SHALL NOT proceed to probe chain or legacy fallback
+- **THEN** the system SHALL NOT proceed to probe chain or legimport yamlcy fallback
 
 #### Scenario: deep-discovery-execution-failure
+
 - **WHEN** deep discovery pipeline (`scripts/explore/main.py`) executes but returns non-zero exit code
 - **THEN** the system SHALL return `result: "failure"` with `summary` containing the first 500 characters of stderr
 - **THEN** `engine_path` SHALL include `strategy_registry -> strategy_gap -> deep_discovery_failed`
@@ -77,6 +66,7 @@ When deep discovery pipeline dependencies are missing, the system SHALL return a
 The legacy fallback path that scrapes raw HTML and runs backend detection SHALL be removed from `runExplore()`.
 
 #### Scenario: no-legacy-fallback
+
 - **WHEN** deep discovery is unavailable or fails
 - **THEN** `runExplore()` SHALL NOT attempt to fetch HTML via `runEngineFetch` or invoke `detectBackend`
 - **THEN** the function SHALL NOT produce a "strategy gap" result through the legacy code path

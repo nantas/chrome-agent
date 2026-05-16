@@ -77,6 +77,14 @@
 
 操作流程详见 [docs/playbooks/scrapling-cli-preflight.md](docs/playbooks/scrapling-cli-preflight.md) 与 [docs/playbooks/scrapling-fetchers.md](docs/playbooks/scrapling-fetchers.md)。
 
+### Explore→Crawl Confirmation Gate
+
+When `explore` returns `partial_success` with a strategy gap (no existing strategy for the target domain), the agent **MUST** follow the Explore Workflow Gates defined in the chrome-agent skill before proceeding to `crawl` or `fetch`.
+
+1. The agent **MUST NOT** proceed directly to `crawl` or `fetch` without user confirmation.
+2. The agent **MUST** present at minimum: structure analysis, sample conversions, and self-check results.
+3. When `explore` returns `failure`, the agent **MUST** surface the exact failure reason and remediation from the explore result as-is. The agent **MUST NOT** fabricate a strategy or workaround, **MUST NOT** attempt to fall back to a different extraction path without user approval, and **MUST** wait for user direction before taking any further action on the target URL.
+
 ### 引擎选择策略
 
 **默认路径：Scrapling + cdp_lightweight**

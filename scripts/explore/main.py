@@ -31,6 +31,19 @@ from strategy_scaffold_generator import generate
 from sample_converter import convert
 from self_check import run_checks, summarize, auto_remediate
 
+# Startup dependency self-check
+_missing = []
+for _mod in ("bs4", "yaml"):
+    try:
+        __import__(_mod)
+    except ImportError:
+        _missing.append(_mod)
+if _missing:
+    _pkg_map = {"bs4": "beautifulsoup4", "yaml": "pyyaml"}
+    _pkgs = ", ".join(_pkg_map.get(m, m) for m in _missing)
+    print(f"FATAL: Missing dependencies: {_pkgs}", file=sys.stderr)
+    print(f"Install with: pip3 install {_pkgs}", file=sys.stderr)
+    sys.exit(1)
 
 def main():
     parser = argparse.ArgumentParser(description="Deep discovery pipeline for chrome-agent explore")
