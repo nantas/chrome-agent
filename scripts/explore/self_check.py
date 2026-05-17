@@ -211,16 +211,7 @@ def s5_text_integrity(markdown: str) -> dict:
     anomalies = []
 
     # Missing space around version numbers
-    # Exclude: entity IDs in backticks (e.g. `5.100.1`) and multi-segment dotted numbers (e.g. 5.350.57)
-    _version_pattern = re.compile(
-        r"(?<!`)"           # not preceded by backtick
-        r"([a-z])"
-        r"(\d+(?:\.\d+)?)"  # only match 1-2 segment numbers (version-like: 1.0, v2)
-        r"(?![\d.])"        # not followed by more digits/dots
-        r"([a-z])"
-        r"(?!`)"            # not followed by backtick
-    )
-    if _version_pattern.search(markdown):
+    if re.search(r"([a-z])(\d+(?:\.\d+)*)([a-z])", markdown):
         anomalies.append("Missing space around version numbers")
 
     # Base64 placeholder residue
