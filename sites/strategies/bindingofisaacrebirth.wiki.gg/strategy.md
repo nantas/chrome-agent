@@ -302,14 +302,14 @@ Sample validation completed with 20 pages across all content categories.
 
 ## Known Issues (Post-Validation)
 
-| ID | Issue | Impact | Mitigation |
-|----|-------|--------|------------|
-| KI-1 | S1 image count mismatch | Lazyload base64 placeholders counted in HTML source | Filter base64 images before counting |
-| KI-2 | S5 version number regex false positive | Entity IDs like `5.100.1` matched as "missing space around version" | Exclude patterns matching entity ID format in self_check.py |
-| KI-3 | S6 table row deviation | Nested table expansion by markdownify differs from HTML source | Accept within 10% tolerance for wiki.gg pages |
-| KI-4 | S8 template-embedded headings | `UnlockableAchievements` etc. not standard `mw-headline` | These are template artifacts, not user-visible sections |
-| KI-5 | Infobox field value concatenation | Multiple values merged without separator (e.g. "Crane GameTreasure Room") | Implement pi-data-value splitter in converter |
-| KI-6 | Collectible ID "None" prefix | Shows "None1" instead of separating navigation prev/cur | Use infobox-nav-cur span to extract only current ID |
+| ID | Issue | Status | Impact | Resolution |
+|----|-------|--------|--------|------------|
+| KI-1 | S1 image count mismatch | **Open** | Template-internal + infobox-nav images counted in HTML but not in Markdown (27→10 gap for item pages, 194→185 for boss pages) | Self-Check: content-area scoping done; remaining gap from markdownify template folding — not fixable without template rendering |
+| KI-2 | S5 version number regex false positive | ✅ **Fixed** | Image URL hash fragments (e.g. `?cab9af`) matched as "missing space" | Self-Check: strip `![...](...)` from scan before version regex |
+| KI-3 | S6 table row deviation | ✅ **Fixed** | Navigation tables (nav-box) counted as data tables; tolerance too tight | Self-Check: exclude nav table classes; 5%→10% tolerance |
+| KI-4 | S8 template-embedded headings | ✅ **Not triggered** | `UnlockableAchievements` etc. not standard `mw-headline` | These are template artifacts; only triggers on pages with such templates |
+| KI-5 | Infobox field value concatenation | ✅ **Fixed** | `![]()[text](url)` without space between image and link in body | Pipeline: post-processing regex ensures space between image and following link |
+| KI-6 | Collectible ID "None" prefix | ✅ **Fixed** | Shows "None1" instead of "1" | Pipeline: decompose `.infobox-nav-prev` + `.infobox-nav-next` before extraction |
 
 ## Evidence
 

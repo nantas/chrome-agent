@@ -150,6 +150,11 @@ def _extract_infobox(
 
         # Walk descendants with deduplication to avoid double-counting
         # img inside <a><img></a> must not be counted twice
+        # KI-6: strip infobox nav prev/next (only keep nav-cur for clean IDs)
+        for nav_el in value_el.select('.infobox-nav-prev'):
+            nav_el.decompose()
+        for nav_el in value_el.select('.infobox-nav-next'):
+            nav_el.decompose()
         processed = set()
         val_parts = []
 
@@ -174,6 +179,10 @@ def _extract_infobox(
                 val_parts.append(f"![{alt}]({src})")
                 processed.update(id(c) for c in child.descendants)
             elif child.name == "a":
+                # KI-6: skip infobox nav links (prev/next navigation within infobox)
+                if child.get("class") and any("infobox-nav" in c for c in child.get("class", [])):
+                    processed.update(id(c) for c in child.descendants)
+                    continue
                 imgs = child.find_all("img")
                 if imgs and not child.get_text(strip=True):
                     # Image-only link: extract images, mark all descendants processed
@@ -333,6 +342,9 @@ def _apply_extraction(
 
     # Clean empty parens
     md = re.sub(r"\(\s*\)", "", md)
+
+    # KI-5: ensure space between image and following link (markdownify artifact)
+    md = re.sub(r"(\!\[[^\]]*\]\([^)]+\))\s*(?=\[)", r"\1 ", md)
 
     return md.strip()
 

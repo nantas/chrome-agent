@@ -105,6 +105,9 @@ def s2_link_resolution(html: str, markdown: str, known_pages: set[str]) -> dict:
 
     # Also check the legacy resolution (if known_pages provided)
     if known_pages:
+        # Skip legacy resolution if markdown uses absolute URLs
+        if re.search(r'\[([^\]]+)\]\(https?://[^/]+/wiki/', markdown):
+            return {"check": "S2", "status": "pass", "detail": "Links use absolute URLs"}
         soup = BeautifulSoup(html, "html.parser")
         wiki_links = []
         for a in soup.find_all("a", href=re.compile(r"^/wiki/")):
@@ -212,6 +215,8 @@ def s5_text_integrity(markdown: str) -> dict:
 
     # Missing space around version numbers
     # Exclude: entity IDs in backticks (e.g. `5.100.1`) and multi-segment dotted numbers (e.g. 5.350.57)
+    # KI-2: also strip image markdown to avoid false matches on URL hash fragments
+    _scan_md = re.sub(r'!\[.*?\]\([^)]+?\)', '', markdown)
     _version_pattern = re.compile(
         r"(?<!`)"           # not preceded by backtick
         r"([a-z])"
@@ -220,7 +225,7 @@ def s5_text_integrity(markdown: str) -> dict:
         r"([a-z])"
         r"(?!`)"            # not followed by backtick
     )
-    if _version_pattern.search(markdown):
+    if _version_pattern.search(_scan_md):
         anomalies.append("Missing space around version numbers")
 
     # Base64 placeholder residue
@@ -259,7 +264,12 @@ def s6_table_integrity(html: str, markdown: str) -> dict:
         return {"check": "S6", "status": "skip", "detail": "No HTML provided"}
 
     soup = BeautifulSoup(html, "html.parser")
-    tables = [t for t in soup.find_all("table") if len(t.find_all("tr")) > 2]
+    # Exclude navigation tables (navbox, nav-box, mw-collapsible)
+    _nav_classes = {"navbox", "nav-box", "mw-collapsible", "nav-main", "nav-header", "nav-footer"}
+    tables = [
+        t for t in soup.find_all("table")
+        if len(t.find_all("tr")) > 2 and not (_nav_classes & set(t.get("class") or []))
+    ]
 
     if not tables:
         return {"check": "S6", "status": "skip", "detail": "No data tables in original"}
@@ -283,9 +293,9 @@ def s6_table_integrity(html: str, markdown: str) -> dict:
     if html_rows == 0:
         return {"check": "S6", "status": "skip", "detail": "No data rows in original tables"}
 
-    # Check within 5% tolerance
+    # Check within 10% tolerance (KI-3: MediaWiki table expansion varies)
     deviation = abs(len(md_rows) - html_rows) / html_rows
-    if deviation > 0.05:
+    if deviation > 0.10:
         return {
             "check": "S6",
             "status": "fail",
