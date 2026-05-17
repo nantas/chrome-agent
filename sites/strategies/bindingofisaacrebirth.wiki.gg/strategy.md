@@ -140,10 +140,14 @@ extraction:
     - ".toc"
     - "#toc"
     - ".hatnote"
+    - ".nav-box"
+    - ".nav-header"
   image_filtering:
     skip_patterns:
       - "Icon_mini.png"
       - "Wiki.png"
+      - "Font_TeamMeat"
+      - "Dlc_.*indicator"
   cleanup:
     - strip_footer
     - strip_edit_links
@@ -154,6 +158,31 @@ extraction:
     - strip_category_links
     - normalize_infobox
     - fix_separators
+  infobox_field_handlers:
+    health:
+      handler: count_images
+      description: "Count red heart images"
+    id:
+      handler: extract_cur_id
+      description: "Extract current ID from infobox-nav-cur span"
+    alias:
+      handler: dedup_pools
+      description: "Deduplicate item pool links, skip icon-only entries"
+    "alias(Collection grid)":
+      handler: simplify_collection
+      description: "Simplify collection grid to single page link"
+    tags:
+      handler: extract_tags
+      description: "Extract tag tooltips from icon links"
+    image:
+      handler: image
+      description: "Extract main image as Markdown"
+    portrait:
+      handler: image
+      description: "Extract portrait image as Markdown"
+    costume:
+      handler: image
+      description: "Extract costume image as Markdown"
 ---
 
 ## Overview

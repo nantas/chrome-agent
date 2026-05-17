@@ -15,9 +15,9 @@ api:
   base_url: ""
   version: ""
   content_profile:
-    discovery_strategy: category_members
-    content_acquisition: hybrid_wikitext_plus_rendered
-    link_resolver: short_name_with_cross_namespace
+    discovery_strategy: allpages
+    content_acquisition: html_rendered
+    link_resolver: exact_title_match
     template_processor: structured_with_lua_fallback
     list_page_assembler: hybrid_frontmatter_and_rendered
   rate_limit:
@@ -35,6 +35,17 @@ extraction:
   text_normalization:
     - fix_spaces
     - normalize_blank_lines
+  cleanup_selectors:
+    - ".mw-editsection"
+    - ".toc"
+    - "#toc"
+    - ".hatnote"
+    - ".nav-box"
+    - ".nav-header"
+  image_filtering:
+    skip_patterns:
+      - "Font_TeamMeat"
+      - "Dlc_.*indicator"
 ---
 
 # wiki.gg MediaWiki Strategy
@@ -46,5 +57,21 @@ wiki.gg-hosted MediaWiki. Typically low protection, MediaWiki API available.
 ## Extraction Rules
 
 - Content selector: `#mw-content-text`
-- Remove edit sections and TOC before conversion
-- Resolve internal wiki links to `.md` files
+- Remove edit sections, TOC, nav-box, and nav-header before conversion
+- Resolve internal wiki links to full URLs via `wiki_domain`
+- Filter out font images (Font_TeamMeat) and DLC indicator images
+
+## Image Filtering
+
+Default skip patterns for wiki.gg sites:
+- `Font_TeamMeat` — Decorative font images used for headings
+- `Dlc_.*indicator` — DLC expansion indicator icons
+
+## Cleanup Selectors
+
+Default elements to remove during HTML cleanup:
+- `.mw-editsection` — Edit section links
+- `.toc` / `#toc` — Table of contents
+- `.hatnote` — Hatnote banners
+- `.nav-box` — Navigation box tables
+- `.nav-header` — Navigation header elements
