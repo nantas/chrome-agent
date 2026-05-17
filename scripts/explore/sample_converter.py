@@ -218,6 +218,10 @@ def _extract_infobox(
         if not label_el:
             continue
         key = label_el.get_text(strip=True)
+        # Also build a data-source alias for handler lookup
+        # (strategy may use "datasource(label)" pattern as handler key)
+        ds = field.get("data-source", "")
+        ds_key = f"{ds}({key})" if ds else ""
         if not value_el:
             lines.append(f"| {key} | |")
             continue
@@ -284,8 +288,15 @@ def _extract_infobox(
                     processed.update(id(c) for c in child.descendants)
 
         # Apply field handler from config if defined
-        if field_handlers and key in field_handlers:
-            handler_name = field_handlers[key].get("handler", "") if isinstance(field_handlers[key], dict) else ""
+        # Lookup order: label text → data-source(label) alias
+        handler_cfg = None
+        if field_handlers:
+            if key in field_handlers:
+                handler_cfg = field_handlers[key]
+            elif ds_key and ds_key in field_handlers:
+                handler_cfg = field_handlers[ds_key]
+        if handler_cfg:
+            handler_name = handler_cfg.get("handler", "") if isinstance(handler_cfg, dict) else ""
             val = _apply_field_handler(handler_name, val_parts, value_el, skip_patterns, base_url)
         else:
             val = " ".join(val_parts).strip()
