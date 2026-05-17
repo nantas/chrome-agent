@@ -4,8 +4,8 @@
 
 - Capability: `sample-self-check`
 - 来源: `proposal.md`
-- 变更类型: `new`
-- 用户确认摘要: 新增样本转换后的 agent 自检体系（S1-S7 + auto-remediation loop）
+- 变更类型: `modified`
+- 用户确认摘要: 自检体系从 S1-S7 升级到 S1-S12，新增 5 个检查项，升级 4 个既有检查项标准
 
 ## 规范真源声明
 
@@ -13,92 +13,149 @@
 - design / tasks / verification 必须引用本文件
 - 项目页面回写不得替代本文件
 
-## ADDED Requirements
+## MODIFIED Requirements
 
 ### Requirement: self-check-s1-image-retention
 
-The system SHALL verify that image count in converted Markdown matches the original HTML (after excluding base64 lazy-load placeholders).
+The system SHALL verify that image count in converted Markdown matches the original HTML (after excluding noise images matching `skip_patterns`), AND that all retained images use full URLs (no relative `/images/` paths).
 
-#### Scenario: s1-pass-fail
+#### Scenario: s1-pass-with-full-urls
 - **WHEN** sample conversion is complete
-- **THEN** the system SHALL count `N` = total `<img>` tags in original HTML (excluding those with `src="data:image/gif;base64"` that lack a `data-src`)
-- **THEN** the system SHALL count `M` = total `![]()` occurrences in converted Markdown
-- **THEN** if `M == N`, S1 SHALL be marked `pass`
-- **THEN** if `M < N`, S1 SHALL be marked `fail` with diff details
+- **THEN** the system SHALL count valid images in original HTML (excluding those with `src="data:image/gif;base64"` that lack a `data-src`, AND excluding images matching `skip_patterns`)
+- **THEN** the system SHALL count `![]()` occurrences in converted Markdown
+- **THEN** the system SHALL verify every `![]()` uses a full URL starting with `http://` or `https://`
+- **THEN** if `M == N` AND all URLs are full URLs, S1 SHALL be marked `pass`
+- **THEN** if any image has a relative path (starts with `/`), S1 SHALL be marked `fail` with `fixable_type: "relative_image_url"`
 
 ### Requirement: self-check-s2-link-resolution
 
-The system SHALL verify that internal wiki links pointing to known pages are resolved to relative `.md` links.
+The system SHALL verify that all internal links in the Markdown use full URLs and there are zero relative `/wiki/` links.
 
-#### Scenario: s2-pass-fail
+#### Scenario: s2-zero-relative-links
 - **WHEN** sample conversion is complete
-- **THEN** the system SHALL identify all `/wiki/X` links in original HTML where `X` is a known page
-- **THEN** the system SHALL verify each such link appears as `[text](X.md)` in the Markdown
-- **THEN** if any known-page link is NOT resolved, S2 SHALL be marked `fail`
+- **THEN** the system SHALL scan all `[text](url)` patterns in the Markdown
+- **THEN** if any `url` starts with `/wiki/` or `/images/`, S2 SHALL be marked `fail` with `fixable_type: "relative_link"`
+- **THEN** if all `url` values are full `https://` URLs or anchor-only `#...` links, S2 SHALL be marked `pass`
 
 ### Requirement: self-check-s3-infobox-extraction
 
-The system SHALL verify that pages with `{{Infobox ...}}` wikitext have structured data in the Markdown frontmatter or body.
+The system SHALL verify infobox extraction quality: at least 3 fields present, key fields (name, id) non-empty, and no raw HTML tag residue in field values.
 
-#### Scenario: s3-pass-fail
-- **WHEN** sample conversion is complete
-- **THEN** the system SHALL check if the original page contains `{{Infobox ...}}` in wikitext
-- **THEN** if infobox exists but frontmatter lacks `has_infobox: true` or no `## Infobox` section exists, S3 SHALL be marked `fail`
-- **THEN** if no infobox exists, S3 SHALL be marked `skip`
-
-### Requirement: self-check-s4-empty-content
-
-The system SHALL verify that the Markdown body (excluding frontmatter) is non-empty and meaningful.
-
-#### Scenario: s4-pass-fail
-- **WHEN** sample conversion is complete
-- **THEN** the system SHALL measure `length` of Markdown body (content after `---` frontmatter terminator)
-- **THEN** if `length == 0`, S4 SHALL be marked `fail`
-- **THEN** if `length > 0`, S4 SHALL be marked `pass`
+#### Scenario: s3-pass-with-quality-checks
+- **WHEN** sample conversion is complete and the original page has an infobox
+- **THEN** the system SHALL verify the infobox table has ≥ 3 fields
+- **THEN** the system SHALL verify that `Name` and at least one ID field (`Collectible ID` / `Entity ID` / `Trinket ID`) are present and non-empty
+- **THEN** the system SHALL scan infobox field values for raw HTML tags (`<a`, `<img`, `<span`, `</div`)
+- **THEN** if any raw HTML tag is found, S3 SHALL be marked `fail` with `fixable_type: "infobox_html_residue"`
+- **THEN** if field count < 3 or key fields empty, S3 SHALL be marked `fail` with `fixable_type: "infobox_incomplete"`
 
 ### Requirement: self-check-s5-text-integrity
 
-The system SHALL verify that the converted Markdown text has no detectable formatting anomalies.
+The system SHALL verify that the converted Markdown text has no detectable formatting anomalies, including original anomalies PLUS new HTML tag residue patterns.
 
 #### Scenario: s5-pass-fail
 - **WHEN** sample conversion is complete
 - **THEN** the system SHALL scan for the following anomaly patterns:
   - Missing space around version numbers: `([a-z])(\d+(?:\.\d+)*)([a-z])`
   - Base64 placeholder residue: `data:image/gif;base64`
-  - Escape artifacts: `\*\*\*`
-  - Repeated link text: `(\w[\w\s]{1,15}?) +\1` where both variants reference the same target
+  - Escape artifacts: `\*\*\*` or `\\\*+`
+  - Repeated link text: `(\w[\w\s]{1,15}?) +\1`
+  - Raw closing HTML tags: `</a>` or `</span>` or `</div>` in output
+  - Unresolved HTML entities: `&amp;` or `&lt;` or `&gt;` in output
 - **THEN** if any anomaly pattern matches, S5 SHALL be marked `fail`
 - **THEN** if no anomalies found, S5 SHALL be marked `pass`
 
 ### Requirement: self-check-s6-table-integrity
 
-The system SHALL verify that list/summary pages preserve their table structure after conversion.
+The system SHALL verify that list/summary tables maintain row count within a 5% tolerance of the original HTML.
 
-#### Scenario: s6-pass-fail
-- **WHEN** sample conversion is complete and the original page contains data tables (>2 rows)
-- **THEN** the system SHALL check if the Markdown output preserves table rows (≥3 data rows)
-- **THEN** if the table is collapsed or missing, S6 SHALL be marked `fail`
-- **THEN** if no data table exists in the original, S6 SHALL be marked `skip`
+#### Scenario: s6-row-count-tolerance
+- **WHEN** sample conversion is complete and the original page contains data tables
+- **THEN** the system SHALL count original `<tr>` rows in source HTML (excluding header rows)
+- **THEN** the system SHALL count Markdown table data rows (lines starting with `|` excluding separator lines)
+- **THEN** if `|MD_rows - HTML_rows| / HTML_rows > 0.05`, S6 SHALL be marked `fail`
+- **THEN** if the deviation is ≤ 5%, S6 SHALL be marked `pass`
 
-### Requirement: self-check-s7-image-wrapper
+## ADDED Requirements
 
-The system SHALL verify that images are NOT wrapped in unnecessary external links ([![alt](img)](url)) unless they serve original navigation intent.
+### Requirement: self-check-s8-section-completeness
 
-#### Scenario: s7-pass-fail
+The system SHALL verify that all `mw-headline` sections from the source HTML are preserved as Markdown headings.
+
+#### Scenario: s8-all-sections-present
 - **WHEN** sample conversion is complete
-- **THEN** the system SHALL scan for `[!\[alt\]\(img\)\]\(url\)` patterns
-- **THEN** if any image wrapper link exists and is NOT a deliberate design choice (e.g., gallery page), S7 SHALL be marked `fail`
-- **THEN** if no wrapper links exist, S7 SHALL be marked `pass`
+- **THEN** the system SHALL extract all `mw-headline` span texts from the source HTML
+- **THEN** the system SHALL extract all `#`, `##`, `###` heading texts from the Markdown
+- **THEN** if any `mw-headline` text does not appear as a Markdown heading, S8 SHALL be marked `fail` with details of missing sections
+- **THEN** if the count mismatch exceeds 2, S8 SHALL be marked `fail` with `fixable_type: "section_loss"`
+- **THEN** if all sections are present, S8 SHALL be marked `pass`
 
-### Requirement: auto-remediation
+#### Scenario: s8-toc-heading-excluded
+- **WHEN** the source HTML contains a "Contents" heading from the TOC
+- **THEN** this heading SHALL NOT be counted in the expected section list
 
-The system SHALL, when self-check fails on known fixable issues, attempt automatic remediation.
+### Requirement: self-check-s9-navigation-leakage
 
-#### Scenario: auto-fix-loop
-- **WHEN** any check (S1-S7) is marked `fail`
-- **THEN** the system SHALL determine if the failure type is on the known-fixable list:
-  - `fixable`: base64 residue, space normalization, link resolution, image wrapper, table class missing
-  - `non-fixable`: empty content, infobox template mismatch, structural issues
-- **THEN** if fixable, the system SHALL amend the extraction rules, re-convert, and re-run self-check
-- **THEN** the auto-remediation SHALL run at most 2 iterations
-- **THEN** if 2 iterations do not resolve all fails, the system SHALL mark as `"auto-remediation exhausted — needs human review"`
+The system SHALL verify that navigation sidebar content has NOT leaked into the Markdown body.
+
+#### Scenario: s9-no-nav-leak
+- **WHEN** sample conversion is complete
+- **THEN** the system SHALL scan the Markdown for clusters of known navigation keywords
+- **THEN** if ≥ 3 consecutive lines contain known nav keywords, S9 SHALL be marked `fail` with `fixable_type: "nav_leak"`
+- **THEN** if no such clusters exist, S9 SHALL be marked `pass`
+
+### Requirement: self-check-s10-youtube-title-quality
+
+The system SHALL verify that YouTube video links use descriptive titles rather than generic "YouTube Video" text, OR have no video links at all if the page has no videos.
+
+#### Scenario: s10-no-generic-titles
+- **WHEN** sample conversion is complete
+- **THEN** the system SHALL scan for `[YouTube Video](https://www.youtube.com/...)` patterns
+- **THEN** if any such generic title is found, S10 SHALL be marked `fail` with `fixable_type: "youtube_title"`
+- **THEN** if all YouTube links have unique, non-generic titles, S10 SHALL be marked `pass`
+- **THEN** if no YouTube links exist at all, S10 SHALL be marked `skip`
+
+### Requirement: self-check-s11-zero-relative-links
+
+The system SHALL verify that the Markdown output contains ZERO relative `/wiki/` or `/images/` link references.
+
+#### Scenario: s11-no-relative-residue
+- **WHEN** sample conversion is complete
+- **THEN** the system SHALL scan the Markdown for `](/wiki/` and `](/images/` patterns
+- **THEN** if any matches are found, S11 SHALL be marked `fail` with `fixable_type: "relative_link"` and the count of occurrences
+- **THEN** if zero matches are found, S11 SHALL be marked `pass`
+
+### Requirement: self-check-s12-infobox-semantic-quality
+
+The system SHALL verify infobox field semantic quality: Name field has spaces between words, ID fields contain only digits/dots (no navigation text), and no field values are image filenames masquerading as text.
+
+#### Scenario: s12-name-has-spaces
+- **WHEN** sample conversion is complete and infobox has a Name field
+- **THEN** the system SHALL check if the Name value contains camelCase concatenation (e.g., "TheSadOnion")
+- **THEN** if Name matches `[a-z][A-Z]` pattern, S12 SHALL be marked `fail` with `fixable_type: "name_spacing"`
+- **THEN** if Name ends with `.png`, `.jpg`, or `.gif`, S12 SHALL be marked `fail` with `fixable_type: "name_is_filename"`
+
+#### Scenario: s12-id-fields-clean
+- **WHEN** sample conversion is complete and infobox has ID fields
+- **THEN** the system SHALL verify ID values contain only digits, dots, and optional dashes
+- **THEN** if any ID value contains link text or navigation text, S12 SHALL be marked `fail` with `fixable_type: "id_navigation_leak"`
+
+### Requirement: auto-remediation-extended
+
+The system SHALL recognize the following new fixable types in addition to the existing set:
+
+- `relative_image_url` — remediate by re-running image conversion with full URL domain
+- `relative_link` — remediate by re-running link conversion with full URL domain
+- `infobox_html_residue` — remediate by re-running infobox conversion with balanced div matching
+- `infobox_incomplete` — NOT auto-fixable; requires strategy field handler configuration
+- `section_loss` — auto-fixable via balanced element removal retry
+- `nav_leak` — auto-fixable via additional nav-header/sidebar removal
+- `youtube_title` — auto-fixable via oEmbed API retry
+- `name_spacing` — NOT auto-fixable; requires font image alt processing in strategy
+- `name_is_filename` — NOT auto-fixable; requires strategy extraction handler
+- `id_navigation_leak` — auto-fixable via infobox-nav-cur extraction retry
+
+#### Scenario: auto-remediation-new-types
+- **WHEN** self-check fails on a new fixable type
+- **THEN** the auto-remediation loop SHALL attempt remediation up to 2 iterations
+- **THEN** after remediation, the system SHALL re-run the failed checks

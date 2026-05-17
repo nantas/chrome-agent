@@ -4,8 +4,8 @@
 
 - Capability: `explore-workflow`
 - 来源: `proposal.md`
-- 变更类型: `new`
-- 用户确认摘要: 新增完整的 explore 工作流（deep discovery → 模板选择 → 交互确认 → 样本自检 → 策略冻结）
+- 变更类型: `modified`
+- 用户确认摘要: explore 工作流增加 Agent Gate 行为规范，强化样本质量自检报告先于样本展示、文件路径输出、agent 自行对比审查、全量重测等要求
 
 ## 规范真源声明
 
@@ -77,11 +77,12 @@ The system SHALL convert sample pages to Markdown and run self-checks before pre
 - **THEN** the system SHALL apply the extraction rules from the strategy scaffold
 - **THEN** the system SHALL produce Markdown output per page with YAML frontmatter
 
-#### Scenario: self-check-pipeline
+#### Scenario: self-check-pipeline (modified)
 - **WHEN** sample conversion is complete
-- **THEN** the system SHALL run S1-S7 checks against each sample (see `sample-self-check` spec)
-- **THEN** the system SHALL produce a summary report: `{samples[], overall_pass, overall_fail}`
-- **THEN** the system SHALL present the summary to the user before displaying sample content
+- **THEN** the system SHALL run ALL S1-S12 checks (not just S1-S7) against each sample
+- **THEN** the system SHALL produce a per-sample and overall summary report
+- **THEN** the system SHALL present the self-check summary BEFORE any sample content
+- **THEN** the agent SHALL follow the agent-gate rules defined in ADDED Requirements below
 
 ### Requirement: strategy-freeze
 
@@ -101,30 +102,73 @@ The system SHALL allow the user to freeze the strategy after sample review.
 
 ### Requirement: pipeline-dependency-preflight
 
-The deep discovery pipeline (`scripts/explore/main.py`) SHALL verify all required Python dependencies at startup and exit with a clear error message if any are missing. The CLI caller (`runExplore()`) SHALL run a separate preflight check before spawning the pipeline process, and SHALL NOT silently catch import errors.
+The deep discovery pipeline (`scripts/explore/main.py`) SHALL verify all required Python dependencies at startup and exit with a clear error message if any are missing.
 
 #### Scenario: main-py-dependency-self-check
-
 - **WHEN** `python3 scripts/explore/main.py` is invoked
-- **THEN** the script SHALL attempt to import `bs4` and `yaml` before executing any pipeline phase
-- **THEN** if either import fails, the script SHALL print to stderr: `FATAL: Missing dependencies: <package-list>`
-- **THEN** the script SHALL print to stderr: `Install with: pip3 install <package-list>`
+- **THEN** the script SHALL attempt to import `bs4`, `yaml`, and `selectolax` before executing any pipeline phase
+- **THEN** if any import fails, the script SHALL print to stderr: `FATAL: Missing dependencies: <package-list>`
+- **THEN** the script SHALL print to stderr: `Install with: pip3 install -r scripts/explore/requirements.txt`
 - **THEN** the script SHALL exit with code 1
 
-#### Scenario: main-py-dependencies-present
-
-- **WHEN** `python3 scripts/explore/main.py` is invoked and all dependencies are importable
-- **THEN** the script SHALL proceed to the normal pipeline execution without any additional output from the preflight check
-
-#### Scenario: cli-preflight-before-spawn
-
-- **WHEN** `runExplore()` prepares to spawn `scripts/explore/main.py`
-- **THEN** the system SHALL first run `runExplorePythonDepsCheck()` to verify `bs4` and `yaml` are importable
-- **THEN** if the preflight fails, the system SHALL return `result: "failure"` with installation instructions
-- **THEN** the system SHALL NOT invoke `spawnSync` for the pipeline process
-
 #### Scenario: deps-file-declaration
-
 - **WHEN** a developer or operator inspects `scripts/explore/`
-- **THEN** a `requirements.txt` file SHALL be present listing `beautifulsoup4>=4.12` and `pyyaml>=6.0`
-- **THEN** the file SHALL serve as the authoritative dependency declaration for the explore pipeline
+- **THEN** a `requirements.txt` file SHALL be present listing `beautifulsoup4>=4.12`, `pyyaml>=6.0`, `markdownify>=0.11`, and `selectolax>=0.3`
+
+### Requirement: agent-gate-self-check-before-presentation
+
+The agent SHALL run all S1-S12 self-checks and present the pass/fail summary BEFORE showing any sample Markdown content to the user.
+
+#### Scenario: self-check-report-first
+- **WHEN** sample conversion is complete and agent prepares to present results
+- **THEN** the agent SHALL output a summary table: `{check_id, status, detail}` for all S1-S12 checks across all samples
+- **THEN** the agent SHALL present the overall pass rate (X/Y samples passed, Z issues total)
+- **THEN** the agent SHALL NOT output raw Markdown content until the user has seen and acknowledged the self-check report
+- **THEN** if all samples pass all checks, the agent SHALL state "✅ All samples passed" and present content
+- **THEN** if any sample has failures, the agent SHALL categorize them as fixable/non-fixable and present the remediation plan
+
+### Requirement: agent-gate-sample-file-paths
+
+The agent SHALL write all converted samples to files under `outputs/<run-tag>/` and SHALL present the absolute file paths to the user.
+
+#### Scenario: sample-files-written-to-outputs
+- **WHEN** sample conversion is complete
+- **THEN** each sample SHALL be written as a `.md` file under `outputs/<run-tag>/`
+- **THEN** the file naming SHALL follow the pattern: `{page_type}-{page_title_slugified}.md`
+- **THEN** the agent SHALL list all output file paths explicitly in the results presentation
+- **THEN** the agent SHALL NOT only print Markdown content to stdout without saving to files
+
+### Requirement: agent-gate-self-audit-before-user-review
+
+The agent SHALL perform a self-audit comparing source HTML content against converted Markdown BEFORE asking the user to review quality.
+
+#### Scenario: agent-self-audits
+- **WHEN** sample conversion is complete and agent prepares to present to user
+- **THEN** the agent SHALL run a diagnostic function that compares:
+  - Source `mw-headline` sections vs Markdown headings
+  - Source infobox data-source fields vs Markdown infobox table rows
+  - Source `<tr>` count vs Markdown table rows
+  - Source images (excluding skip_patterns) vs Markdown `![]()` count
+  - Source `<a href="/wiki/">` count vs Markdown full URL link count
+- **THEN** the agent SHALL produce a structured discrepancy list before presenting to the user
+- **THEN** the agent SHALL NOT delegate the QA responsibility to the user
+
+### Requirement: agent-gate-full-retest-on-converter-change
+
+When the converter or extraction rules are modified in response to audit findings, the agent SHALL re-convert and re-check ALL samples, not just the one that triggered the fix.
+
+#### Scenario: retest-all-after-fix
+- **WHEN** the converter code or extraction rules are modified
+- **THEN** the agent SHALL re-run conversion on ALL sample pages
+- **THEN** the agent SHALL re-run ALL S1-S12 checks on ALL samples
+- **THEN** the agent SHALL NOT claim "fixed" based on a single sample test
+
+### Requirement: agent-gate-iteration-limit
+
+The agent SHALL limit the fix→retest→present cycle to at most 3 iterations before requiring explicit user direction.
+
+#### Scenario: max-3-iterations
+- **WHEN** the agent has completed 3 cycles of fix→retest→present
+- **AND** failures still exist
+- **THEN** the agent SHALL present the remaining issues and ask the user to decide: continue fixing / accept as-is / adjust scope
+- **THEN** the agent SHALL NOT continue to a 4th iteration without user confirmation
