@@ -1,9 +1,9 @@
 ---
 domain: bindingofisaacrebirth.wiki.gg
 description: "The Binding of Isaac: Rebirth Wiki on wiki.gg - MediaWiki 1.43.6 covering Rebirth, Afterbirth, Afterbirth+, Repentance, and Repentance+ content. Full-site crawl via allpages API path."
-protection_level: low
+protection_level: medium
 anti_crawl_refs:
-  - default
+  - cloudflare-turnstile
   - rate-limit-api
 structure:
   pages:
@@ -68,6 +68,7 @@ api:
       Monsters: "Monsters"
       Characters: "Characters"
       Cards: "Cards"
+      Completion Marks: "Completion_Marks"
       Pickups: "Pickups"
       Challenges: "Challenges"
       Transformations: "Transformations"
@@ -75,12 +76,15 @@ api:
       Rooms: "Rooms"
       Mechanics: "Mechanics"
       Achievements: "Achievements"
+      Attributes: "Attributes"
       Curses: "Curses"
       Effects: "Effects"
+      Modes: "Modes"
       Modding: "Modding"
       Endings: "Endings"
       Seeds: "Seeds"
       Music: "Music"
+      Objects: "Objects"
       Version History: "Version_History"
     page_categories:
       Collectibles: "Collectibles"
@@ -302,15 +306,14 @@ Sample validation completed with 20 pages across all content categories.
 
 ## Known Issues (Post-Validation)
 
-| ID | Issue | Status | Impact | Resolution |
-|----|-------|--------|--------|------------|
-| KI-1 | S1 image count mismatch | **Open** | Template-internal + infobox-nav images counted in HTML but not in Markdown (27→10 gap for item pages, 194→185 for boss pages) | Self-Check: content-area scoping done; remaining gap from markdownify template folding — not fixable without template rendering |
-| KI-2 | S5 version number regex false positive | ✅ **Fixed** | Image URL hash fragments (e.g. `?cab9af`) matched as "missing space" | Self-Check: strip `![...](...)` from scan before version regex |
-| KI-3 | S6 table row deviation | ✅ **Fixed** | Navigation tables (nav-box) counted as data tables; tolerance too tight | Self-Check: exclude nav table classes; 5%→10% tolerance |
-| KI-4 | S8 template-embedded headings | ✅ **Not triggered** | `UnlockableAchievements` etc. not standard `mw-headline` | These are template artifacts; only triggers on pages with such templates |
-| KI-5 | Infobox field value concatenation | ✅ **Fixed** | `![]()[text](url)` without space between image and link in body | Pipeline: post-processing regex ensures space between image and following link |
-| KI-6 | Collectible ID "None" prefix | ✅ **Fixed** | Shows "None1" instead of "1" | Pipeline: decompose `.infobox-nav-prev` + `.infobox-nav-next` before extraction |
-
+| ID | Issue | Status | Priority | Owner | Impact | Resolution |
+|----|-------|--------|----------|-------|--------|------------|
+| KI-1 | S1 image count mismatch | open_systemic | P2 | self_check | Template-internal images not rendered by markdownify | markdownify template folding — not fixable without template rendering |
+| KI-2 | S5 version regex false positive | resolved | P1 | self_check | Image URL hash fragments matched as version | Self-Check: strip `![...](...)` from scan before version regex |
+| KI-3 | S6 table row deviation | resolved | P3 | self_check | Nav tables counted as data tables | Self-Check: exclude nav table classes; 5%→10% tolerance |
+| KI-4 | S8 template-embedded headings | resolved | P3 | pipeline | Template headings not standard mw-headline | Template artifacts — only triggers on pages with such templates |
+| KI-5 | Infobox field value concatenation | resolved | P1 | pipeline | `![]()[text](url)` without space between image and link | Pipeline: post-processing regex ensures space between image and following link |
+| KI-6 | Collectible ID 'None' prefix | resolved | P0 | pipeline | Shows 'None1' instead of '1' | Pipeline: decompose `.infobox-nav-prev` + `.infobox-nav-next` before extraction |
 ## Evidence
 
 - Siteinfo: `api.php?action=query&meta=siteinfo&siprop=general|statistics|namespaces` — validated 2026-05-16
