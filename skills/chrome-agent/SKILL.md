@@ -158,6 +158,21 @@ The agent SHALL limit the fix→retest→present cycle to at most 3 iterations.
 - After 3 cycles with remaining failures, present issues and ask user to decide: continue / accept / adjust scope.
 - Do NOT continue to a 4th iteration without user confirmation.
 
+### 6. Architecture Gate (strategy↔pipeline alignment)
+
+The agent SHALL ensure the Architecture Gate passes before proceeding to user confirmation.
+
+- The Architecture Gate runs AFTER self-check completes and BEFORE user confirmation.
+- The gate checks two directions:
+  - **Strategy→Pipeline**: Every strategy extraction field must have a corresponding consumer in the pipeline code (no dead config).
+  - **Pipeline→Strategy**: Every site-specific value in the pipeline must be sourced from strategy config (no hardcoded selectors, domains, or patterns).
+- If the gate returns `status: "fail"`:
+  - The agent MUST fix all reported violations before presenting to the user.
+  - Violation fixes do NOT count toward the 3-iteration limit (that limit is for quality issues, not architecture violations).
+  - After fixing violations, the agent MUST re-run full sample conversion + self-check + Architecture Gate.
+- If the gate returns `status: "pass"`:
+  - Include "✅ Architecture Gate passed — no dead config, no hardcoded selectors" in the confirmation summary.
+
 ## Result Packaging
 
 For routed commands, treat the CLI JSON result as the only source of truth.

@@ -84,6 +84,20 @@ The system SHALL convert sample pages to Markdown and run self-checks before pre
 - **THEN** the system SHALL present the self-check summary BEFORE any sample content
 - **THEN** the agent SHALL follow the agent-gate rules defined in ADDED Requirements below
 
+### Requirement: architecture-gate
+
+The system SHALL execute the Architecture Gate AFTER sample self-check completes AND BEFORE user confirmation, validating bidirectional alignment between strategy configuration and pipeline code.
+
+#### Scenario: gate-after-self-check
+- **WHEN** sample self-check has completed (including auto-remediation)
+- **THEN** the system SHALL execute `scripts/explore/architecture_gate.validate()`
+- **THEN** the gate result SHALL be included in the pipeline output under `architecture_gate`
+
+#### Scenario: gate-failure-blocks
+- **WHEN** the Architecture Gate returns `status: "fail"`
+- **THEN** the pipeline SHALL exit with code 2 (partial_success)
+- **THEN** the output SHALL include dead_config fields and/or pipeline violations
+
 ### Requirement: strategy-freeze
 
 The system SHALL allow the user to freeze the strategy after sample review.

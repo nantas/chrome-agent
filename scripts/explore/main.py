@@ -30,6 +30,7 @@ from protection_identifier import identify
 from strategy_scaffold_generator import generate
 from sample_converter import convert
 from self_check import run_checks, summarize, auto_remediate
+from architecture_gate import validate as architecture_gate_validate
 
 # Startup dependency self-check
 _missing = []
@@ -156,6 +157,19 @@ def main():
         if self_check_summary:
             self_check_summary["auto_remediation_iterations"] = iteration
 
+        # Phase 8: Architecture Gate (strategy↔pipeline bidirectional validation)
+        # Runs after self-check passes, before final output
+        gate_result = architecture_gate_validate(
+            samples=sample_results,
+            raw_markdowns=[sr.get("markdown", "") for sr in sample_results],
+            extraction_rules=current_extraction,
+            sample_type="article",
+            wiki_domain=domain,
+            skip_patterns=current_extraction.get("image_filtering", {}).get("skip_patterns"),
+        )
+    else:
+        gate_result = None
+
     output = {
         "target_url": url,
         "probe_chain": {
@@ -171,10 +185,17 @@ def main():
         },
         "samples": sample_results,
         "self_check": self_check_summary,
+        "architecture_gate": gate_result,
         "run_dir": run_dir,
     }
 
+    # Output with exit code signaling gate result
+    exit_code = 0
+    if gate_result and gate_result.get("status") == "fail":
+        exit_code = 2  # partial_success: architecture violations
+
     print(json.dumps(output, indent=2, default=str))
+    sys.exit(exit_code)
 
 
 def __extract_domain(url: str) -> str:

@@ -84,7 +84,8 @@ When `explore` returns `partial_success` with a strategy gap (no existing strate
 1. The agent **MUST NOT** proceed directly to `crawl` or `fetch` without user confirmation.
 2. The agent **MUST** present at minimum: structure analysis, sample conversions, and self-check results.
 3. When `explore` returns `failure`, the agent **MUST** surface the exact failure reason and remediation from the explore result as-is. The agent **MUST NOT** fabricate a strategy or workaround, **MUST NOT** attempt to fall back to a different extraction path without user approval, and **MUST** wait for user direction before taking any further action on the target URL.
-4. The agent **SHALL** follow the Agent Gate rules defined in `skills/chrome-agent/SKILL.md` — including self-check report before presentation, sample file path output, self-audit before user review, full retest on converter change, and 3-iteration limit.
+4. The agent **SHALL** follow the Agent Gate rules defined in `skills/chrome-agent/SKILL.md` — including self-check report before presentation, sample file path output, self-audit before user review, full retest on converter change, 3-iteration limit, and **Architecture Gate** (strategy↔pipeline bidirectional alignment validation).
+5. The agent **MUST** ensure the Architecture Gate passes before proceeding to user confirmation. The gate validates that every strategy extraction field has a pipeline consumer (no dead config) and that every pipeline site-specific value is sourced from strategy config (no hardcoded selectors/domains).
 
 ### 引擎选择策略
 
