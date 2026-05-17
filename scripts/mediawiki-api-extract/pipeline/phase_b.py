@@ -89,8 +89,7 @@ def _process_html_page(raw: dict, title: str, source_dir: str, source_url: str,
     converter = HtmlToMarkdownConverter(wiki_domain=domain, extraction_config=extraction_config)
     converter.build_link_index(manifest_pages)
 
-    cleaned = converter.clean_html(html)
-    md_content = converter.convert(cleaned, source_dir=source_dir)
+    md_content = converter.convert_body(html, source_dir=source_dir)
 
     # Build frontmatter
     frontmatter = {"title": title, "source_url": source_url}

@@ -44,6 +44,7 @@ def iterate(
 
     frontmatter = yaml.safe_load(match.group(1))
     extraction = frontmatter.get("extraction", {})
+    domain = frontmatter.get("domain", "")
     cleanup = set(extraction.get("cleanup", []))
     normalization = set(extraction.get("text_normalization", []))
 
@@ -91,7 +92,11 @@ def iterate(
             if os.path.exists(html_path):
                 with open(html_path, "r", encoding="utf-8") as f:
                     html = f.read()
-            checks = run_checks(html, sr["markdown"], "", known_pages, sr.get("type", "article"))
+            checks = run_checks(
+                html, sr["markdown"], "", known_pages, sr.get("type", "article"),
+                wiki_domain=domain,
+                skip_patterns=extraction.get("image_filtering", {}).get("skip_patterns"),
+            )
             all_checks.extend(checks)
 
     self_check = summarize(all_checks) if all_checks else None

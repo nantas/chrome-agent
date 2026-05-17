@@ -137,6 +137,8 @@ def main():
                         wikitext,
                         known_pages,
                         sr.get("type", "article"),
+                        wiki_domain=domain,
+                        skip_patterns=current_extraction.get("image_filtering", {}).get("skip_patterns"),
                     )
                     all_checks.extend(checks)
 

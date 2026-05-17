@@ -61,8 +61,7 @@ def fetch_and_convert(url: str, domain: str, output: str,
         converter = HtmlToMarkdownConverter(wiki_domain=domain, extraction_config=extraction_config)
         if manifest_pages:
             converter.build_link_index(manifest_pages)
-        cleaned = converter.clean_html(html)
-        md_content = converter.convert(cleaned, source_dir="")
+        md_content = converter.convert_body(html, source_dir="")
 
         # Build frontmatter
         frontmatter = {"title": title, "source_url": url}

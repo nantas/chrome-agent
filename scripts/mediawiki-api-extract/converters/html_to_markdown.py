@@ -4,10 +4,14 @@ Can be imported and used standalone:
     from scripts.mediawiki_api_extract.converters.html_to_markdown import HtmlToMarkdownConverter
 """
 
+import json
 import logging
 import os
 import re
+import urllib.request
 from typing import Optional
+
+from selectolax.parser import HTMLParser
 
 log = logging.getLogger("mediawiki-api-extract.converters")
 
@@ -33,12 +37,18 @@ class HtmlToMarkdownConverter:
     }
 
     def __init__(self, wiki_domain: str, extraction_config: dict | None = None):
+        if not wiki_domain:
+            raise TypeError("wiki_domain is required and must be non-empty")
         self.wiki_domain = wiki_domain
         self.config = extraction_config or {}
         # Read cleanup selectors from config, fall back to class defaults
         config_cleanup = self.config.get("cleanup_selectors", [])
         self._REMOVAL_SELECTORS = tuple(config_cleanup) if config_cleanup else self._REMOVAL_SELECTORS
         self.title_to_path: dict[str, tuple[str, str]] = {}
+        # Image skip patterns from config
+        self._skip_patterns: list[str] = self.config.get("image_filtering", {}).get("skip_patterns", [])
+        # Infobox field handlers from config
+        self._infobox_handlers: dict = self.config.get("infobox_field_handlers", {})
 
     def build_link_index(self, manifest_pages: list[dict]):
         """Build title -> (target_directory, target_filename) index."""
@@ -47,13 +57,175 @@ class HtmlToMarkdownConverter:
             for p in manifest_pages
         }
 
+    # ------------------------------------------------------------------
+    # Balanced element removal
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def remove_balanced_element(html: str, tag: str, attr_pattern: str) -> str:
+        """Remove an HTML element using balanced depth counting.
+
+        Finds the first <tag ...attr_pattern...> opening tag, then tracks
+        nesting depth to find the matching closing tag, removing the entire
+        span.  Uses depth counting rather than non-greedy regex.
+
+        Args:
+            html: Raw HTML string.
+            tag: HTML tag name (e.g. "div", "span", "table"). Auto-escaped.
+            attr_pattern: Regex fragment matching opening-tag attributes
+                (e.g. r'id="toc"', r'class="[^\"]*mw-editsection"').
+                Callers MUST ensure this is a safe regex fragment.
+        """
+        open_re = re.compile(
+            r'<' + re.escape(tag) + r'\b[^>]*' + attr_pattern + r'[^>]*>',
+            re.IGNORECASE,
+        )
+        match = open_re.search(html)
+        if not match:
+            return html
+
+        start = match.start()
+        pos = match.end()
+        depth = 1
+
+        tag_open_re = re.compile(
+            r'<' + re.escape(tag) + r'\b[^>]*(?<!/)>',
+            re.IGNORECASE,
+        )
+        tag_close_re = re.compile(
+            r'</' + re.escape(tag) + r'\s*>',
+            re.IGNORECASE,
+        )
+
+        while depth > 0 and pos < len(html):
+            next_open = tag_open_re.search(html, pos)
+            next_close = tag_close_re.search(html, pos)
+
+            if next_close is None:
+                return html  # No matching close tag — return unchanged
+
+            if next_open is not None and next_open.start() < next_close.start():
+                depth += 1
+                pos = next_open.end()
+            else:
+                depth -= 1
+                if depth == 0:
+                    end = next_close.end()
+                    return html[:start] + html[end:]
+                pos = next_close.end()
+
+        return html
+
+    @staticmethod
+    def remove_all_matching(html: str, tag: str, attr_pattern: str) -> str:
+        """Remove all matching HTML elements using balanced depth counting.
+
+        Repeatedly calls remove_balanced_element until no matching opening
+        tags remain.
+        """
+        result = html
+        for _ in range(100):  # Safety limit
+            new_result = HtmlToMarkdownConverter.remove_balanced_element(
+                result, tag, attr_pattern,
+            )
+            if new_result == result:
+                break
+            result = new_result
+        return result
+
+    # ------------------------------------------------------------------
+    # Tooltip link merge
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def merge_tooltip_links(html: str) -> str:
+        """Merge MediaWiki tooltip icon+text link patterns.
+
+        Processes HTML to combine tooltip spans where an icon link and text
+        link point to the same URL into a single combined link element.
+        """
+        # Remove opening tooltip spans (keep inner content)
+        html = re.sub(r'<span\s+class="tooltip"[^>]*>', '', html)
+        # Remove icon-size spans (keep inner content)
+        html = re.sub(r'<span\s+style="--tb-icon-size:[^"]*"[^>]*>', '', html)
+        # Remove all closing span tags
+        html = re.sub(r'</span>', '', html)
+
+        # Merge consecutive <a> pairs with same href where first has <img>
+        def _merge_pair(m):
+            url1 = m.group(1)
+            img_tag = m.group(2)
+            url2 = m.group(3)
+            text = m.group(4)
+            if url1 == url2:
+                return f'<a href="{url1}">{img_tag} {text}</a>'
+            return m.group(0)
+
+        html = re.sub(
+            r'<a\s+href="([^"]*)"[^>]*>(<img[^>]*>)\s*</a>\s*'
+            r'<a\s+href="([^"]*)"[^>]*>([^<]+)</a>',
+            _merge_pair,
+            html,
+        )
+        return html
+
+    # ------------------------------------------------------------------
+    # YouTube oEmbed extraction
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def extract_video_links(html: str) -> list[str]:
+        """Extract YouTube video links with oEmbed titles.
+
+        Parses data-mw-iframeconfig attributes to find YouTube embeds,
+        then retrieves video titles via the YouTube oEmbed API.
+        Falls back to generic "YouTube Video (ID)" on failure.
+        """
+        results: list[str] = []
+        pattern = re.compile(r'data-mw-iframeconfig="([^"]+)"')
+        for match in pattern.finditer(html):
+            try:
+                config_str = match.group(1).replace('&quot;', '"')
+                config = json.loads(config_str)
+                src = config.get('src', '')
+                vid_match = re.search(r'embed/([a-zA-Z0-9_-]+)', src)
+                if not vid_match:
+                    continue
+                video_id = vid_match.group(1)
+                watch_url = f'https://www.youtube.com/watch?v={video_id}'
+
+                # Try oEmbed API with 5s timeout
+                try:
+                    oembed_url = (
+                        f'https://www.youtube.com/oembed'
+                        f'?url={watch_url}&format=json'
+                    )
+                    req = urllib.request.Request(
+                        oembed_url,
+                        headers={'User-Agent': 'chrome-agent/1.0'},
+                    )
+                    with urllib.request.urlopen(req, timeout=5) as resp:
+                        data = json.loads(resp.read().decode('utf-8'))
+                        title = data.get('title', '')
+                        if title:
+                            results.append(f'- [{title}]({watch_url})')
+                            continue
+                except Exception:
+                    pass
+                # Fallback on failure
+                results.append(
+                    f'- [YouTube Video ({video_id})]({watch_url})'
+                )
+            except (json.JSONDecodeError, KeyError):
+                continue
+        return results
+
+    # ------------------------------------------------------------------
+    # HTML cleaning
+    # ------------------------------------------------------------------
+
     def clean_html(self, html: str) -> str:
         """Remove wiki UI noise and hidden elements."""
-        try:
-            from selectolax.parser import HTMLParser
-        except ImportError:
-            return self._regex_clean(html)
-
         parser = HTMLParser(html)
 
         for selector in self._REMOVAL_SELECTORS:
@@ -66,8 +238,7 @@ class HtmlToMarkdownConverter:
                 parent.decompose()
 
         # Config-driven image filtering
-        skip_patterns = self.config.get("image_filtering", {}).get("skip_patterns", [])
-        for pattern in skip_patterns:
+        for pattern in self._skip_patterns:
             for node in parser.css(f'img[src*="{pattern}"]'):
                 node.decompose()
 
@@ -84,13 +255,12 @@ class HtmlToMarkdownConverter:
             return root.html
         return parser.html
 
+    # ------------------------------------------------------------------
+    # Conversion
+    # ------------------------------------------------------------------
+
     def convert(self, html: str, source_dir: str = "") -> str:
         """Convert cleaned HTML to Markdown."""
-        try:
-            from selectolax.parser import HTMLParser
-        except ImportError:
-            return self._regex_convert(html)
-
         parser = HTMLParser(f'<div data-wrapper="root">{html}</div>')
         root = parser.css_first('[data-wrapper="root"]')
         if root is None:
@@ -98,6 +268,33 @@ class HtmlToMarkdownConverter:
 
         rendered = self._render_blocks(self._child_nodes(root), source_dir=source_dir)
         return rendered.strip()
+
+    def convert_body(self, html: str, source_dir: str = "") -> str:
+        """Full conversion pipeline: merge tooltips → clean → convert → insert videos."""
+        # Step 1: Merge tooltip links (raw HTML preprocessing)
+        html = self.merge_tooltip_links(html)
+
+        # Step 2: Extract video links from raw HTML before cleanup
+        video_links = self.extract_video_links(html)
+
+        # Step 3: Clean HTML
+        cleaned = self.clean_html(html)
+
+        # Step 4: Convert to Markdown
+        markdown = self.convert(cleaned, source_dir=source_dir)
+
+        # Step 5: Insert video links into body
+        if video_links:
+            video_section = "\n".join(video_links)
+            if "## In-game Footage" in markdown:
+                markdown = markdown.replace(
+                    "## In-game Footage",
+                    f"## In-game Footage\n{video_section}",
+                )
+            else:
+                markdown += f"\n\n## In-game Footage\n{video_section}"
+
+        return markdown
 
     # ------------------------------------------------------------------
     # Block rendering
@@ -118,6 +315,27 @@ class HtmlToMarkdownConverter:
             return self._normalize_text(node.text(deep=True, separator=" ", strip=False))
 
         if tag in {"div", "section", "article", "span"}:
+            # Check for portable infobox data-source field
+            if tag == "div" and self._infobox_handlers:
+                ds = node.attributes.get("data-source")
+                if ds:
+                    handler_cfg = self._infobox_handlers.get(ds)
+                    if handler_cfg and isinstance(handler_cfg, dict):
+                        handler_name = handler_cfg.get("handler", "text")
+                    elif isinstance(handler_cfg, str):
+                        handler_name = handler_cfg
+                    else:
+                        handler_name = "text"
+                    label_node = None
+                    for child in self._child_nodes(node):
+                        cls = child.attributes.get("class", "") or ""
+                        if "pi-data-label" in cls:
+                            label_node = child
+                            break
+                    label_text = self._render_inline_children(label_node, source_dir=source_dir) if label_node else ds
+                    raw_value = node.html if hasattr(node, 'html') else ""
+                    value = self._apply_infobox_handler(handler_name, raw_value)
+                    return f"| **{label_text}** | {value} |"
             if self._has_block_children(node):
                 return self._render_blocks(self._child_nodes(node), source_dir=source_dir)
             return self._render_inline_children(node, source_dir=source_dir)
@@ -201,6 +419,112 @@ class HtmlToMarkdownConverter:
                 inline_parts.append(rendered)
         header = f"{indent}{prefix} {self._render_inline_part_list(inline_parts)}" if inline_parts else f"{indent}{prefix}"
         return [header, *nested_lines]
+
+    # ------------------------------------------------------------------
+    # Infobox field handlers
+    # ------------------------------------------------------------------
+
+    def _apply_infobox_handler(self, handler_name: str, raw_html: str) -> str:
+        """Apply a named infobox field handler to raw HTML value."""
+        if handler_name == "text" or not handler_name:
+            return self._strip_html(raw_html)
+        if handler_name == "image":
+            return self._extract_image_value(raw_html)
+        if handler_name == "count_images":
+            return self._count_images(raw_html)
+        if handler_name == "extract_cur_id":
+            return self._extract_cur_id(raw_html)
+        if handler_name == "dedup_pools":
+            return self._dedup_pools(raw_html)
+        if handler_name == "simplify_collection":
+            return self._simplify_collection(raw_html)
+        if handler_name == "extract_tags":
+            return self._extract_tags(raw_html)
+        # Unknown handler — fall back to text
+        log.warning("Unknown infobox handler: %s, falling back to text", handler_name)
+        return self._strip_html(raw_html)
+
+    @staticmethod
+    def _strip_html(html: str) -> str:
+        """Strip all HTML tags, return plain text."""
+        text = re.sub(r'<[^>]+>', '', html)
+        text = re.sub(r'\s+', ' ', text).strip()
+        return text
+
+    def _extract_image_value(self, html: str) -> str:
+        """Extract primary image as Markdown."""
+        m = re.search(r'<img[^>]+src="([^"]+)"[^>]*(?:alt="([^"]*)")?', html)
+        if not m:
+            return self._strip_html(html)
+        src, alt = m.group(1), (m.group(2) or "image")
+        if src.startswith("/"):
+            src = f"https://{self.wiki_domain}{src}"
+        return f"![{alt}]({src})"
+
+    @staticmethod
+    def _count_images(html: str) -> str:
+        """Count images grouped by alt text pattern."""
+        imgs = re.findall(r'<img[^>]+alt="([^"]*)"', html)
+        if not imgs:
+            return "0"
+        from collections import Counter
+        counts = Counter(imgs)
+        parts = [f"{n}× {alt}" for alt, n in counts.items()]
+        return ", ".join(parts)
+
+    @staticmethod
+    def _extract_cur_id(html: str) -> str:
+        """Extract current ID from infobox-nav-cur span."""
+        m = re.search(r'<span[^>]*class="[^"]*infobox-nav-cur[^"]*"[^>]*>(.*?)</span>', html, re.DOTALL)
+        if m:
+            return re.sub(r'<[^>]+>', '', m.group(1)).strip()
+        # Fallback: first code/text content
+        text = re.sub(r'<[^>]+>', '', html).strip()
+        return text
+
+    def _dedup_pools(self, html: str) -> str:
+        """Deduplicate item pool links, keep text-based, skip icon-only."""
+        links = re.findall(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html, re.DOTALL)
+        seen_urls = set()
+        result = []
+        for href, inner in links:
+            if href in seen_urls:
+                continue
+            inner_text = re.sub(r'<[^>]+>', '', inner).strip()
+            if not inner_text:
+                # Icon-only — skip
+                continue
+            seen_urls.add(href)
+            if href.startswith("/"):
+                href = f"https://{self.wiki_domain}{href}"
+            result.append(f"[{inner_text}]({href})")
+        return ", ".join(result) if result else self._strip_html(html)
+
+    def _simplify_collection(self, html: str) -> str:
+        """Simplify collection grid to a single page link."""
+        links = re.findall(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html, re.DOTALL)
+        for href, inner in links:
+            inner_text = re.sub(r'<[^>]+>', '', inner).strip()
+            if inner_text:
+                if href.startswith("/"):
+                    href = f"https://{self.wiki_domain}{href}"
+                return f"See [{inner_text}]({href})"
+        return self._strip_html(html)
+
+    def _extract_tags(self, html: str) -> str:
+        """Extract tag tooltips from icon links."""
+        links = re.findall(r'<a[^>]+href="([^"]+)"[^>]+title="([^"]*)"[^>]*>', html)
+        if not links:
+            links = re.findall(r'<a[^>]+title="([^"]*)"[^>]+href="([^"]+)"[^>]*>', html)
+            links = [(h, t) for t, h in links]
+        result = []
+        for href, title in links:
+            if not title:
+                continue
+            if href.startswith("/"):
+                href = f"https://{self.wiki_domain}{href}"
+            result.append(f"[{title}]({href})")
+        return ", ".join(result) if result else self._strip_html(html)
 
     # ------------------------------------------------------------------
     # Table rendering
@@ -307,6 +631,10 @@ class HtmlToMarkdownConverter:
         src = self._normalize_href(node.attributes.get("src"))
         if not src:
             return ""
+        # Skip patterns check (safety net — primary filtering in clean_html)
+        for pattern in self._skip_patterns:
+            if re.search(pattern, src):
+                return ""
         alt = self._normalize_text(node.attributes.get("alt") or node.attributes.get("title") or "image")
         return f"![{alt}]({src})"
 
@@ -320,9 +648,15 @@ class HtmlToMarkdownConverter:
         normalized = href.strip()
         if not normalized:
             return None
+        # Strip javascript: links → text-only rendering
+        if normalized.startswith("javascript:"):
+            return None
         if normalized.startswith("about:/wiki/"):
             normalized = normalized.replace("about:/wiki/", f"https://{self.wiki_domain}/wiki/", 1)
         elif normalized.startswith("/wiki/") or normalized.startswith("/images/"):
+            normalized = f"https://{self.wiki_domain}{normalized}"
+        elif normalized.startswith("/") and not normalized.startswith("//"):
+            # Other absolute paths → full URL
             normalized = f"https://{self.wiki_domain}{normalized}"
         elif normalized.startswith("#"):
             return normalized
@@ -389,25 +723,4 @@ class HtmlToMarkdownConverter:
             yield child
             child = child.next
 
-    # ------------------------------------------------------------------
-    # Regex fallbacks (when selectolax is unavailable)
-    # ------------------------------------------------------------------
 
-    def _regex_clean(self, html: str) -> str:
-        html = re.sub(r'<div class="mw-editsection"[^>]*>.*?</div>', '', html, flags=re.DOTALL)
-        html = re.sub(r'<div[^>]*id="toc"[^>]*>.*?</div>', '', html, flags=re.DOTALL)
-        html = re.sub(r'<div[^>]*class="toc"[^>]*>.*?</div>', '', html, flags=re.DOTALL)
-        html = re.sub(r'<div[^>]*class="hatnote"[^>]*>.*?</div>', '', html, flags=re.DOTALL)
-        # Config-driven image filtering via regex
-        skip_patterns = self.config.get("image_filtering", {}).get("skip_patterns", [])
-        for pattern in skip_patterns:
-            html = re.sub(rf'<img[^>]*src="[^"]*{re.escape(pattern)}[^"]*"[^>]*/?>', '', html)
-        html = re.sub(r'<[^>]*style="[^"]*display:\s*none[^"]*"[^>]*>.*?</\w+>', '', html, flags=re.DOTALL)
-        return html
-
-    def _regex_convert(self, html: str) -> str:
-        text = re.sub(r'<br\s*/?>', '\n', html, flags=re.IGNORECASE)
-        text = re.sub(r'</p>\s*<p>', '\n\n', text, flags=re.IGNORECASE)
-        text = re.sub(r'<[^>]+>', '', text)
-        text = re.sub(r'\n{3,}', '\n\n', text)
-        return text.strip()
