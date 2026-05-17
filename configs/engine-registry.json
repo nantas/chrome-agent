@@ -1,6 +1,30 @@
 {
   "engines": [
     {
+      "id": "mediawiki-api",
+      "type": "api",
+      "characteristics": {
+        "efficiency": {
+          "score": 0.90,
+          "note": "Direct HTTP API fetch — no browser launch, no JS rendering. Fastest path for MediaWiki content retrieval."
+        },
+        "stability": {
+          "score": 0.85,
+          "note": "MediaWiki action=parse API is stable across MediaWiki versions. Falls back to scrapling if API is unavailable."
+        },
+        "adaptability": {
+          "score": 0.35,
+          "note": "Limited to MediaWiki platform sites. Requires api.platform declaration in strategy. Not suitable for non-API sites."
+        }
+      },
+      "composite_score": 66,
+      "default_rank": 0,
+      "best_for": ["mediawiki_article", "mediawiki_page"],
+      "applicable_platforms": ["mediawiki", "mediawiki-fandom", "mediawiki-wiki-gg"],
+      "contract_spec": "mediawiki-api-contract",
+      "status": "frozen"
+    },
+    {
       "id": "scrapling-get",
       "type": "http",
       "characteristics": {

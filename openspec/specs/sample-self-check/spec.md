@@ -159,3 +159,13 @@ The system SHALL recognize the following new fixable types in addition to the ex
 - **WHEN** self-check fails on a new fixable type
 - **THEN** the auto-remediation loop SHALL attempt remediation up to 2 iterations
 - **THEN** after remediation, the system SHALL re-run the failed checks
+
+### Requirement: ki-lifecycle-consumption
+
+Self-check failure output SHALL be consumable by the KI Lifecycle module for classification, prioritization, and status tracking.
+
+#### Scenario: failure-dict-compatible
+- **WHEN** a self-check produces a failure result (status="fail")
+- **THEN** the failure dict SHALL contain: `check` (S1-S12), `status` ("fail"), `detail` (description), `fixable_type` (optional)
+- **THEN** the failure dict SHALL be directly passable to `ki_lifecycle.classify_ki()` without transformation
+- **THEN** the KI Lifecycle module MAY add: `owner`, `priority`, `ki_status`, `priority_override`

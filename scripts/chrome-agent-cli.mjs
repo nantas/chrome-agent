@@ -430,6 +430,13 @@ function findMatchingPage(strategyDoc, targetUrl) {
 }
 
 function selectFetcher(strategy, page) {
+  // API platform detection — checked before all scrapling-based engine selection.
+  // When a strategy declares api.platform, the API engine is preferred over any scrapling path.
+  const apiPlatform = strategy?.document?.api?.platform;
+  if (apiPlatform === "mediawiki" || apiPlatform === "mediawiki-fandom") {
+    return "mediawiki-api";
+  }
+
   const preferred = page?.engine_preference?.preferred ?? strategy?.document?.engine_preference?.preferred ?? null;
   if (preferred === "scrapling-get") {
     return "get";
@@ -545,8 +552,96 @@ function runCloakbrowserFetch(repoRoot, targetUrl, outputPath, extraArgs = []) {
   };
 }
 
+/**
+ * Fetch page HTML via MediaWiki action=parse API.
+ * Reads strategy's api.base_url, extracts page title from targetUrl,
+ * calls the MediaWiki parse API, and writes the resulting HTML to outputPath.
+ */
+function runMediawikiApiFetch(repoRoot, targetUrl, outputPath, extraArgs = []) {
+  // extraArgs[0] is expected to be the strategy path (passed from runEngineFetch)
+  const strategyPath = extraArgs[0];
+  if (!strategyPath) {
+    return { ok: false, summary: "runMediawikiApiFetch requires a strategy path in extraArgs[0].", stderr: "Missing strategy path." };
+  }
+
+  let strategy;
+  try {
+    strategy = readFrontmatter(strategyPath);
+  } catch (err) {
+    return { ok: false, summary: `Failed to read strategy frontmatter: ${err.message}`, stderr: err.message };
+  }
+
+  const apiConfig = strategy?.api;
+  if (!apiConfig?.base_url) {
+    return { ok: false, summary: "Strategy has no api.base_url configured.", stderr: "Missing api.base_url in strategy." };
+  }
+
+  // Extract page title from URL (strip /wiki/ prefix, decode underscores to spaces)
+  let pageTitle;
+  try {
+    const url = new URL(targetUrl);
+    const pathParts = url.pathname.split("/");
+    // Look for the part after /wiki/ (or use the last path segment)
+    const wikiIdx = pathParts.indexOf("wiki");
+    if (wikiIdx >= 0 && wikiIdx + 1 < pathParts.length) {
+      pageTitle = decodeURIComponent(pathParts[wikiIdx + 1].replace(/_/g, " "));
+    } else {
+      pageTitle = decodeURIComponent(pathParts[pathParts.length - 1].replace(/_/g, " "));
+    }
+  } catch {
+    return { ok: false, summary: `Invalid target URL: ${targetUrl}`, stderr: "Invalid URL." };
+  }
+
+  // Determine API endpoint: if base_url already includes /api.php, use it directly.
+  // Otherwise append /api.php (standard MediaWiki endpoint suffix).
+  let endpoint = apiConfig.base_url.replace(/\/+$/, "");
+  if (!endpoint.endsWith("/api.php")) {
+    endpoint += "/api.php";
+  }
+  const apiUrl = `${endpoint}?action=parse&page=${encodeURIComponent(pageTitle)}&redirects=true&prop=text&format=json`;
+
+  const result = spawnSync("curl", ["-s", "--max-time", "30", apiUrl], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+
+  if (result.status !== 0) {
+    return { ok: false, summary: `MediaWiki API request failed for "${pageTitle}".`, stderr: result.stderr || "curl failed." };
+  }
+
+  let data;
+  try {
+    data = JSON.parse(result.stdout);
+  } catch (err) {
+    return { ok: false, summary: `Invalid JSON from MediaWiki API for "${pageTitle}".`, stderr: err.message };
+  }
+
+  if (data.error) {
+    return { ok: false, summary: `MediaWiki API error for "${pageTitle}": ${data.error.info || JSON.stringify(data.error)}`, stderr: JSON.stringify(data.error) };
+  }
+
+  const html = data?.parse?.text?.["*"];
+  if (!html) {
+    return { ok: false, summary: `MediaWiki API returned no text content for "${pageTitle}".`, stderr: "Missing parse.text[*] in API response." };
+  }
+
+  ensureDir(path.dirname(outputPath));
+  fs.writeFileSync(outputPath, html, "utf8");
+
+  return {
+    ok: true,
+    stdout: `Fetched "${pageTitle}" via MediaWiki API from ${baseUrl}`,
+    stderr: "",
+    command: `curl -s --max-time 30 "${apiUrl}"`,
+    page_title: pageTitle,
+  };
+}
+
 /** Route to the appropriate engine based on fetcher name */
 function runEngineFetch(repoRoot, fetcher, targetUrl, outputPath, extraArgs = []) {
+  if (fetcher === "mediawiki-api") {
+    return runMediawikiApiFetch(repoRoot, targetUrl, outputPath, extraArgs);
+  }
   if (fetcher === "cloakbrowser") {
     return runCloakbrowserFetch(repoRoot, targetUrl, outputPath, extraArgs);
   }
@@ -1338,6 +1433,13 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
     );
   }
 
+  // Determine conversion engine and converter path for agent guidance
+  const hasApiPlatform = strategy?.document?.api?.platform === "mediawiki" || strategy?.document?.api?.platform === "mediawiki-fandom";
+  const conversionEngine = hasApiPlatform ? "mediawiki-api" : (recommendedFetcher ?? "unknown");
+  const converterPath = hasApiPlatform
+    ? "scripts/explore/sample_converter.py fetch-and-apply"
+    : undefined;
+
   return makeResult(
     "explore",
     targetUrl,
@@ -1349,6 +1451,8 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
     {
       workflow: "platform_analysis",
       engine_path: `strategy_registry -> analysis_report -> recommended:${recommendedFetcher ?? "unknown"} -> scrapling_preflight:${preflight.status ?? "unavailable"}`,
+      conversion_engine: conversionEngine,
+      ...(converterPath ? { converter_path: converterPath } : {}),
     },
   );
 }
@@ -1399,7 +1503,9 @@ function runFetch(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride) 
   const { strategy } = findStrategy(repoRoot, targetUrl);
   const matchingPage = strategy ? findMatchingPage(strategy.document, targetUrl) : null;
   const fetcher = selectFetcher(strategy, matchingPage);
-  const fetchResult = runEngineFetch(repoRoot, fetcher, targetUrl, outputPath, ["--ai-targeted"]);
+  // When fetcher is mediawiki-api, pass strategy path instead of scrapling flags
+  const fetchExtraArgs = fetcher === "mediawiki-api" ? [strategy.path] : ["--ai-targeted"];
+  const fetchResult = runEngineFetch(repoRoot, fetcher, targetUrl, outputPath, fetchExtraArgs);
 
   if (fetchResult.stderr) {
     writeTextFile(logPath, fetchResult.stderr);

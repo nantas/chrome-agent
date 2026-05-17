@@ -84,7 +84,7 @@ When `explore` returns `partial_success` with a strategy gap (no existing strate
 1. The agent **MUST NOT** proceed directly to `crawl` or `fetch` without user confirmation.
 2. The agent **MUST** present at minimum: structure analysis, sample conversions, and self-check results.
 3. When `explore` returns `failure`, the agent **MUST** surface the exact failure reason and remediation from the explore result as-is. The agent **MUST NOT** fabricate a strategy or workaround, **MUST NOT** attempt to fall back to a different extraction path without user approval, and **MUST** wait for user direction before taking any further action on the target URL.
-4. The agent **SHALL** follow the Agent Gate rules defined in `skills/chrome-agent/SKILL.md` — including self-check report before presentation, sample file path output, self-audit before user review, full retest on converter change, 3-iteration limit, and **Architecture Gate** (strategy↔pipeline bidirectional alignment validation).
+4. The agent **SHALL** follow the Agent Gate rules defined in `skills/chrome-agent/SKILL.md` — including self-check report before presentation, sample file path output, self-audit before user review, full retest on converter change, 3-iteration limit, and **Architecture Gate** (strategy↔pipeline bidirectional alignment validation), and **KI Lifecycle Gate** (Known Issue classification, prioritization, and sequential fix management via `scripts/explore/ki_lifecycle.py`).
 5. The agent **MUST** ensure the Architecture Gate passes before proceeding to user confirmation. The gate validates that every strategy extraction field has a pipeline consumer (no dead config) and that every pipeline site-specific value is sourced from strategy config (no hardcoded selectors/domains).
 
 ### 引擎选择策略
@@ -104,6 +104,12 @@ When `explore` returns `partial_success` with a strategy gap (no existing strate
 - API 管线失败时自动 fallback 到 Scrapling crawl
 - `fetch` 和 `scrape` 命令不触发 API 路径
 - 输出 Markdown 与 Scrapling 输出格式兼容，并额外包含结构化 frontmatter
+
+**样本转换 CLI（策略驱动）**：
+- `scripts/explore/sample_converter.py` — 使用策略 `extraction.*` 规则将 HTML 转换为 Markdown
+- `apply` 子命令：转换已有的 HTML 文件
+- `fetch-and-apply` 子命令：通过 MediaWiki `action=parse` API 获取页面后转换
+- 适用场景：explore 策略命中后，agent 通过此 CLI 执行策略驱动的样本转换
 
 fetcher 选择的前提是 preflight 已成功；不可把 CLI 安装失败误判为 fetcher 或 fallback 问题。
 
@@ -388,3 +394,4 @@ stat -f '%z' "$BIN/obscura" "$BIN/obscura-worker"
 | 能力规范 | `openspec/specs/` | 已冻结的行为规范 |
 | 治理 Spec | `openspec/specs/agents-governance/spec.md` | 本文件的规范真源 |
 | 契约元模型 | `openspec/specs/capability-contracts/spec.md` | 引擎契约通用 schema |
+| KI Lifecycle 模块 | `scripts/explore/ki_lifecycle.py` | Known Issue 分类、优先级、状态追踪与修复批次规划 |

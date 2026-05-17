@@ -211,6 +211,43 @@ workflow: <content_retrieval|platform_analysis|runtime_support>
 engine_path: <backend path summary>
 ```
 
+## Route to Sample Conversion
+
+When `explore` returns a matched strategy (result: `success`) and the agent needs
+to convert sample pages, follow this standard path:
+
+### API-based sites (strategy has `api.platform`)
+
+Use the standalone sample converter CLI directly:
+
+```bash
+python3 scripts/explore/sample_converter.py fetch-and-apply \
+  --strategy <path/to/strategy.md> \
+  --page "<Page Title>" \
+  --output <path/to/output.md>
+```
+
+Steps:
+1. Read the matched strategy file from `explore` output
+2. Select 3-7 representative sample pages from the strategy's taxonomy
+3. For each sample, run `sample_converter.py fetch-and-apply`
+4. Run self-check on converted samples (S1-S12 checks)
+5. Present quality report before user confirmation
+
+### Non-API sites (no `api.platform`)
+
+Use the standard `chrome-agent fetch` command for content retrieval,
+then apply strategy extraction rules manually if needed.
+
+### Conversion flow note
+
+- `sample_converter.py` reads extraction rules from the strategy file's YAML
+  frontmatter (`extraction.*` fields) — no separate config needed
+- The `fetch-and-apply` subcommand calls the MediaWiki `action=parse` API,
+  then applies the same `_apply_extraction()` function as the explore pipeline
+- Output is JSON `{"ok": true, "output": "...", "length": N}` or exits with
+  code 1 and JSON error on failure
+
 ## Runtime Boundaries
 
 - Do not depend on `repo-agent`, `codex-agent`, or any other prompt-forwarding runtime.
@@ -235,3 +272,14 @@ Install and update guidance must present:
 - the skill as delegating to the CLI rather than replacing it
 - `CHROME_AGENT_REPO` as the default backend repository prerequisite
 - `--repo <path|repo://id>` as the explicit non-default override path
+
+### 7. KI Lifecycle Gate (post-Architecture Gate)
+
+After the Architecture Gate passes, the agent SHALL run the KI Lifecycle phase to manage Known Issues systematically.
+
+- The KI Lifecycle phase uses `scripts/explore/ki_lifecycle.py` for classification, prioritization, status tracking, and batch planning.
+- **Classification**: Every self-check failure SHALL be classified by owner domain (strategy/pipeline/self_check) using `classify_ki()`.
+- **Prioritization**: Every KI SHALL be assigned P0-P3 priority using `assign_priority()`. Contextual overrides via `priority_override` field are allowed.
+- **Status tracking**: KI status SHALL follow the state machine: open → in_progress → (resolved|wontfix|open_systemic) using `transition_status()`.
+- **Fix order**: KI fixes SHALL be applied in P0→P1→P2 batches. Each batch = 1 iteration. Max 3 iterations.
+- **Documentation**: The KI table in strategy.md SHALL be updated to the 7-column schema (ID/Issue/Status/Priority/Owner/Impact/Resolution) after any status change.

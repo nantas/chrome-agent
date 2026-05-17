@@ -95,7 +95,11 @@ def main():
 
     if args.samples:
         samples = json.loads(args.samples)
-        engine = protection.get("engine_override") or probe_result.get("success_engine") or "scrapling-get"
+        # Prioritize API-discovered engine over probe chain
+        if api_config and api_config.get("type") == "mediawiki":
+            engine = "mediawiki-api"
+        else:
+            engine = protection.get("engine_override") or probe_result.get("success_engine") or "scrapling-get"
         extraction_rules = scaffold.get("content", "")
         # Parse extraction rules from scaffold YAML
         import yaml

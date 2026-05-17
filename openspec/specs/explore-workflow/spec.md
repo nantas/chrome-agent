@@ -186,3 +186,50 @@ The agent SHALL limit the fix→retest→present cycle to at most 3 iterations b
 - **AND** failures still exist
 - **THEN** the agent SHALL present the remaining issues and ask the user to decide: continue fixing / accept as-is / adjust scope
 - **THEN** the agent SHALL NOT continue to a 4th iteration without user confirmation
+
+### Requirement: ki-lifecycle-phase
+
+The explore workflow SHALL include a KI Lifecycle phase between Architecture Gate and User Confirmation.
+
+#### Scenario: ki-lifecycle-after-architecture-gate
+- **WHEN** the Architecture Gate passes
+- **THEN** the agent SHALL classify remaining self-check failures as Known Issues using `ki_lifecycle.classify_ki()`
+- **THEN** the agent SHALL assign priorities using `ki_lifecycle.assign_priority()`
+- **THEN** the agent SHALL plan fix batches using `ki_lifecycle.plan_fix_batches()`
+- **THEN** KI fixes SHALL be applied in P0→P1→P2 priority order
+- **THEN** KI status SHALL be tracked using `ki_lifecycle.transition_status()`
+- **THEN** the KI table in strategy.md SHALL be updated using `ki_lifecycle.update_strategy_ki_table()`
+
+#### Scenario: ki-lifecycle-before-gate-blocked
+- **WHEN** self-check failures exist AND Architecture Gate violations also exist
+- **THEN** the agent SHALL fix Architecture Gate violations first
+- **THEN** the agent SHALL NOT classify failures as KIs until the gate passes
+
+### Requirement: explore-strategy-matched-conversion-engine-info
+
+When `runExplore()` in `chrome-agent-cli.mjs` matches an existing strategy, the result SHALL include `conversion_engine` and `converter_path` fields to guide the agent toward the correct sample conversion path.
+
+#### Scenario: strategy-matched-output-extended
+- **WHEN** `runExplore()` finds a matching strategy
+- **AND** the strategy has `api.platform: "mediawiki"`
+- **THEN** the result SHALL include `conversion_engine: "mediawiki-api"`
+- **THEN** the result SHALL include `converter_path: "scripts/explore/sample_converter.py fetch-and-apply"`
+
+#### Scenario: non-api-strategy-no-change
+- **WHEN** `runExplore()` finds a matching strategy without an API platform
+- **THEN** the result SHALL include `conversion_engine: "<recommendedFetcher>"`
+- **THEN** `converter_path` SHALL be absent or indicate scrapling-based conversion
+
+### Requirement: main-py-api-config-engine-selection
+
+The engine selection in `scripts/explore/main.py` SHALL prioritize the API discovery result (`api_config`) over the probe chain's first successful engine.
+
+#### Scenario: api-discovered-prioritized
+- **WHEN** `main.py` Phase 6 selects the sample conversion engine
+- **AND** `api_config` is not None and `api_config.get("type") == "mediawiki"`
+- **THEN** the engine SHALL be `"mediawiki-api"`
+- **THEN** the probe chain engine SHALL NOT be used
+
+#### Scenario: no-api-preserves-existing-logic
+- **WHEN** `api_config` is None or not a known API type
+- **THEN** the existing logic: `protection.get("engine_override") or probe_result.get("success_engine") or "scrapling-get"` SHALL apply

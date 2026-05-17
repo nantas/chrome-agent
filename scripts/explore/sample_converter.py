@@ -554,3 +554,124 @@ def convert(
         })
 
     return results
+
+
+def _load_extraction_rules(strategy_path: str) -> tuple[dict, dict]:
+    """Load extraction rules from a strategy file's YAML frontmatter.
+
+    Returns:
+        Tuple of (extraction_rules dict, full_yaml dict)
+    """
+    import yaml as _yaml
+
+    with open(strategy_path, "r", encoding="utf-8") as f:
+        raw = f.read()
+
+    match = re.search(r"^---\n(.*?)\n---", raw, re.S | re.M)
+    if not match:
+        raise ValueError(f"Strategy file has no YAML frontmatter: {strategy_path}")
+
+    full = _yaml.safe_load(match.group(1))
+    extraction_rules = full.get("extraction", {})
+    return extraction_rules, full
+
+
+def main():
+    """CLI entry point for standalone strategy-driven sample conversion.
+
+    Subcommands:
+        apply: Convert an existing HTML file using strategy extraction rules.
+        fetch-and-apply: Fetch a page via MediaWiki API then convert.
+    """
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Strategy-driven sample conversion for chrome-agent explore",
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    # apply: convert existing HTML
+    apply_parser = subparsers.add_parser("apply", help="Apply extraction rules to an existing HTML file")
+    apply_parser.add_argument("--strategy", required=True, help="Path to strategy.md file")
+    apply_parser.add_argument("--html", required=True, help="Path to input HTML file")
+    apply_parser.add_argument("--title", required=True, help="Page title for link resolution")
+    apply_parser.add_argument("--output", required=True, help="Path to output Markdown file")
+
+    # fetch-and-apply: fetch via MediaWiki API + convert
+    fetch_parser = subparsers.add_parser(
+        "fetch-and-apply",
+        help="Fetch page via MediaWiki API then apply extraction rules",
+    )
+    fetch_parser.add_argument("--strategy", required=True, help="Path to strategy.md file")
+    fetch_parser.add_argument("--page", required=True, help="Page title to fetch")
+    fetch_parser.add_argument("--output", required=True, help="Path to output Markdown file")
+
+    args = parser.parse_args()
+
+    # Load extraction rules from strategy
+    extraction_rules, full_strategy = _load_extraction_rules(args.strategy)
+
+    if args.command == "apply":
+        # Read HTML from file
+        with open(args.html, "r", encoding="utf-8") as f:
+            html = f.read()
+
+        # Apply extraction
+        known_pages = {args.title}
+        md = _apply_extraction(html, extraction_rules, known_pages)
+
+        # Write output
+        os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(md)
+
+        result = {
+            "ok": True,
+            "output": os.path.abspath(args.output),
+            "length": len(md),
+        }
+        print(json.dumps(result))
+
+    elif args.command == "fetch-and-apply":
+        # Determine base URL: image_handling.base_url first, fallback to api.base_url
+        base_url = (
+            extraction_rules.get("image_handling", {}).get("base_url", "")
+            or full_strategy.get("api", {}).get("base_url", "")
+        )
+        if not base_url:
+            print(json.dumps({"ok": False, "error": "No base_url found in strategy (check image_handling.base_url or api.base_url)"}))
+            sys.exit(1)
+
+        # Fetch via MediaWiki API
+        tmp_html = args.output + ".tmp.html"
+        fetch_result = _fetch_via_mediawiki_api(base_url, args.page, tmp_html)
+        if not fetch_result["ok"]:
+            if os.path.exists(tmp_html):
+                os.unlink(tmp_html)
+            print(json.dumps({"ok": False, "error": fetch_result.get("error", "Fetch failed")}))
+            sys.exit(1)
+
+        # Read fetched HTML
+        with open(tmp_html, "r", encoding="utf-8") as f:
+            html = f.read()
+        os.unlink(tmp_html)
+
+        # Apply extraction
+        known_pages = {args.page}
+        md = _apply_extraction(html, extraction_rules, known_pages)
+
+        # Write output
+        os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
+        with open(args.output, "w", encoding="utf-8") as f:
+            f.write(md)
+
+        result = {
+            "ok": True,
+            "output": os.path.abspath(args.output),
+            "length": len(md),
+        }
+        print(json.dumps(result))
+
+
+if __name__ == "__main__":
+    main()

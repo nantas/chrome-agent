@@ -139,3 +139,46 @@ The system SHALL provide a consolidated view of smoke-check scenarios across all
 | scrapling-bulk-fetch | [example.com, httpbin.org/get] | 双 URL 成功，status 200 × 2，正确内容 |
 | chrome-devtools-mcp | x.com/hashtag/... | 诊断证据：title/URL + snapshot + network（登录门检测） |
 | chrome-cdp | fanbox.cc/@.../posts | 认证页面 visit + 帖子列表内容 + 无 auth redirect |
+
+### Requirement: engine-registry-api-type
+
+The engine registry (`configs/engine-registry.json`) SHALL include a `mediawiki-api` engine entry with type `"api"` and default rank `0` (highest priority, below only explicit overrides).
+
+#### Scenario: registry-contains-api-engine
+- **WHEN** the engine registry is loaded
+- **THEN** an entry with `id: "mediawiki-api"` SHALL exist
+- **THEN** the entry SHALL have `type: "api"` and `status: "frozen"`
+- **THEN** the entry SHALL declare `applicable_platforms: ["mediawiki", "mediawiki-fandom", "mediawiki-wiki-gg"]`
+
+### Requirement: select-fetcher-api-platform-awareness
+
+`selectFetcher()` in `chrome-agent-cli.mjs` SHALL detect the strategy's `api.platform` and return `"mediawiki-api"` for MediaWiki platforms before evaluating scrapling-based engine selection.
+
+#### Scenario: mediawiki-platform-detected
+- **WHEN** `selectFetcher(strategy, page)` is called
+- **AND** `strategy?.document?.api?.platform` matches `"mediawiki"` or `"mediawiki-fandom"`
+- **THEN** the function SHALL return `"mediawiki-api"` immediately
+- **THEN** no further engine preference, protection, or anti-crawl check SHALL be evaluated
+
+#### Scenario: non-mediawiki-platform-unchanged
+- **WHEN** `strategy?.document?.api` is absent or its platform is not a recognized API type
+- **THEN** the existing engine selection logic SHALL apply unchanged
+
+### Requirement: run-engine-fetch-api-dispatch
+
+`runEngineFetch()` in `chrome-agent-cli.mjs` SHALL dispatch `"mediawiki-api"` fetcher requests to a new `runMediawikiApiFetch()` function.
+
+#### Scenario: api-fetcher-is-handled
+- **WHEN** `runEngineFetch(repoRoot, "mediawiki-api", targetUrl, outputPath, extraArgs)` is called
+- **THEN** `runMediawikiApiFetch(repoRoot, targetUrl, outputPath, extraArgs)` SHALL be invoked
+- **THEN** no scrapling preflight or CloakBrowser check SHALL execute
+
+### Requirement: engine-registry-selectFetcher-integration
+
+The `selectFetcher()` function SHALL derive its API platform detection from the strategy document's `api.platform` field, NOT from a hardcoded list of domain names or URL patterns.
+
+#### Scenario: platform-driven-not-domain-driven
+- **WHEN** `selectFetcher()` evaluates a strategy
+- **THEN** it SHALL read `strategy.document.api.platform`
+- **THEN** it SHALL NOT hardcode domain names like `"bindingofisaacrebirth.wiki.gg"`
+- **THEN** it SHALL NOT use URL pattern matching to determine API capability

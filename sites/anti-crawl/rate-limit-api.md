@@ -15,6 +15,10 @@ detection:
   network:
     empty_api_entities: ""
 engine_priority:
+  - engine: mediawiki-api
+    rank: 0
+    config:
+      rate_limit_tier: strict
   - engine: scrapling-fetch
     rank: 1
     config:
