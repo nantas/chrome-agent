@@ -113,6 +113,51 @@ chrome-agent crawl <target> --format json
 
 If the request is not yet clearly bounded by declared strategy coverage, prefer `explore` first and return its remediation.
 
+## Agent Gate (Explore → Crawl Confirmation)
+
+When `explore` returns `partial_success` with a strategy gap and the agent proceeds to sample conversion, the following Agent Gate rules are mandatory.
+
+### 1. Self-check report BEFORE presentation
+
+The agent SHALL run all S1-S12 self-checks and present the pass/fail summary BEFORE showing any sample Markdown content to the user.
+
+- Output a summary table: `{check_id, status, detail}` for all S1-S12 checks across all samples.
+- Output the overall pass rate (X/Y samples passed, Z issues total).
+- Do NOT output raw Markdown content until the user has seen the self-check report.
+- If all samples pass, state "✅ All samples passed" and present content.
+- If any sample has failures, categorize them as fixable/non-fixable and present the remediation plan.
+
+### 2. Sample file paths
+
+The agent SHALL write all converted samples to files under `outputs/<run-tag>/` and present absolute file paths.
+
+- File naming: `{page_type}-{page_title_slugified}.md`
+- List all output file paths explicitly.
+- Do NOT only print Markdown content to stdout without saving to files.
+
+### 3. Agent self-audit
+
+The agent SHALL perform a self-audit comparing source HTML against converted Markdown BEFORE asking the user to review.
+
+- Compare: source `mw-headline` sections vs MD headings, source infobox fields vs MD table rows, source images vs MD `![]()` count, source `<a href="/wiki/">` count vs MD link count.
+- Produce a structured discrepancy list before presenting to user.
+- Do NOT delegate QA responsibility to the user.
+
+### 4. Full retest on converter change
+
+When the converter or extraction rules are modified, the agent SHALL re-convert and re-check ALL samples.
+
+- Re-run `convert_body()` on ALL sample pages.
+- Re-run ALL S1-S12 checks on ALL samples.
+- Do NOT claim "fixed" based on a single sample test.
+
+### 5. Iteration limit
+
+The agent SHALL limit the fix→retest→present cycle to at most 3 iterations.
+
+- After 3 cycles with remaining failures, present issues and ask user to decide: continue / accept / adjust scope.
+- Do NOT continue to a 4th iteration without user confirmation.
+
 ## Result Packaging
 
 For routed commands, treat the CLI JSON result as the only source of truth.
