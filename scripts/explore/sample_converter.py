@@ -117,16 +117,87 @@ def _fetch_via_mediawiki_api(
         return {"ok": False, "error": str(e)}
 
 
+def _apply_field_handler(
+    handler_name: str,
+    val_parts: list[str],
+    value_el,
+    skip_patterns: list[str],
+    base_url: str,
+) -> str:
+    """Apply a named field handler to infobox value content.
+
+    Handlers are defined in strategy infobox_field_handlers config.
+    """
+    if handler_name == "extract_cur_id":
+        # Keep only the current ID (nav-prev/next already stripped)
+        text = value_el.get_text(strip=True)
+        # If there's a nav-cur element, use its text only
+        cur_el = value_el.select_one(".infobox-nav-cur")
+        if cur_el:
+            return cur_el.get_text(strip=True)
+        return text
+
+    elif handler_name == "count_images":
+        # Count distinct images in the value
+        imgs = value_el.find_all("img")
+        count = 0
+        for img in imgs:
+            src = img.get("src", "")
+            if skip_patterns and any(re.search(p, src) for p in skip_patterns):
+                continue
+            count += 1
+        return str(count) if count else " ".join(val_parts).strip()
+
+    elif handler_name == "dedup_pools":
+        # Deduplicate links, skip icon-only entries
+        seen = set()
+        parts = []
+        for a in value_el.find_all("a"):
+            text = a.get_text(strip=True)
+            href = a.get("href", "")
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            if href.startswith("/") and base_url:
+                href = base_url + href
+            parts.append(f"[{text}]({href})")
+        return " ".join(parts) if parts else " ".join(val_parts).strip()
+
+    elif handler_name == "simplify_collection":
+        # Take the first link as representative
+        first_a = value_el.find("a")
+        if first_a:
+            text = first_a.get_text(strip=True)
+            href = first_a.get("href", "")
+            if href.startswith("/") and base_url:
+                href = base_url + href
+            return f"[{text}]({href})"
+        return " ".join(val_parts).strip()
+
+    # Default: concatenate val_parts as-is
+    return " ".join(val_parts).strip()
+
+
 def _extract_infobox(
     soup: BeautifulSoup,
     infobox_cfg: dict,
     base_url: str,
     skip_patterns: list[str],
+    field_handlers: dict | None = None,
 ) -> str:
     """Generic infobox extraction — reads selectors from config.
 
     Uses descendants with deduplication to handle arbitrary nesting depth
     without double-counting elements inside wrappers like <a><img></a>.
+
+    Args:
+        field_handlers: Optional map of {field_label: {handler, description}} from
+            strategy infobox_field_handlers. Supported handlers:
+            - extract_cur_id: Strip nav elements, keep only current ID
+            - count_images: Count distinct images, return count string
+            - dedup_pools: Deduplicate links, skip icon-only entries
+            - simplify_collection: Simplify collection grid to single page link
+            - strip_nav: Generic nav stripping (default for unregistered handlers)
     """
     container = soup.select_one(infobox_cfg["selector"])
     if not container:
@@ -135,6 +206,9 @@ def _extract_infobox(
     field_sel = infobox_cfg.get("field_selector", "tr")
     label_sel = infobox_cfg.get("label_selector", "th")
     value_sel = infobox_cfg.get("value_selector", "td")
+
+    # Config-driven nav strip selectors (replaces hardcoded .infobox-nav-prev/.infobox-nav-next)
+    nav_strip_selectors = infobox_cfg.get("nav_strip_selectors", [".infobox-nav-prev", ".infobox-nav-next"])
 
     lines = ["## Infobox", "", "| Field | Value |", "| --- | --- |"]
 
@@ -150,11 +224,10 @@ def _extract_infobox(
 
         # Walk descendants with deduplication to avoid double-counting
         # img inside <a><img></a> must not be counted twice
-        # KI-6: strip infobox nav prev/next (only keep nav-cur for clean IDs)
-        for nav_el in value_el.select('.infobox-nav-prev'):
-            nav_el.decompose()
-        for nav_el in value_el.select('.infobox-nav-next'):
-            nav_el.decompose()
+        # Config-driven nav stripping (KI-6 pattern, now from infobox.nav_strip_selectors)
+        for nav_sel in nav_strip_selectors:
+            for nav_el in value_el.select(nav_sel):
+                nav_el.decompose()
         processed = set()
         val_parts = []
 
@@ -179,8 +252,12 @@ def _extract_infobox(
                 val_parts.append(f"![{alt}]({src})")
                 processed.update(id(c) for c in child.descendants)
             elif child.name == "a":
-                # KI-6: skip infobox nav links (prev/next navigation within infobox)
-                if child.get("class") and any("infobox-nav" in c for c in child.get("class", [])):
+                # Config-driven: skip infobox nav links (prev/next navigation within infobox)
+                nav_classes = set()
+                for nav_sel in nav_strip_selectors:
+                    for cls in re.findall(r'\.([a-zA-Z_-][a-zA-Z0-9_-]*)', nav_sel):
+                        nav_classes.add(cls)
+                if child.get("class") and any(c in nav_classes for c in child.get("class", [])):
                     processed.update(id(c) for c in child.descendants)
                     continue
                 imgs = child.find_all("img")
@@ -206,7 +283,12 @@ def _extract_infobox(
                         val_parts.append(f"[{text}]({href})")
                     processed.update(id(c) for c in child.descendants)
 
-        val = " ".join(val_parts).strip()
+        # Apply field handler from config if defined
+        if field_handlers and key in field_handlers:
+            handler_name = field_handlers[key].get("handler", "") if isinstance(field_handlers[key], dict) else ""
+            val = _apply_field_handler(handler_name, val_parts, value_el, skip_patterns, base_url)
+        else:
+            val = " ".join(val_parts).strip()
         if key and val:
             lines.append(f"| {key} | {val} |")
 
@@ -232,7 +314,8 @@ def _apply_extraction(
     infobox_cfg = extraction_rules.get("infobox", {})
     infobox_md = ""
     if infobox_cfg.get("enabled") and infobox_cfg.get("selector"):
-        infobox_md = _extract_infobox(soup, infobox_cfg, base_url, skip_patterns)
+        infobox_md = _extract_infobox(soup, infobox_cfg, base_url, skip_patterns,
+                                      field_handlers=extraction_rules.get("infobox_field_handlers"))
         for el in soup.select(infobox_cfg["selector"]):
             el.decompose()
 
@@ -279,6 +362,55 @@ def _apply_extraction(
                 imgs = a.find_all("img")
                 if imgs and not a.get_text(strip=True):
                     a.unwrap()
+
+    if "strip_footer" in cleanup:
+        # Remove wiki footer elements: category links, print footer, hidden categories
+        for sel in ("#catlinks", "#mw-hidden-catlinks", ".printfooter", ".mw-footer", "#footer"):
+            for el in soup.select(sel):
+                el.decompose()
+
+    if "strip_edit_links" in cleanup:
+        # Remove MediaWiki edit-section links [edit]
+        for el in soup.select(".mw-editsection"):
+            el.decompose()
+
+    if "strip_skip_links" in cleanup:
+        # Remove accessibility skip-to-content navigation links
+        for a in soup.find_all("a", href=True):
+            if a["href"].startswith("#mw-") and not a.get_text(strip=True):
+                continue  # skip empty anchors
+            if a["href"].startswith("#mw-"):
+                a.decompose()
+        # Also remove skip-link containers
+        for el in soup.select(".skip-link, [class*=skip-to], #jump-to-nav"):
+            el.decompose()
+
+    if "strip_category_links" in cleanup:
+        # Remove category link containers and "Categories:" sections
+        for sel in ("#catlinks", ".mw-normal-catlinks", "#mw-hidden-catlinks",
+                    ".catlinks", "[class*=category]", "[id*=catlinks]"):
+            for el in soup.select(sel):
+                el.decompose()
+
+    if "convert_nested_images" in cleanup:
+        # Convert <figure> and <picture> wrappers to simple <img> tags
+        for fig in soup.find_all("figure"):
+            img = fig.find("img")
+            if img:
+                fig.replace_with(img)
+            else:
+                fig.decompose()
+        for pic in soup.find_all("picture"):
+            img = pic.find("img")
+            if img:
+                pic.replace_with(img)
+            else:
+                pic.decompose()
+
+    if "normalize_infobox" in cleanup:
+        # Infobox is already handled by Phase 1 config-driven extraction.
+        # This operation is a no-op for pipeline — kept for strategy completeness.
+        pass
 
     # Remove decorative images (config-driven skip patterns)
     for img in soup.find_all("img"):
@@ -340,11 +472,25 @@ def _apply_extraction(
     md = md.replace(r"\*\*\*", "***")
     md = re.sub(r"\\(\*+)", r"\1", md)
 
-    # Clean empty parens
-    md = re.sub(r"\(\s*\)", "", md)
+    # Post-conversion cleanup ops (gated by cleanup list, not text_normalization)
+    if "strip_empty_parens" in cleanup:
+        md = re.sub(r"\(\s*\)", "", md)
 
-    # KI-5: ensure space between image and following link (markdownify artifact)
-    md = re.sub(r"(\!\[[^\]]*\]\([^)]+\))\s*(?=\[)", r"\1 ", md)
+    if "fix_separators" in cleanup:
+        # KI-5: ensure space between image and following link
+        md = re.sub(r"(\!\[[^\]]*\]\([^)]+\))\s*(?=\[)", r"\1 ", md)
+        # Ensure space between consecutive markdown links
+        md = re.sub(r"(\[[^\]]+\]\([^)]+\))\s*(?=\[)", r"\1 ", md)
+        # Fix double-spaces
+        md = re.sub(r"  +", " ", md)
+
+    if "normalize_internal" in cleanup:
+        # Ensure all /wiki/ links are absolute (redundant with url_conversion, acts as safety net)
+        if base_url:
+            md = re.sub(
+                r"\[([^\]]*)\]\(/wiki/([^)]+)\)",
+                rf"[\1]({base_url}/wiki/\2)", md,
+            )
 
     return md.strip()
 
