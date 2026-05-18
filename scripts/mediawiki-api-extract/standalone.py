@@ -46,14 +46,14 @@ def fetch_and_convert(url: str, domain: str, output: str,
     title = url.split("/wiki/")[-1].replace("_", " ") if "/wiki/" in url else url
 
     if mode == "html":
-        data = client.parse(page=title, prop="text")
+        data = client.parse(page=title, prop="text", redirects=True)
         html = data.get("parse", {}).get("text", {}).get("*", "")
         if not html:
             raise RuntimeError(f"Empty HTML for {title}")
 
         # Also get images
         try:
-            img_data = client.parse(page=title, prop="images")
+            img_data = client.parse(page=title, prop="images", redirects=True)
             images = img_data.get("parse", {}).get("images", [])
         except Exception:
             images = []
@@ -96,7 +96,7 @@ def fetch_and_convert(url: str, domain: str, output: str,
         full_content = "\n".join(fm_lines) + body + "\n"
 
     elif mode == "wikitext":
-        data = client.parse(page=title, prop="wikitext")
+        data = client.parse(page=title, prop="wikitext", redirects=True)
         wikitext = data.get("parse", {}).get("wikitext", {}).get("*", "")
         if not wikitext:
             raise RuntimeError(f"Empty wikitext for {title}")

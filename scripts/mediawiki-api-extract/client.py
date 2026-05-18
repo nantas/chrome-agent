@@ -95,9 +95,16 @@ class ApiClient:
         p = {"action": "query", "format": "json", **params}
         return self._request(p)
 
-    def parse(self, page: str, prop: str = "wikitext") -> dict:
-        """action=parse request."""
-        p = {"action": "parse", "page": page, "prop": prop, "format": "json"}
+    def parse(self, page: str, prop: str = "wikitext", **kwargs) -> dict:
+        """action=parse request.
+
+        Args:
+            page: Page title to parse.
+            prop: Properties to retrieve (e.g. "text", "wikitext", "images").
+            **kwargs: Additional parameters passed directly to the API
+                (e.g. redirects=True).
+        """
+        p = {"action": "parse", "page": page, "prop": prop, "format": "json", **kwargs}
         return self._request(p)
 
 

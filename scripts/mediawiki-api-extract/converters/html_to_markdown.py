@@ -10,6 +10,7 @@ import os
 import re
 import urllib.request
 from typing import Optional
+from urllib.parse import unquote
 
 from selectolax.parser import HTMLParser
 
@@ -667,11 +668,17 @@ class HtmlToMarkdownConverter:
         return normalized
 
     def _to_markdown_link(self, href: str, text: str, source_dir: str) -> Optional[str]:
-        """Convert wiki internal /wiki/... links to relative Markdown links."""
+        """Convert wiki internal /wiki/... links to relative Markdown links.
+
+        Decodes percent-encoded characters in the title before manifest lookup.
+        """
         if not href.startswith(f"https://{self.wiki_domain}/wiki/"):
             return None
         title = href[len(f"https://{self.wiki_domain}/wiki/"):]
         title = title.split("?")[0].split("#")[0]
+        # Decode percent-encoding before underscore-to-space replacement
+        # (e.g. Mom%27s_Knife → Mom's_Knife → "Mom's Knife")
+        title = unquote(title)
         title = title.replace("_", " ")
         if title.startswith(("File:", "Category:", "Template:", "Talk:", "Special:", "Help:")):
             return None

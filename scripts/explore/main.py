@@ -223,7 +223,7 @@ def _fetch_wikitext(api_base_url: str, page_title: str) -> str:
 
     url = (
         f"{api_base_url}?action=parse&page={quote(page_title)}"
-        f"&prop=wikitext&format=json"
+        f"&prop=wikitext&format=json&redirects=true"
     )
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "chrome-agent-explore/1.0"})
