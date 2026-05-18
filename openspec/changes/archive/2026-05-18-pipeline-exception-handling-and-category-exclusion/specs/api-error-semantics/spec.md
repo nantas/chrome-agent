@@ -1,9 +1,21 @@
-# api-error-semantics Specification
+# Specification Delta
 
-## Purpose
-TBD - created by archiving change pipeline-fandom-compatibility. Update Purpose after archive.
-## Requirements
+## Capability 对齐（已确认）
+
+- Capability: `api-error-semantics`
+- 来源: `proposal.md` / 已确认 capabilities
+- 变更类型: `modified`
+
+## 规范真源声明
+
+- 本文件是该 capability 在本次 change 中的行为规范真源
+- design / tasks / verification 必须引用本文件
+- 项目页面回写不得替代本文件
+
+## MODIFIED Requirements
+
 ### Requirement: 异常层次结构
+
 The system SHALL 在 `client.py` 中定义以下异常层次：
 
 ```
@@ -29,6 +41,7 @@ Exception
 - **AND** 行为与当前一致
 
 ### Requirement: 策略层对 PageNotFoundError 的优雅处理
+
 The system SHALL 在所有调用 `client.parse()` 和 `client.query()` 的管线策略层代码（discovery 策略、acquisition 策略、legacy 策略）中使用 `except Exception` 捕获 `PageNotFoundError`，不得使用 `except RuntimeError`。
 
 具体受影响的方法：
@@ -56,6 +69,7 @@ The system SHALL 在所有调用 `client.parse()` 和 `client.query()` 的管线
 - **AND** SHALL 记录 `log.warning` 并返回包含 `wikitext: None` 的结果
 
 ### Requirement: Phase A 对 fetch_list_pages 的防御性保护
+
 The system SHALL 在 `run_phase_a()` 中对 `discovery_strategy.fetch_list_pages()` 调用包裹 try/except，确保单个 list_page 获取失败不阻断整个 Phase A。
 
 #### Scenario: phase-a-fetch-list-pages-graceful
@@ -72,29 +86,6 @@ The system SHALL 在 `run_phase_a()` 中对 `discovery_strategy.fetch_list_pages
 - **THEN** `run_phase_a()` SHALL 以相同的 try/except 保护捕获，行为与 `PageNotFoundError` 一致
 - **AND** SHALL 不区分异常类型，全部降级为 warning 并继续
 
-### Requirement: Phase B 对 PageNotFoundError 的优雅处理
-The system SHALL 在 `process_single_page()` 中捕获 `PageNotFoundError`，返回 `status: "skipped"` 而非 `status: "error"`。
+## ADDED Requirements
 
-#### Scenario: 页面缺失时优雅跳跃
-- **WHEN** `content_strategy.fetch_page_content()` 抛出 `PageNotFoundError`
-- **THEN** `process_single_page()` SHALL 返回 `{"title": title, "status": "skipped", "error": None, "reason": "page_not_found"}`
-- **AND** SHALL 不记入 failure_count（保持 success + skipped + failure 三维统计）
-- **AND** 日志级别为 `info` 而非 `warning`
-
-#### Scenario: 非 PageNotFoundError 的异常处理
-- **WHEN** `content_strategy.fetch_page_content()` 抛出非 `PageNotFoundError` 的异常
-- **THEN** `process_single_page()` SHALL 保持返回 `status: "error"`
-- **AND** 行为与当前一致
-
-### Requirement: _process_html_page None-safety
-The system SHALL 修复 `_process_html_page()` 中 `raw.get("html", "")` 的 None-safety 问题。
-
-#### Scenario: html 值为 None
-- **WHEN** `raw` dict 包含 `{"html": None, "images": [], "wikitext": None}`
-- **THEN** `html = raw.get("html", "")` SHALL 返回 `""`（空字符串）
-- **AND** 方法 SHALL 返回 `{"title": title, "status": "empty", "error": "Empty HTML"}` 而非崩溃
-
-#### Scenario: html 值为有效字符串
-- **WHEN** `raw` dict 包含 `{"html": "<div>content</div>", ...}`
-- **THEN** `_process_html_page()` SHALL 正常处理 HTML 内容
-- **AND** 行为不变
+*(无新增 requirements，本次仅修改现有 requirement 的范围和约束)*
