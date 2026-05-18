@@ -211,7 +211,60 @@ artifacts:
 next_action: <none or remediation>
 workflow: <content_retrieval|platform_analysis|runtime_support>
 engine_path: <backend path summary>
+handoff_path: <absolute path to handoff.md>   (present only when handoff was generated)
+handoff_summary: <one-line failure summary>    (present only when handoff_path is present)
 ```
+
+When `handoff_path` is present in the CLI result, `next_action` SHALL contain: "The problem must be resolved in the chrome-agent repository. See handoff document at <handoff_path>."
+
+When `handoff_path` is present, the skill SHALL skip normal result passthrough and trigger the Handoff Gate (see below).
+
+## Handoff Gate
+
+When the CLI result contains a `handoff_path` field, the skill MUST invoke the Handoff Gate protocol.
+
+### Core Rules
+
+1. **Detect**: When the CLI result contains `handoff_path`, recognize this as a chrome-agent-repo-bound failure.
+2. **Halt**: Stop all further workflow dispatch. Do NOT proceed to fetch / explore / crawl / scrape.
+3. **No re-routing**: Do NOT attempt to interpret or re-route the failure as a different command.
+4. **No workarounds**: Do NOT:
+   - write a custom curl/wget/request script as a substitute
+   - call chrome-cdp or chrome-devtools-mcp directly as a bypass
+   - use the Scrapling CLI directly without going through the chrome-agent CLI
+   - fabricate a strategy or workaround
+   - The only allowed action is: present the handoff and stop
+5. **Present**: Show the structured halting message to the user.
+
+### User Presentation Format
+
+When the Handoff Gate is triggered, present this structured message:
+
+```
+result: failure
+handoff_path: <absolute path>
+handoff_summary: <one-line summary>
+
+Workflow interrupted. This problem belongs in the chrome-agent repository.
+
+Handoff document: <handoff_path>
+
+To fix:
+1. Switch to the chrome-agent repository
+2. Read the handoff document for full context
+3. Classify the issue (P-line: pipeline / S-line: strategy / W-line: workflow)
+4. Create an openspec change proposal
+5. Implement the fix
+6. Re-run the original command to verify
+
+Original command: <CLI command that was run>
+```
+
+### No-Handoff Behavior
+
+When the CLI result does NOT contain `handoff_path`, the existing passthrough behavior applies unchanged. The skill SHALL NOT trigger the Handoff Gate.
+
+For caller-side failures (result = `"failure"`, no `handoff_path`), pass through the `next_action` field as the caller-side remediation.
 
 ## Route to Sample Conversion
 

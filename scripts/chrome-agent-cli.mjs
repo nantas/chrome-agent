@@ -280,6 +280,10 @@ function renderResult(result, format) {
   lines.push(`next_action: ${result.next_action}`);
   lines.push(`workflow: ${result.workflow ?? "none"}`);
   lines.push(`engine_path: ${result.engine_path ?? "none"}`);
+  if (result.handoff_path) {
+    lines.push(`handoff_path: ${result.handoff_path}`);
+    lines.push(`handoff_summary: ${result.handoff_summary ?? ""}`);
+  }
   process.stdout.write(`${lines.join("\n")}\n`);
 }
 
@@ -1274,6 +1278,150 @@ function makeResult(command, target, repoRef, summary, artifacts, nextAction, re
   };
 }
 
+// =============================================================================
+// Handoff emission
+// =============================================================================
+
+/**
+ * Determine whether a failure is internal (chrome-agent-repo-bound) or external.
+ * Internal failures generate a handoff document; external failures do not.
+ */
+function isInternalFailure(command, errorInfo) {
+  const { exitCode, reason, stderr } = errorInfo;
+
+  // Pipeline exit code >= 10 → internal (MediaWiki API pipeline signals)
+  if (typeof exitCode === "number" && exitCode >= 10) {
+    return true;
+  }
+
+  // Strategy gap (no matching strategy) + deep discovery failure
+  if (reason === "strategy_gap") {
+    return true;
+  }
+
+  // Engine preflight failure (Scrapling, Obscura, CloakBrowser)
+  if (reason === "preflight_failure") {
+    return true;
+  }
+
+  // Sample conversion / self-check unrecoverable failure
+  if (reason === "conversion_failure") {
+    return true;
+  }
+
+  // Deep discovery pipeline failure
+  if (reason === "deep_discovery_failure") {
+    return true;
+  }
+
+  // Python deps missing for explore pipeline
+  if (reason === "explore_deps_missing") {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Generate a handoff document for an internal failure.
+ * Writes to outputs/handoffs/<run-tag>/handoff.md.
+ * Returns { path: string, summary: string }.
+ */
+function generateHandoff(context) {
+  const { command, target, repoRef, runDir, error, strategy } = context;
+  const { stamp, slug } = nowParts();
+  const runTag = `${stamp}-${command}-${slug}`;
+  const handoffDir = path.join(inferredRepoRoot, "outputs", "handoffs", runTag);
+  ensureDir(handoffDir);
+
+  const timestamp = new Date().toISOString();
+  const cliCommand = `chrome-agent ${command} ${target}`;
+
+  // Build handoff content
+  const lines = [
+    `# Handoff: ${command} ${target}`,
+    "",
+    "## Context",
+    "",
+    `| Field | Value |`,
+    `|-------|-------|`,
+    `| Command | \`${command}\` |`,
+    `| Target | ${target} |`,
+    `| Timestamp | ${timestamp} |`,
+    `| Repo ref | ${repoRef ?? DEFAULT_REPO_REF} |`,
+  ];
+
+  if (runDir) {
+    lines.push(`| Run directory | ${path.resolve(runDir)} |`);
+  }
+  if (strategy) {
+    lines.push(`| Strategy | ${strategy.path ?? "unknown"} |`);
+  }
+  lines.push("");
+
+  lines.push("## What Went Wrong");
+  lines.push("");
+  lines.push(error.summary || "An internal failure occurred during command execution.");
+  lines.push("");
+
+  lines.push("## Error Details");
+  lines.push("");
+  if (error.exitCode != null) {
+    lines.push(`- **Exit code**: ${error.exitCode}`);
+  }
+  if (error.reason) {
+    lines.push(`- **Reason**: ${error.reason}`);
+  }
+  if (error.stderr) {
+    const truncatedStderr = error.stderr.length > 2000 ? error.stderr.slice(0, 2000) + "\n... (truncated)" : error.stderr;
+    lines.push(`- **stderr**:\n\`\`\``);
+    lines.push(truncatedStderr);
+    lines.push("\`\`\`");
+  }
+  lines.push(`- **CLI command**: \`${cliCommand}\``);
+  lines.push("");
+
+  lines.push("## Run Artifacts");
+  lines.push("");
+  if (runDir && fs.existsSync(path.resolve(runDir))) {
+    const absRunDir = path.resolve(runDir);
+    lines.push(`- **Manifest**: ${path.join(absRunDir, "manifest.json")}`);
+    for (const file of fs.readdirSync(absRunDir)) {
+      if (file.endsWith(".log") || file.endsWith(".json")) {
+        lines.push(`- **${file}**: ${path.join(absRunDir, file)}`);
+      }
+    }
+  } else {
+    lines.push("- No run directory was created before the failure.");
+  }
+  lines.push("");
+
+  lines.push("## Next Steps");
+  lines.push("");
+  lines.push("This issue must be resolved in the chrome-agent repository.");
+  lines.push("");
+  lines.push("1. Review the run artifacts listed above");
+  lines.push("2. Classify the issue:");
+  lines.push("   - **P-line** (Pipeline): code defect or missing feature in pipeline scripts");
+  lines.push("   - **S-line** (Strategy): strategy file configuration gap");
+  lines.push("   - **W-line** (Workflow): external workflow script overrode pipeline capability");
+  lines.push("3. Create an openspec change proposal");
+  lines.push("4. Implement the fix");
+  lines.push(`5. Re-run the original command to verify: \`${cliCommand}\``);
+  lines.push("");
+
+  const handoffContent = lines.join("\n") + "\n";
+  const handoffPath = path.join(handoffDir, "handoff.md");
+  writeTextFile(handoffPath, handoffContent);
+
+  const summaryParts = [`[${command}]`];
+  if (error.reason) summaryParts.push(error.reason);
+  summaryParts.push(error.summary || "Internal failure");
+  const handoffSummary = summaryParts.join(" ").slice(0, 200);
+
+  return { path: path.resolve(handoffPath), summary: handoffSummary };
+}
+
 function runExplorePythonDepsCheck(repoRoot) {
   try {
     const result = spawnSync("python3", ["-c", "import bs4, yaml; print('ok')"], {
@@ -1304,19 +1452,23 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
     // Preflight: check Python deps before spawning deep discovery
     const depsCheck = runExplorePythonDepsCheck(repoRoot);
     if (!depsCheck.ok) {
-      return makeResult(
-        "explore",
-        targetUrl,
-        repoRef,
-        `Deep discovery pipeline dependencies are missing: ${depsCheck.detail}`,
-        [],
-        depsCheck.detail,
-        "failure",
-        {
-          workflow: "platform_analysis",
-          engine_path: "strategy_registry -> strategy_gap -> preflight_failed",
-        },
-      );
+    // Handoff: Python deps missing for explore pipeline is internal
+    const handoff = generateHandoff({ command: "explore", target: targetUrl, repoRef, runDir: null, error: { reason: "explore_deps_missing", summary: `Deep discovery pipeline dependencies are missing: ${depsCheck.detail}` } });
+    return makeResult(
+      "explore",
+      targetUrl,
+      repoRef,
+      `Deep discovery pipeline dependencies are missing: ${depsCheck.detail}`,
+      [],
+      `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
+      "failure",
+      {
+        workflow: "platform_analysis",
+        engine_path: "strategy_registry -> strategy_gap -> preflight_failed",
+        handoff_path: handoff.path,
+        handoff_summary: handoff.summary,
+      },
+    );
     }
 
     ensureDir(runDir);
@@ -1336,33 +1488,41 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
       try {
         discoveryResult = JSON.parse(ddResult.stdout);
       } catch (parseErr) {
+        // Handoff: deep discovery returned invalid JSON is internal
+        const handoff = generateHandoff({ command: "explore", target: targetUrl, repoRef, runDir, error: { reason: "deep_discovery_failure", summary: `Deep discovery pipeline returned invalid JSON: ${String(parseErr.message).slice(0, 200)}`, stderr: (ddResult.stdout || "").slice(0, 2000) } });
         return makeResult(
           "explore",
           targetUrl,
           repoRef,
           `Deep discovery pipeline returned invalid JSON: ${String(parseErr.message).slice(0, 200)}`,
           [],
-          "Check the deep discovery pipeline output for errors.",
+          `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
           "failure",
           {
             workflow: "platform_analysis",
             engine_path: "strategy_registry -> strategy_gap -> deep_discovery_failed",
+            handoff_path: handoff.path,
+            handoff_summary: handoff.summary,
           },
         );
       }
     } else {
       const stderr = (ddResult.stderr || "").slice(0, 500);
+      // Handoff: deep discovery pipeline failure is internal
+      const handoff = generateHandoff({ command: "explore", target: targetUrl, repoRef, runDir, error: { reason: "deep_discovery_failure", exitCode: ddResult.status, summary: `Deep discovery pipeline failed (exit ${ddResult.status ?? "unknown"}): ${stderr}`, stderr: (ddResult.stderr || "").slice(0, 2000) } });
       return makeResult(
         "explore",
         targetUrl,
         repoRef,
         `Deep discovery pipeline failed (exit ${ddResult.status ?? "unknown"}): ${stderr}`,
         [],
-        stderr || "Check the deep discovery pipeline output for errors.",
+        `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
         "failure",
         {
           workflow: "platform_analysis",
           engine_path: "strategy_registry -> strategy_gap -> deep_discovery_failed",
+          handoff_path: handoff.path,
+          handoff_summary: handoff.summary,
         },
       );
     }
@@ -1551,6 +1711,38 @@ function runFetch(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride) 
   }
 
   if (!fetchResult.ok) {
+    // Handoff: check if this is an internal failure
+    const fetchErrorInfo = {
+      exitCode: null,
+      reason: fetchResult.preflight?.ok === false ? "preflight_failure" : null,
+      stderr: fetchResult.stderr || "",
+      summary: `Fetch failed after ${fetcher} dispatch.`,
+    };
+    if (isInternalFailure("fetch", fetchErrorInfo)) {
+      const handoff = generateHandoff({
+        command: "fetch",
+        target: targetUrl,
+        repoRef,
+        runDir,
+        error: fetchErrorInfo,
+        strategy,
+      });
+      return makeResult(
+        "fetch",
+        targetUrl,
+        repoRef,
+        `Fetch failed after ${fetcher} dispatch.`,
+        artifacts,
+        `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
+        "failure",
+        {
+          workflow: "content_retrieval",
+          engine_path: `scrapling:${fetcher} -> preflight:${fetchResult.preflight?.status ?? "unknown"} -> failed`,
+          handoff_path: handoff.path,
+          handoff_summary: handoff.summary,
+        },
+      );
+    }
     return makeResult(
       "fetch",
       targetUrl,
@@ -1696,17 +1888,21 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
     if (emitReport) {
       artifacts.push(absoluteArtifact(reportPath, "durable", "Crawl refusal report"));
     }
+    // Handoff: strategy gap is an internal failure
+    const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir: null, error: { reason: "strategy_gap", summary: "No matching site strategy exists." }, strategy: null });
     return makeResult(
       "crawl",
       targetUrl,
       repoRef,
       "Crawl refused because no matching site strategy exists.",
       artifacts,
-      `Run chrome-agent explore ${targetUrl} first to create or refine a site strategy.`,
+      `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
       "failure",
       {
         workflow: "content_retrieval",
         engine_path: "strategy_registry -> strategy_gap",
+        handoff_path: handoff.path,
+        handoff_summary: handoff.summary,
       },
     );
   }
@@ -1737,17 +1933,21 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
     if (emitReport) {
       artifacts.push(absoluteArtifact(reportPath, "durable", "Crawl failure report"));
     }
+    // Handoff: missing entry point is an internal failure
+    const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: "conversion_failure", summary: "Strategy exists but no usable entry point could be resolved." }, strategy });
     return makeResult(
       "crawl",
       targetUrl,
       repoRef,
       "Crawl could not resolve a declared entry point.",
       artifacts,
-      `Update ${path.relative(repoRoot, strategy.path)} so the crawl can start from a declared entry point.`,
+      `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
       "failure",
       {
         workflow: "content_retrieval",
         engine_path: `strategy_registry -> ${path.relative(repoRoot, strategy.path)} -> missing_entry_point`,
+        handoff_path: handoff.path,
+        handoff_summary: handoff.summary,
       },
     );
   }
@@ -1851,17 +2051,21 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
     if (emitReport) {
       artifacts.push(absoluteArtifact(reportPath, "durable", "Crawl preflight report"));
     }
+    // Handoff: Scrapling preflight failure is internal
+    const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: "preflight_failure", summary: `Scrapling CLI preflight failed (${preflight.status ?? "unknown"}).`, stderr: `${preflight.stdout ?? ""}${preflight.stderr ?? ""}`.trim() }, strategy });
     return makeResult(
       "crawl",
       targetUrl,
       repoRef,
       "Crawl stopped because Scrapling CLI preflight failed.",
       artifacts,
-      "Repair the Scrapling CLI environment, then retry crawl.",
+      `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
       "failure",
       {
         workflow: "content_retrieval",
         engine_path: `strategy_registry -> scrapling_preflight:${preflight.status ?? "unavailable"} -> blocked`,
+        handoff_path: handoff.path,
+        handoff_summary: handoff.summary,
       },
     );
   }
@@ -2182,17 +2386,21 @@ async function runScrape(repoRoot, repoRef, resolutionMode, targetUrl, opts) {
     if (emitReport) {
       artifacts.push(absoluteArtifact(reportPath, "durable", "Scrape preflight report"));
     }
+    // Handoff: Scrapling preflight failure is internal
+    const handoff = generateHandoff({ command: "scrape", target: targetUrl, repoRef, runDir, error: { reason: "preflight_failure", summary: `Scrapling CLI preflight failed (${preflight.status ?? "unknown"}).`, stderr: `${preflight.stdout ?? ""}${preflight.stderr ?? ""}`.trim() } });
     return makeResult(
       "scrape",
       targetUrl,
       repoRef,
       "Scrape stopped because Scrapling CLI preflight failed.",
       artifacts,
-      "Repair the Scrapling CLI environment, then retry scrape.",
+      `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
       "failure",
       {
         workflow: "content_retrieval",
         engine_path: `scrapling_preflight:${preflight.status ?? "unavailable"} -> blocked`,
+        handoff_path: handoff.path,
+        handoff_summary: handoff.summary,
       },
     );
   }
