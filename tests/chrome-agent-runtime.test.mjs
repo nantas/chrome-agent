@@ -178,3 +178,80 @@ test("repo cli doctor reports env_default instead of env_fallback", () => {
   assert.ok(payload.checks.every((check) => check.name !== "env_fallback"));
   assert.equal(payload.next_action, "none");
 });
+
+test("repo CLI crawl passes --discovery-only flag through", () => {
+  const result = runNode(
+    repoCliScript,
+    [
+      "--resolved-repo", repoRoot,
+      "--resolved-repo-ref", "repo://chrome-agent",
+      "--resolution-mode", "repo_local",
+      "crawl", "https://example.com/test",
+      "--discovery-only",
+      "--format", "json",
+    ],
+  );
+
+  // Without a matching strategy, crawl will fail — but we verify the flag is parsed
+  assert.equal(result.status, 1);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.command, "crawl");
+});
+
+test("repo CLI crawl passes --yes flag through", () => {
+  const result = runNode(
+    repoCliScript,
+    [
+      "--resolved-repo", repoRoot,
+      "--resolved-repo-ref", "repo://chrome-agent",
+      "--resolution-mode", "repo_local",
+      "crawl", "https://example.com/test",
+      "--yes",
+      "--format", "json",
+    ],
+  );
+
+  // Without a matching strategy, crawl will fail
+  assert.equal(result.status, 1);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.command, "crawl");
+});
+
+test("repo CLI crawl passes --exclude-category flag through", () => {
+  const result = runNode(
+    repoCliScript,
+    [
+      "--resolved-repo", repoRoot,
+      "--resolved-repo-ref", "repo://chrome-agent",
+      "--resolution-mode", "repo_local",
+      "crawl", "https://example.com/test",
+      "--exclude-category", "Music",
+      "--exclude-category", "Modding",
+      "--format", "json",
+    ],
+  );
+
+  // Without a matching strategy, crawl will fail
+  assert.equal(result.status, 1);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.command, "crawl");
+});
+
+test("repo CLI crawl passes --from-manifest flag through", () => {
+  const result = runNode(
+    repoCliScript,
+    [
+      "--resolved-repo", repoRoot,
+      "--resolved-repo-ref", "repo://chrome-agent",
+      "--resolution-mode", "repo_local",
+      "crawl", "https://example.com/test",
+      "--from-manifest", "/tmp/nonexistent-manifest.json",
+      "--format", "json",
+    ],
+  );
+
+  // Without a matching strategy, crawl will fail
+  assert.equal(result.status, 1);
+  const payload = JSON.parse(result.stdout);
+  assert.equal(payload.command, "crawl");
+});

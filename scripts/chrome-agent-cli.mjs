@@ -45,6 +45,10 @@ Command options:
   --workers <n>          Number of Obscura workers for parallel mode. Default: 5, max: 30.
   --report               Force durable report emission to reports/.
   --no-report            Disable durable report emission for this run.
+  --discovery-only       Stop after discovery phase, output discovery_summary.json.
+  --from-manifest <path> Resume crawl from existing page manifest.
+  --yes                  Bypass confirmation gate (passthrough signal for SKILL layer).
+  --exclude-category <n> Exclude category from extraction (repeatable).
   --scope <scope>        Clean scope: disposable (default) or all.
   --format <mode>        Output mode: json or text. Default: text.
   -h, --help             Show this message.
@@ -94,6 +98,10 @@ function parseArgs(argv) {
   let keepHtml = false;
   let parallel = false;
   let workers = 5;
+  let discoveryOnly = false;
+  let fromManifest = null;
+  let yes = false;
+  let excludeCategory = [];
   const positionals = [];
 
   for (let i = 0; i < passthrough.length; i += 1) {
@@ -225,6 +233,32 @@ function parseArgs(argv) {
       workers = Number.parseInt(value.slice("--workers=".length), 10);
       continue;
     }
+    if (value === "--discovery-only") {
+      discoveryOnly = true;
+      continue;
+    }
+    if (value === "--from-manifest" && i + 1 < passthrough.length) {
+      fromManifest = passthrough[i + 1];
+      i += 1;
+      continue;
+    }
+    if (value.startsWith("--from-manifest=")) {
+      fromManifest = value.slice("--from-manifest=".length);
+      continue;
+    }
+    if (value === "--yes" || value === "--no-confirm") {
+      yes = true;
+      continue;
+    }
+    if (value === "--exclude-category" && i + 1 < passthrough.length) {
+      excludeCategory.push(passthrough[i + 1]);
+      i += 1;
+      continue;
+    }
+    if (value.startsWith("--exclude-category=")) {
+      excludeCategory.push(value.slice("--exclude-category=".length));
+      continue;
+    }
     if (!value.startsWith("-")) {
       positionals.push(value);
     }
@@ -248,6 +282,10 @@ function parseArgs(argv) {
     keepHtml,
     parallel,
     workers: Number.isFinite(workers) && workers > 0 ? Math.min(workers, 30) : 5,
+    discoveryOnly,
+    fromManifest,
+    yes,
+    excludeCategory,
     command: positionals[0] ?? null,
     target: positionals[1] ?? null,
     positionals,
@@ -1864,6 +1902,10 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
     keepHtml = false,
     parallel = false,
     workers = 5,
+    discoveryOnly = false,
+    fromManifest = null,
+    yes: yesFlag = false,
+    excludeCategory = [],
   } = opts;
 
   const { runDir, reportPath } = buildRunPaths(repoRoot, "crawl", targetUrl);
@@ -1971,6 +2013,22 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
       } else {
         apiArgs.push("--discovery", "allpages");
       }
+      // Pass --phase discover when --discovery-only
+      if (discoveryOnly) {
+        apiArgs.push("--phase", "discover");
+      }
+      // Pass --from-manifest when resuming from existing manifest
+      if (fromManifest) {
+        apiArgs.push("--from-manifest", fromManifest);
+      }
+      // Pass --exclude-category
+      for (const cat of excludeCategory) {
+        apiArgs.push("--exclude-category", cat);
+      }
+      // Pass --max-pages
+      if (maxPages) {
+        apiArgs.push("--max-pages", String(maxPages));
+      }
       const apiResult = spawnSync("python3", apiArgs, {
         cwd: repoRoot,
         encoding: "utf-8",
@@ -1983,6 +2041,33 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
       const isApiFailure = exitCode >= 10;  // API_UNREACHABLE, PHASE_A/B/C_FAILURE
 
       if (isApiSuccess || isApiPartial) {
+        // --- Discovery-only mode: return summary and exit early ---
+        if (discoveryOnly) {
+          const discoverySummaryPath = path.join(runDir, "discovery_summary.json");
+          const pageManifestPath = path.join(runDir, "page_manifest.json");
+          const discArtifacts = [];
+          if (fs.existsSync(pageManifestPath)) {
+            discArtifacts.push(absoluteArtifact(pageManifestPath, "disposable", "Page manifest"));
+          }
+          if (fs.existsSync(discoverySummaryPath)) {
+            discArtifacts.push(absoluteArtifact(discoverySummaryPath, "disposable", "Discovery summary"));
+          }
+          return makeResult("crawl", targetUrl, repoRef,
+            `Discovery-only completed via MediaWiki API pipeline.`,
+            discArtifacts,
+            "Review discovery summary. Use --from-manifest to proceed with extraction.",
+            isApiSuccess ? "success" : "partial_success",
+            {
+              workflow: "content_retrieval",
+              engine_path: `strategy_registry -> mediawiki_api_pipeline -> discovery_only -> exit:${exitCode}`,
+              extraction_method: "mediawiki_api",
+              discovery_only: true,
+              discovery_summary_path: fs.existsSync(discoverySummaryPath) ? path.resolve(discoverySummaryPath) : null,
+              manifest_path: fs.existsSync(pageManifestPath) ? path.resolve(pageManifestPath) : null,
+              confirmation_bypassed: yesFlag,
+            });
+        }
+
         // Collect artifacts from the output directory
         const apiArtifacts = [absoluteArtifact(manifestPath, "disposable", "Crawl manifest")];
         for (const file of fs.readdirSync(runDir, { recursive: true })) {
@@ -2023,6 +2108,7 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
             workflow: "content_retrieval",
             engine_path: `strategy_registry -> mediawiki_api_pipeline -> exit:${exitCode}`,
             extraction_method: extractionMethod,
+            confirmation_bypassed: yesFlag,
           });
       }
 
@@ -2035,6 +2121,104 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
       events = ["MediaWiki API extraction script not found. Falling back to Scrapling."];
       fallbackReason = "api_script_missing";
     }
+  }
+
+  // --- Scrapling discovery-only path (non-API sites) ---
+  if (discoveryOnly && !doc?.api?.platform) {
+    const preflight = runScraplingPreflight(repoRoot, true);
+    if (!preflight.ok) {
+      return makeResult("crawl", targetUrl, repoRef,
+        "Scrapling CLI preflight failed for discovery-only mode.",
+        [],
+        "Fix Scrapling CLI preflight and retry.",
+        "failure",
+        { workflow: "content_retrieval", engine_path: "scrapling_preflight -> discovery_only_blocked" });
+    }
+
+    const fetcher = selectFetcher(strategy, startPage);
+    const outputPath = path.join(runDir, "_homepage.html");
+    const fetchResult = runEngineFetch(repoRoot, fetcher, targetUrl, outputPath);
+    if (!fetchResult.ok) {
+      return makeResult("crawl", targetUrl, repoRef,
+        `Failed to fetch main page for discovery: ${fetchResult.stderr || "unknown error"}`,
+        [], "Check URL and retry.", "failure",
+        { workflow: "content_retrieval", engine_path: `scrapling:${fetcher} -> discovery_fetch_failed` });
+    }
+
+    // Extract links matching links_to selectors and group by structure.pages
+    const categories = [];
+    const linksTo = startPage?.links_to ?? [];
+    const structurePages = doc?.structure?.pages ?? [];
+    const categoryMap = new Map(); // pageId -> { urls: Set }
+
+    for (const link of linksTo) {
+      const targetPage = structurePages.find((p) => p.id === link.target);
+      if (!targetPage) continue;
+
+      const discovered = collectLinksFromHtml(outputPath, targetUrl, link.selector);
+      if (!categoryMap.has(targetPage.id)) {
+        categoryMap.set(targetPage.id, { page: targetPage, urls: new Set() });
+      }
+      for (const url of discovered) {
+        if (pagePatternMatches(targetPage, url)) {
+          categoryMap.get(targetPage.id).urls.add(url);
+        }
+      }
+    }
+
+    let totalPages = 0;
+    for (const [pageId, data] of categoryMap) {
+      const count = data.urls.size;
+      totalPages += count;
+      const samples = [...data.urls].slice(0, 5).map((u) => {
+        try { return decodeURIComponent(new URL(u).pathname.split("/").pop() || u).replace(/_/g, " "); } catch { return u; }
+      });
+      categories.push({
+        name: data.page.label || data.page.id,
+        directory: data.page.id,
+        type: data.page.type || "static_article",
+        is_index_page: false,
+        page_count: count,
+        sample_pages: samples,
+        page_type: data.page.content_type || "wiki_article",
+      });
+    }
+
+    const discoverySummary = {
+      discovery_method: "first_level_links",
+      site_title: doc.description?.split(" - ")[0] || targetUrl,
+      domain: new URL(targetUrl).hostname,
+      categories,
+      excluded: [],
+      unclassified: { count: 0, directory: "misc", sample_pages: [] },
+      total_pages: totalPages,
+      estimated_time_minutes: Math.max(Math.ceil(totalPages * 5 / 60), 1),
+      manifest_path: null,
+      warnings: [],
+      caveats: [
+        "Only first-level links from the main page were discovered.",
+        "Actual page counts may differ after full traversal.",
+      ],
+      failure_rate: 0.0,
+    };
+
+    const summaryPath = path.join(runDir, "discovery_summary.json");
+    writeTextFile(summaryPath, JSON.stringify(discoverySummary, null, 2));
+
+    return makeResult("crawl", targetUrl, repoRef,
+      `Discovery-only completed via Scrapling first-level link extraction (${totalPages} links across ${categories.length} categories).`,
+      [absoluteArtifact(summaryPath, "disposable", "Discovery summary")],
+      "Review discovery summary. Use --from-manifest to proceed with extraction (note: Scrapling path does not produce a page manifest).",
+      "success",
+      {
+        workflow: "content_retrieval",
+        engine_path: `strategy_registry -> scrapling_discovery_only -> first_level_links`,
+        extraction_method: "scrapling",
+        discovery_only: true,
+        discovery_summary_path: path.resolve(summaryPath),
+        manifest_path: null,
+        confirmation_bypassed: yesFlag,
+      });
   }
 
   // --- Standard Scrapling crawl path ---
@@ -2077,8 +2261,26 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
   }
 
   const queue = [];
-  const startUrl = matchingPage && matchingPage.id === startPage.id ? targetUrl : startPage.url_example;
-  queue.push({ url: startUrl, page: startPage, paginationIndex: 1 });
+  // --- from-manifest: seed queue from existing manifest ---
+  if (fromManifest && fs.existsSync(fromManifest)) {
+    try {
+      const loadedManifest = JSON.parse(fs.readFileSync(fromManifest, "utf8"));
+      const loadedVisited = loadedManifest.visited ?? [];
+      for (const url of loadedVisited) {
+        const page = pages.find((p) => pagePatternMatches(p, url));
+        if (page) {
+          queue.push({ url, page, paginationIndex: 1 });
+        }
+      }
+      log.info(`Loaded ${queue.length} URLs from manifest for Scrapling traversal`);
+    } catch (err) {
+      console.warn(`Failed to load manifest: ${err.message}`);
+    }
+  }
+  if (queue.length === 0) {
+    const startUrl = matchingPage && matchingPage.id === startPage.id ? targetUrl : startPage.url_example;
+    queue.push({ url: startUrl, page: startPage, paginationIndex: 1 });
+  }
   const visited = new Set();
   const artifacts = [];
   // events already declared above (let events)
@@ -2088,6 +2290,18 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
     const item = queue.shift();
     if (!item || visited.has(item.url)) {
       continue;
+    }
+    // --exclude-category filtering for Scrapling path (match by page id/label)
+    if (excludeCategory.length > 0 && item.page) {
+      const pageIdLower = (item.page.id || "").toLowerCase();
+      const pageLabelLower = (item.page.label || "").toLowerCase();
+      const isExcluded = excludeCategory.some(
+        (cat) => cat.toLowerCase() === pageIdLower || cat.toLowerCase() === pageLabelLower,
+      );
+      if (isExcluded) {
+        events.push(`Skipped ${item.url} — excluded category: ${item.page.id}`);
+        continue;
+      }
     }
     visited.add(item.url);
     const fetcher = selectFetcher(strategy, item.page);
@@ -2291,6 +2505,7 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
     engine_path: `strategy_registry -> bounded_crawl -> scrapling_preflight:${preflight.status ?? "unknown"}${markdown ? ` -> markdown_conversion(${phase2Result?.successful.length ?? 0}/${visited.size})` : ""}`,
     extraction_method: finalExtractionMethod,
     ...(finalFallbackReason ? { fallback_reason: finalFallbackReason } : {}),
+    confirmation_bypassed: yesFlag,
   });
 }
 
@@ -3330,6 +3545,10 @@ async function main() {
           keepHtml: parsed.keepHtml,
           parallel: parsed.parallel,
           workers: parsed.workers,
+          discoveryOnly: parsed.discoveryOnly,
+          fromManifest: parsed.fromManifest,
+          yes: parsed.yes,
+          excludeCategory: parsed.excludeCategory,
         });
         break;
       case "scrape":

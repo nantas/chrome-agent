@@ -175,6 +175,74 @@ The agent SHALL ensure the Architecture Gate passes before proceeding to user co
 - If the gate returns `status: "pass"`:
   - Include "✅ Architecture Gate passed — no dead config, no hardcoded selectors" in the confirmation summary.
 
+## Crawl Confirmation Gate
+
+When the SKILL routes a `crawl` intent and the user request does NOT include `--yes`, the SKILL SHALL invoke the Crawl Confirmation Gate before executing extraction.
+
+### Trigger Conditions
+
+The gate is triggered when ALL of the following are true:
+- Intent is `crawl`
+- `--yes` / `--no-confirm` is NOT present
+- `--from-manifest` is NOT present (implies prior confirmation)
+
+When triggered, the SKILL executes the following three-stage flow:
+
+### Stage 1: Discovery
+
+```bash
+chrome-agent crawl <url> --discovery-only --format json
+```
+
+Read `discovery_summary_path` from the CLI result. Parse `discovery_summary.json`.
+
+### Stage 2: Presentation
+
+Build a tree diagram from `discovery_summary.json` showing:
+- 📁 Each category directory with page count
+- 📄 Whether it has an index page (`is_index_page: true`)
+- 3-5 sample page names per category
+- ⚠️ Excluded categories with page counts and reasons
+- 📄 Unclassified/misc page count
+- Discovery method and any caveats
+- Estimated total time
+
+When `discovery_method` is `"first_level_links"` (Scrapling path):
+- Label page counts as estimates (e.g., "≈ 50+ pages")
+- Display caveats prominently
+
+When `warnings` is non-empty:
+- Show warnings below the tree
+- Do NOT block confirmation solely due to warnings
+
+### Stage 3: Confirmation
+
+Present the tree via `ask_user` with `type: "preview"` and these options:
+- **Proceed**: Execute extraction with current scope
+- **Adjust**: Multi-select categories to exclude, then re-present updated tree
+- **Cancel**: Stop the crawl workflow
+
+On **proceed**:
+```bash
+chrome-agent crawl <url> --from-manifest <manifest_path> [--exclude-category X ...] [--max-pages N] --format json
+```
+
+On **adjust**: Present multi-select from `discovery_summary.categories[*].name`, then rebuild tree and re-present for final confirmation.
+
+On **cancel**: Stop and inform user that crawl was cancelled.
+
+### Error Handling
+
+- **Discovery total failure** (`result: "failure"`): Surface failure, do NOT proceed.
+- **Discovery partial failure** (`result: "partial_success"`, `failure_rate ≤ 0.5`): Present tree with warnings, let user decide.
+- **Discovery summary missing**: Report error, do NOT fabricate tree, do NOT proceed.
+
+### `--yes` Bypass
+
+When `--yes` is present, the SKILL executes the normal atomic crawl without the confirmation gate. The CLI passes `confirmation_bypassed: true` in the result JSON.
+
+Behavioral authority: `openspec/changes/crawl-confirmation-gate/specs/crawl-confirmation-gate/spec.md`
+
 ## Result Packaging
 
 For routed commands, treat the CLI JSON result as the only source of truth.

@@ -200,7 +200,7 @@ def _add_pipeline_args(parser):
     parser.add_argument("--jitter", action="store_true", default=None,
                         help="Enable jitter on retry delays")
     parser.add_argument("--phase", nargs="+",
-                        choices=["all", "extract", "assemble", "A", "B", "C", "homepage"],
+                        choices=["all", "discover", "extract", "assemble", "A", "B", "C", "homepage"],
                         default=["all"], help='Phases to run ("all", "extract", "assemble"; deprecated: A=extract, B=extract, C=assemble, homepage=--discovery homepage)')
     parser.add_argument("--discovery",
                         choices=["auto", "allpages", "homepage"],
@@ -219,3 +219,7 @@ def _add_pipeline_args(parser):
                         help="Run L6 validation on output")
     parser.add_argument("--exclude-category", action="append", default=None,
                         help="Category to exclude (repeatable)")
+    parser.add_argument("--from-manifest", default=None,
+                        help="Path to existing page_manifest.json (skip discovery)")
+    parser.add_argument("--max-pages", type=int, default=None,
+                        help="Max pages to extract (limits extraction, not discovery)")

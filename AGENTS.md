@@ -87,6 +87,26 @@ When `explore` returns `partial_success` with a strategy gap (no existing strate
 4. The agent **SHALL** follow the Agent Gate rules defined in `skills/chrome-agent/SKILL.md` — including self-check report before presentation, sample file path output, self-audit before user review, full retest on converter change, 3-iteration limit, and **Architecture Gate** (strategy↔pipeline bidirectional alignment validation), and **KI Lifecycle Gate** (Known Issue classification, prioritization, and sequential fix management via `scripts/explore/ki_lifecycle.py`).
 5. The agent **MUST** ensure the Architecture Gate passes before proceeding to user confirmation. The gate validates that every strategy extraction field has a pipeline consumer (no dead config) and that every pipeline site-specific value is sourced from strategy config (no hardcoded selectors/domains).
 
+### Crawl Confirmation Gate (Discovery → Extraction)
+
+当 SKILL 层路由 `crawl` 意图时，如未传 `--yes`，SHALL 在执行提取前触发 Crawl Confirmation Gate。
+
+**触发条件**：意图为 `crawl` 且无 `--yes` 且无 `--from-manifest`。
+
+**两阶段流**：
+1. **Discovery-only**：执行 `chrome-agent crawl <url> --discovery-only --format json`，产出 `discovery_summary.json`
+2. **Presentation + Confirmation**：构建树状图，通过 `ask_user` 让用户确认/调整/取消
+3. **Extraction**：确认后执行 `chrome-agent crawl <url> --from-manifest <path> [--exclude-category X ...]`
+
+**`--yes` 绕过**：`--yes` 完全跳过闸门，正常执行完整 crawl。
+
+**禁止行为**：
+- 不得在未确认前执行 extraction
+- 不得在 discovery 失败后继续
+- 不得伪造 discovery_summary 数据
+
+行为规范真源：`openspec/changes/crawl-confirmation-gate/specs/crawl-confirmation-gate/spec.md`
+
 ### 引擎选择策略
 
 **默认路径：Scrapling + cdp_lightweight**
