@@ -62,7 +62,11 @@ def run_phase_a(client: ApiClient, strategy: dict, origin: str,
     log.info("Categories discovered for %d pages", len(categories_map))
 
     log.info("Phase A: Fetching list page content (%d pages)...", len(list_pages))
-    list_page_content = discovery_strategy.fetch_list_pages(client, list_pages)
+    try:
+        list_page_content = discovery_strategy.fetch_list_pages(client, list_pages)
+    except Exception as e:
+        log.warning("Failed to fetch list page content: %s — continuing without", e)
+        list_page_content = {}
     log.info("List page content fetched for %d pages", len(list_page_content))
 
     # Build manifest

@@ -114,6 +114,11 @@ api:
       - "Trinkets"
       - "Modes"
       - "Objects"
+
+    exclude_categories:
+      - "Music"
+      - "Modding"
+      - "Version History"
   namespaces: [0]
   content_profile:
     discovery_strategy: "allpages"
@@ -140,12 +145,10 @@ api:
       Attributes: "Attributes"
       Curses: "Curses"
       Effects: "Effects"
-      Modes: "Modes"
       Modding: "Modding"
       Endings: "Endings"
       Seeds: "Seeds"
       Music: "Music"
-      Objects: "Objects"
       Version History: "Version_History"
     page_categories:
       Collectibles: "Collectibles"

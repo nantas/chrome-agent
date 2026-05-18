@@ -125,7 +125,7 @@ class AllPagesDiscoveryStrategy:
                 data = client.parse(page=page_title, prop="wikitext")
                 wikitext = data.get("parse", {}).get("wikitext", {}).get("*", "")
                 content[page_title] = wikitext
-            except RuntimeError as e:
+            except Exception as e:
                 log.warning("Failed to fetch list page %s: %s", page_title, e)
         return content
 
@@ -254,6 +254,6 @@ class CategoryMembersDiscoveryStrategy:
                 data = client.parse(page=page_title, prop="wikitext")
                 wikitext = data.get("parse", {}).get("wikitext", {}).get("*", "")
                 content[page_title] = wikitext
-            except RuntimeError as e:
+            except Exception as e:
                 log.warning("Failed to fetch list page %s: %s", page_title, e)
         return content

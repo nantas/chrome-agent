@@ -391,8 +391,21 @@ def run_pipeline(args: argparse.Namespace) -> int:
             log.error("--phase homepage requires strategy 'api.homepage' configuration")
             return EXIT_STRATEGY_ERROR
         try:
+            # Merge strategy exclude_categories and CLI --exclude-category
+            strategy_excludes = (strategy.get("api", {})
+                                 .get("homepage", {})
+                                 .get("exclude_categories", None) or [])
+            cli_excludes = getattr(args, "exclude_category", None) or []
+            merged_excludes = list(set(strategy_excludes) | set(cli_excludes))
+            if merged_excludes:
+                log.info("Excluded categories: %s (source: strategy=%d, cli=%d)",
+                         ", ".join(sorted(merged_excludes)),
+                         len(strategy_excludes), len(cli_excludes))
+            else:
+                log.debug("No categories excluded")
             manifest = run_phase_0(client, strategy, origin,
-                                   platform_variant=platform_variant)
+                                   platform_variant=platform_variant,
+                                   exclude_categories=merged_excludes)
             manifest_path = os.path.join(args.output, "page_manifest.json")
             with open(manifest_path, "w", encoding="utf-8") as f:
                 json.dump(manifest, f, indent=2, ensure_ascii=False)

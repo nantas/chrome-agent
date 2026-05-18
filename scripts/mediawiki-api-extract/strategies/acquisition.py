@@ -42,13 +42,13 @@ class HybridAcquisitionStrategy:
                 html_data = client.parse(page=title, prop="text")
                 rendered = html_data.get("parse", {}).get("text", {}).get("*", "")
                 result["rendered_html"] = rendered
-            except RuntimeError as e:
+            except Exception as e:
                 log.warning("Failed to fetch rendered HTML for %s: %s", title, e)
             try:
                 img_data = client.parse(page=title, prop="images")
                 images = img_data.get("parse", {}).get("images", [])
                 result["images"] = images
-            except RuntimeError as e:
+            except Exception as e:
                 log.warning("Failed to fetch images for %s: %s", title, e)
         return result
 
@@ -71,14 +71,14 @@ class HtmlRenderedAcquisitionStrategy:
                 wt_data = client.parse(page=title, prop="wikitext")
                 wikitext = wt_data.get("parse", {}).get("wikitext", {}).get("*", "")
                 result["wikitext"] = wikitext
-            except RuntimeError as e:
+            except Exception as e:
                 log.warning("Wikitext fallback failed for %s: %s", title, e)
 
         try:
             img_data = client.parse(page=title, prop="images")
             images = img_data.get("parse", {}).get("images", [])
             result["images"] = images
-        except RuntimeError as e:
+        except Exception as e:
             log.debug("Failed to fetch images for %s: %s", title, e)
 
         return result

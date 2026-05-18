@@ -191,3 +191,5 @@ def _add_pipeline_args(parser):
                         help="Skip automatic link fixing after pipeline completion")
     parser.add_argument("--validate", action="store_true",
                         help="Run L6 validation on output")
+    parser.add_argument("--exclude-category", action="append", default=None,
+                        help="Category to exclude from Phase 0 (repeatable)")

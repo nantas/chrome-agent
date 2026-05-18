@@ -15,7 +15,8 @@ log = logging.getLogger("mediawiki-api-extract")
 
 
 def run_phase_0(client, strategy: dict, origin: str,
-                platform_variant: str = "standard") -> dict:
+                platform_variant: str = "standard",
+                exclude_categories: Optional[list[str]] = None) -> dict:
     """Execute Phase 0: homepage-driven discovery + page assignment.
 
     Pipeline:
@@ -67,6 +68,29 @@ def run_phase_0(client, strategy: dict, origin: str,
     log.info("Phase 0: Parsing homepage...")
     categories = parse_homepage(client, strategy)
     log.info("Phase 0: Discovered %d category links", len(categories))
+
+    if not categories:
+        log.warning("Phase 0: No categories found on homepage — manifest will be empty")
+        return {
+            "pages": [],
+            "phase": "homepage",
+            "source": "homepage-driven-discovery",
+            "total_pages": 0,
+            "categories_discovered": 0,
+        }
+
+    # Exclude categories (strategy + CLI merged by orchestrator)
+    exclude_set = set(exclude_categories or [])
+    if exclude_set:
+        cat_names = {c["name"] for c in categories}
+        excluded_names = exclude_set & cat_names
+        unmatched = exclude_set - cat_names
+        if excluded_names:
+            categories = [c for c in categories if c["name"] not in excluded_names]
+            log.info("Excluded %d categories: %s", len(excluded_names),
+                     ", ".join(sorted(excluded_names)))
+        for name in sorted(unmatched):
+            log.info("Exclude category '%s' not found in homepage categories — ignoring", name)
 
     if not categories:
         log.warning("Phase 0: No categories found on homepage — manifest will be empty")
