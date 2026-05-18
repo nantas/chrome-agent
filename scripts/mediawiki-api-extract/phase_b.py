@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Phase B: Content Extraction."""
 
 import logging

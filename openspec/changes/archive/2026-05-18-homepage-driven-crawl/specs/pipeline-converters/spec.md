@@ -62,3 +62,26 @@ The URL decoding behavior in `HtmlToMarkdownConverter._to_markdown_link()` SHALL
 - **WHEN** the same page with percent-encoded links is processed through both the converter and the link fixer
 - **THEN** both SHALL resolve the same set of internal links
 - **THEN** the converter SHALL NOT leave links unresolved that the link fixer can resolve
+
+### Requirement: standalone-title-url-decoding
+
+`standalone.py`'s `fetch_and_convert()` SHALL decode URL-encoded characters in the page title extracted from the URL before passing to the MediaWiki API.
+
+The title extraction logic SHALL:
+1. Extract the title slug from the URL path (after `/wiki/`)
+2. Apply `urllib.parse.unquote()` to decode percent-encoding
+3. Replace underscores with spaces
+
+#### Scenario: url-encoded-title-in-standalone
+
+- **WHEN** `fetch_and_convert()` is called with URL `https://domain/wiki/Mom%27s_Knife`
+- **THEN** the extracted title SHALL be `"Mom's Knife"` (not `"Mom%27s Knife"`)
+- **THEN** the API call SHALL use the decoded title
+- **THEN** the API SHALL NOT return a "Bad title" error
+
+#### Scenario: already-decoded-title
+
+- **WHEN** `fetch_and_convert()` is called with URL `https://domain/wiki/Simple_Title`
+- **THEN** `unquote()` SHALL be a no-op
+- **THEN** behavior SHALL be identical to pre-fix
+

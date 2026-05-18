@@ -135,6 +135,8 @@ All 22 tasks in `tasks.md` are marked `[x]` and have been verified against code:
 | D3: `--resume` default-on | ✅ Followed | `default=True` in `cli.py:184` |
 | D4: Auto link fix after pipeline | ✅ Followed | `orchestrate.py:529-538` |
 | D5: Module naming convention | ✅ Followed | `homepage_parser.py`, `page_assigner.py`, `phase_0.py`, `state.py` |
+| D6: Category: namespace discovery | ✅ Followed | `Category:` removed from skip list, auto-detection added in `homepage_parser.py` |
+| D7: api.homepage auto phase | ✅ Followed | `orchestrate.py:378-383` auto-switches to `[homepage,B,C]` |
 
 ### Code Pattern Consistency
 
@@ -164,10 +166,30 @@ None. (Initial report flagged `no_auto_fix_links` as missing CLI flag — confir
 
 ---
 
-## 5. Final Assessment
+## 5. Integration Testing Results (BOI Wiki)
 
-**All checks passed.** 22/22 tasks complete, 19/19 spec requirements verified with code evidence, 5/5 design decisions followed. 1 non-blocking SUGGESTION for CLI completeness.
+Tests executed against `bindingofisaacrebirth.wiki.gg` with full BOI strategy.
+
+### Test Results
+
+| Test | Status | Evidence |
+|------|--------|----------|
+| T1: Redirect handling | ✅ Passed | Phase 0 fetched homepage successfully via `redirects=true` |
+| T2: Category page discovery (Modes) | ✅ Passed | 7 members discovered via `categorymembers` (matches report) |
+| T3: Category page discovery (Objects) | ✅ Passed | 23 members discovered via `categorymembers` (matches report) |
+| T4: URL encoding in links | ✅ Passed | `Mom%27s_Knife` → `[Mom's Knife](Mom's_Knife.md)` |
+| T5: Auto link fix | ✅ Passed | Log: `Auto link fix: 0 fixed, 27 unchanged` |
+| T6: Resume | ✅ Passed | 3 simulated completed → skipped; 10 remaining extracted; 11 tracked |
+| T7: Cross-category relative links | ✅ Passed | `[hard mode](../modes/Hard_mode.md)` in `objects/Machines.md` |
+| T8: Standalone title URL decode | ✅ Passed | `Mom's Knife` fetch succeeds (was "Bad title" before fix) |
+| T9: Python 3.9 compatibility | ✅ Passed | All modules importable with `python3` (3.9.6) |
+| T10: api.homepage auto phase detection | ✅ Passed | Strategy with `api.homepage` auto-switches to Phase 0 |
+
+### Additional bug found & fixed during testing
+
+- **standalone.py title URL decode**: `fetch_and_convert()` title extraction (`url.split("/wiki/")[-1]`) did not decode percent-encoding, causing "Bad title" API errors for pages with `'` in titles. Fixed by adding `unquote()` call.
+- **Python 3.9 compatibility**: `dict | None` type annotation syntax requires Python 3.10+. Added `from __future__ import annotations` to `html_to_markdown.py`, `pipeline/phase_b.py`, `phase_b.py`.
 
 ### Verification Status: ✅ PASSED
 
-Ready for archive. No blocking issues found.
+All tests passed. Samples preserved at `/tmp/boi_samples_final/` for manual review.

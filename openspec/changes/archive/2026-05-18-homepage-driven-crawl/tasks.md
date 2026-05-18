@@ -15,7 +15,11 @@
 - [x] 2.1.2 `scripts/explore/main.py` — `_fetch_wikitext()` 中 API URL 增加 `&redirects=true` 参数
   - 验证：对重定向页调用 `_fetch_wikitext`，确认返回 wikitext 内容
 - [x] 2.1.3 `converters/html_to_markdown.py` — `_to_markdown_link()` 方法增加 `from urllib.parse import unquote`，在 `title.replace("_", " ")` 前调用 `unquote()`
-  - 验证：构造 `href="https://domain/wiki/Mom%27s_Knife"`，manifest 含 `"Mom's Knife"`，确认匹配成功
+  - 验证：构造 `href="https://domain/wiki/Mom%27s_Knife"`，manifest 含 `"Mom's Knife"`，确认匹配成功 → `[Mom's Knife](Mom's_Knife.md)`
+- [x] 2.1.4 `standalone.py` — `fetch_and_convert()` 中 title 提取增加 `unquote()` 解码
+  - 验证：对 `Mom's Knife` (`%27`) URL 调用 `fetch_and_convert`，确认传给 API 的是解码后的 `Mom's Knife`
+- [x] 2.1.5 Python 3.9 兼容性 — `html_to_markdown.py`、`pipeline/phase_b.py`、`phase_b.py` 增加 `from __future__ import annotations`
+  - 验证：`python3` (3.9.6) 能正常导入所有模块
 
 ### 2.2 Pipeline Extension — Phase 0
 
@@ -31,6 +35,11 @@
   - `run_phase_0(client, strategy, origin, platform_variant) -> dict`：编排 homepage_parser → 分类型发现 → page_assigner → manifest 输出
   - 对 `list_page` 类型分类使用 `prop=links` 发现，对 `category_page` 类型使用 `categorymembers` 发现
   - 输出 manifest JSON 与 Phase A 格式兼容
+- [x] 2.2.4 `homepage_parser.py` — `_extract_links_from_element()` 解除 `Category:` 命名空间链接过滤
+  - 验证：BOI 首页 gallery 中的 `Category:Modes`、`Category:Objects` 链接被提取
+- [x] 2.2.5 `homepage_parser.py` — `parse_homepage()` 增加 Category: 页面自动类型识别
+  - `page_title` 以 `Category:` 开头时自动设为 `category_page` 类型
+  - 验证：Modes 和 Objects 被标记为 `category_page`，使用 `categorymembers` 发现
 
 ### 2.3 Pipeline Integration
 
@@ -43,6 +52,9 @@
   - 失败时 log.warning，不改变 exit code
 - [x] 2.3.3 `cli.py` — `_add_pipeline_args()` 中 `--phase` choices 增加 `"homepage"`
   - 更新 `choices=["A", "B", "C", "homepage", "all"]`
+- [x] 2.3.4 `orchestrate.py` — `run_pipeline()` 增加 `api.homepage` 自动 Phase 检测
+  - 策略含 `api.homepage` 且未显式传 `--phase` 时，默认 phases 从 `["A","B","C"]` 切换为 `["homepage","B","C"]`
+  - 验证：用含 `api.homepage` 的策略运行不传 `--phase` 的 pipeline，确认走 Phase 0
 
 ### 2.4 Resume Support
 

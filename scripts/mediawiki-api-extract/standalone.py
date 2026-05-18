@@ -7,7 +7,7 @@ import json
 import logging
 import os
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from .client import ApiClient, probe_api_endpoint
 from .converters.html_to_markdown import HtmlToMarkdownConverter
@@ -43,7 +43,8 @@ def fetch_and_convert(url: str, domain: str, output: str,
         raise RuntimeError(f"Cannot reach API for {domain}")
 
     client = ApiClient(api_url)
-    title = url.split("/wiki/")[-1].replace("_", " ") if "/wiki/" in url else url
+    title = url.split("/wiki/")[-1] if "/wiki/" in url else url
+    title = unquote(title).replace("_", " ")
 
     if mode == "html":
         data = client.parse(page=title, prop="text", redirects=True)

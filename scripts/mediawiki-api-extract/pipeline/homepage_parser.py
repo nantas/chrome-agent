@@ -74,8 +74,14 @@ def parse_homepage(client, strategy: dict) -> list[dict]:
                 continue
             seen_titles.add(page_title_str)
 
-            # Determine type: section-level override > category_page_types > default
-            cat_type = category_page_types.get(link["name"], default_type)
+            # Determine type: section-level override > category_page_types > auto-detect > default
+            cat_type = category_page_types.get(link["name"], None)
+            if cat_type is None:
+                # Auto-detect: Category: namespace pages default to category_page
+                if page_title_str.startswith("Category:"):
+                    cat_type = "category_page"
+                else:
+                    cat_type = default_type
             _validate_category_type(cat_type)
 
             categories.append({
@@ -205,8 +211,8 @@ def _extract_links_from_element(element_html: str, domain: str) -> list[dict]:
         # Strip query params and fragments
         page_title = page_title.split("?")[0].split("#")[0]
 
-        # Skip non-content namespaces
-        if page_title.startswith(("File:", "Category:", "Template:",
+        # Skip non-content namespaces (except Category: which may be content category pages)
+        if page_title.startswith(("File:", "Template:",
                                    "Talk:", "Special:", "Help:", "User:")):
             continue
 

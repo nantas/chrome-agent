@@ -82,3 +82,31 @@ The system SHALL automatically invoke `fix_links_in_dir()` after Phase C complet
 
 - **WHEN** pipeline runs only Phase B (no Phase C)
 - **THEN** `fix_links_in_dir()` SHALL still be called after Phase B completes
+
+### Requirement: homepage-auto-phase-detection
+
+The system SHALL automatically use Phase 0 (homepage-driven discovery) when the strategy defines `api.homepage` and no explicit `--phase` argument was provided.
+
+The default phases SHALL change from `["A", "B", "C"]` to `["homepage", "B", "C"]` when `api.homepage` is present in the strategy.
+
+#### Scenario: auto-switch-with-homepage-config
+
+- **WHEN** pipeline is invoked without `--phase`
+- **AND** the strategy contains `api.homepage` configuration
+- **THEN** the phases SHALL be `["homepage", "B", "C"]`
+- **THEN** Phase 0 SHALL execute before Phase B
+- **THEN** Phase A SHALL be skipped
+
+#### Scenario: explicit-phase-overrides-auto
+
+- **WHEN** pipeline is invoked with `--phase A B C`
+- **AND** the strategy contains `api.homepage` configuration
+- **THEN** the phases SHALL be `["A", "B", "C"]` as explicitly specified
+- **THEN** auto-detection SHALL NOT override user intent
+
+#### Scenario: no-homepage-config-no-switch
+
+- **WHEN** pipeline is invoked without `--phase`
+- **AND** the strategy does NOT contain `api.homepage`
+- **THEN** the phases SHALL be `["A", "B", "C"]` (default)
+- **THEN** Phase 0 SHALL NOT execute

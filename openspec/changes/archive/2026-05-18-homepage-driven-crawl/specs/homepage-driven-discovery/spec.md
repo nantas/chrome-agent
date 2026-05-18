@@ -76,6 +76,45 @@ The system SHALL select the appropriate page discovery strategy based on the cat
 - **THEN** the page SHALL appear only once in the de-duplicated page list
 - **THEN** the discovery source categories SHALL be preserved for assignment
 
+
+### Requirement: category-namespace-link-inclusion
+
+The system SHALL NOT skip Category: namespace links during homepage link extraction. Category: pages linked from the homepage gallery (e.g., `Category:Objects`, `Category:Modes`) SHALL be included as discoverable categories.
+
+Previously, `_extract_links_from_element()` skipped all non-content namespaces including `Category:`. This requirement REMOVES `Category:` from the exclusion list while keeping `File:`, `Template:`, `Talk:`, `Special:`, `Help:`, and `User:` excluded.
+
+#### Scenario: category-namespace-link-discovered
+
+- **WHEN** the homepage gallery contains `<a href="/wiki/Category:Objects">Objects</a>`
+- **THEN** the link SHALL NOT be filtered out by the namespace skip list
+- **THEN** the extracted category SHALL have `page_title: "Category:Objects"` and `name: "Objects"`
+
+#### Scenario: non-content-namespaces-still-filtered
+
+- **WHEN** a link points to `File:`, `Template:`, `Talk:`, `Special:`, `Help:`, or `User:` namespace
+- **THEN** the link SHALL still be filtered out
+- **THEN** only Category: namespace is newly included among previously-filtered namespaces
+
+### Requirement: category-page-auto-detection
+
+The system SHALL auto-detect category page type from the `page_title` prefix when no explicit type is configured in `category_page_types`.
+
+If `page_title` starts with `Category:`, the type SHALL default to `category_page` regardless of the selector-level default type.
+
+Priority: `category_page_types` explicit mapping > `page_title` prefix auto-detection > selector-level `default_type`.
+
+#### Scenario: auto-detect-category-page
+
+- **WHEN** a homepage link has `page_title: "Category:Objects"` and `name: "Objects"`
+- **AND** `category_page_types` does NOT contain `"Objects"`
+- **THEN** the category type SHALL be `"category_page"` (auto-detected from prefix)
+
+#### Scenario: explicit-override-takes-precedence
+
+- **WHEN** `category_page_types` maps `"Objects"` to `"list_page"` (explicit override)
+- **AND** `page_title` starts with `Category:`
+- **THEN** the type SHALL be `"list_page"` (explicit config wins over auto-detection)
+
 ### Requirement: manifest-output-compatibility
 
 The output of homepage-driven discovery SHALL be a manifest JSON that is structurally compatible with Phase A's output format.

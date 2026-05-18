@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """HTML to Markdown converter — independent of pipeline internals.
 
 Can be imported and used standalone:

@@ -113,6 +113,8 @@ chrome-agent crawl <target> --format json
 
 If the request is not yet clearly bounded by declared strategy coverage, prefer `explore` first and return its remediation.
 
+If the user reports problems with an existing crawl (e.g., "why did X fail?", "links are missing", "category assignment is wrong"), do NOT treat this as a new explore/strategy-gap case. Instead, follow the crawl problem triage methodology defined in `AGENTS.md` § "爬取问题系统化诊断与修复": classify issues as P-line (pipeline), S-line (strategy), or W-line (workflow); map to code capabilities; design and implement a systemic solution via openspec change; then verify against the target site.
+
 ## Agent Gate (Explore → Crawl Confirmation)
 
 When `explore` returns `partial_success` with a strategy gap and the agent proceeds to sample conversion, the following Agent Gate rules are mandatory.

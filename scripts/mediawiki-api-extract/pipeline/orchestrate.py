@@ -377,6 +377,12 @@ def run_pipeline(args: argparse.Namespace) -> int:
     # Determine phases to run
     phases = args.phase if args.phase else ["A", "B", "C"]
 
+    # Auto-detect homepage-driven crawl: if strategy has api.homepage and
+    # no explicit --phase was given, switch default from Phase A to Phase 0.
+    if not args.phase and strategy.get("api", {}).get("homepage"):
+        phases = ["homepage", "B", "C"]
+        log.info("Strategy has api.homepage — auto-switching to homepage-driven discovery (Phase 0)")
+
     # --- Phase 0 (homepage-driven) ---
     if "homepage" in phases:
         # Validate api.homepage config exists
