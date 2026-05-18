@@ -13,7 +13,6 @@ _ALWAYS_CONSUMED = {"selectors"}
 
 # Pipeline source files relative to repo root
 _PIPELINE_FILES = [
-    os.path.join("scripts", "explore", "sample_converter.py"),
     os.path.join("scripts", "mediawiki-api-extract", "converters", "html_to_markdown.py"),
 ]
 
@@ -55,7 +54,7 @@ def validate(
             return {
                 "status": "fail",
                 "error": f"Pipeline source not found: {path}",
-                "strategy_to_pipeline": {"status": "fail", "dead_config": [], "partial_coverage": [], "files_checked": pipeline_names},
+                "strategy_to_pipeline": {"status": "fail", "dead_config": [], "files_checked": pipeline_names},
                 "pipeline_to_strategy": {"status": "fail", "violations": []},
             }
 
@@ -63,25 +62,21 @@ def validate(
     if not isinstance(extraction, dict):
         extraction = extraction_rules
 
-    # Check 1: Strategy → Pipeline (dual-file dead config detection)
-    dead_config, partial_coverage = _detect_dead_config_dual(extraction_rules, pipeline_paths, pipeline_names)
+    # Check 1: Strategy → Pipeline (single-file dead config detection)
+    dead_config = _detect_dead_config(extraction_rules, pipeline_paths[0])
 
-    # Check 1b: Cleanup operations enumeration (check all files)
+    # Check 1b: Cleanup operations enumeration
     all_dead = list(dead_config)
-    for pip_path, pip_name in zip(pipeline_paths, pipeline_names):
-        dead_cleanup_ops = detect_dead_cleanup_operations(extraction, pip_path)
-        for op in dead_cleanup_ops:
-            label = f"cleanup.{op} ({pip_name})"
-            if label not in all_dead:
-                all_dead.append(label)
+    dead_cleanup_ops = detect_dead_cleanup_operations(extraction, pipeline_paths[0])
+    for op in dead_cleanup_ops:
+        label = f"cleanup.{op} ({pipeline_names[0]})"
+        if label not in all_dead:
+            all_dead.append(label)
 
     s2p_status = "pass" if not all_dead else "fail"
 
-    # Check 2: Pipeline → Strategy (hardcoded value audit for ALL files)
-    all_violations = []
-    for pip_path, pip_name in zip(pipeline_paths, pipeline_names):
-        violations = _audit_pipeline(pip_path, extraction_rules, wiki_domain, pip_name)
-        all_violations.extend(violations)
+    # Check 2: Pipeline → Strategy (hardcoded value audit)
+    all_violations = _audit_pipeline(pipeline_paths[0], extraction_rules, wiki_domain, pipeline_names[0])
     p2s_status = "pass" if not all_violations else "fail"
 
     overall = "pass" if s2p_status == "pass" and p2s_status == "pass" else "fail"
@@ -91,7 +86,6 @@ def validate(
         "strategy_to_pipeline": {
             "status": s2p_status,
             "dead_config": all_dead,
-            "partial_coverage": partial_coverage,
             "files_checked": pipeline_names,
         },
         "pipeline_to_strategy": {
@@ -102,7 +96,7 @@ def validate(
 
 
 # ---------------------------------------------------------------------------
-# Check 1: Strategy → Pipeline (Dual-File Dead Config Detection)
+# Check 1: Strategy → Pipeline (Single-File Dead Config Detection)
 # ---------------------------------------------------------------------------
 
 def _read_file(path: str) -> str:
@@ -111,45 +105,29 @@ def _read_file(path: str) -> str:
         return f.read()
 
 
-def _detect_dead_config_dual(
+def _detect_dead_config(
     strategy: dict,
-    pipeline_paths: list[str],
-    pipeline_names: list[str],
-) -> tuple[list[str], list[dict]]:
-    """Return (dead_config, partial_coverage) across all pipeline files.
+    pipeline_path: str,
+) -> list[str]:
+    """Return list of dead config fields not referenced in pipeline source.
 
-    A field is dead_config if NEITHER pipeline file references it.
-    A field is partial_coverage if only ONE pipeline file references it.
-    A field is covered if EITHER pipeline file references it.
+    A field is dead_config if the pipeline file does not reference it.
+    A field is covered if the pipeline file references it.
     """
-    sources = [_read_file(p) for p in pipeline_paths]
+    source = _read_file(pipeline_path)
 
     extraction = strategy.get("extraction", strategy)
     if not isinstance(extraction, dict):
         extraction = strategy
 
     dead = []
-    partial = []
     for key in extraction:
         if key in _ALWAYS_CONSUMED:
             continue
-
-        consumed_by = []
-        for idx, source in enumerate(sources):
-            if _field_is_consumed(key, source):
-                consumed_by.append(pipeline_names[idx])
-
-        if len(consumed_by) == 0:
+        if not _field_is_consumed(key, source):
             dead.append(key)
-        elif len(consumed_by) == 1:
-            partial.append({
-                "field": key,
-                "consumed_by": consumed_by[0],
-                "missing_from": [n for n in pipeline_names if n not in consumed_by],
-                "severity": "warning",
-            })
 
-    return dead, partial
+    return dead
 
 
 def _field_is_consumed(key: str, source: str) -> bool:

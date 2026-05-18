@@ -433,12 +433,14 @@ def _apply_extraction(
     selector = extraction_rules.get("selectors", {}).get("content", "body")
     content = soup.select_one(selector) or soup.select_one("body") or soup
 
-    # Convert to Markdown
-    import markdownify
-    md = markdownify.markdownify(
+    # Convert to Markdown using HtmlToMarkdownConverter (unified conversion)
+    import importlib
+    _mod = importlib.import_module('scripts.mediawiki-api-extract.converters.html_to_markdown')
+    _convert_html_to_markdown = _mod.convert_html_to_markdown
+    md = _convert_html_to_markdown(
         str(content),
-        heading_style="atx",
-        keep_inline_images_in=["td", "th", "span", "a", "div", "p", "li"],
+        wiki_domain=base_url.replace("https://", "").replace("http://", "") if base_url else "",
+        extraction_config=extraction_rules,
     )
 
     # Prepend infobox if extracted

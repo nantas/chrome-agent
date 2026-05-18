@@ -5,6 +5,7 @@
 - Capability: `pipeline-converters`
 - 来源: `proposal.md` / 已确认 capabilities
 - 变更类型: `modified`
+- 用户确认摘要: `HtmlToMarkdownConverter` 增加公共 API 入口供外部调用；修复 Basement 空标签 bug
 
 ## 规范真源声明
 
@@ -14,199 +15,65 @@
 
 ## MODIFIED Requirements
 
-### Requirement: converters-as-independent-package
-`HtmlToMarkdownConverter`、`convert_wikitext_to_markdown`、`extract_card_stats`、`split_card_list_pages` SHALL 位于 `scripts/mediawiki_api_extract/converters/` 子包中，可被外部代码直接导入，无需启动管线或导入 `ApiClient`。
+### Requirement: public-conversion-api
 
-#### Scenario: import-html-converter-standalone
-- **WHEN** 外部脚本执行 `from scripts.mediawiki_api_extract.converters import HtmlToMarkdownConverter`
-- **THEN** 导入 SHALL 成功，无需安装或配置 `ApiClient`
+`HtmlToMarkdownConverter.convert()` at module level SHALL be exposed as a convenient standalone function for external callers (including `sample_converter.py`), accepting `html: str, wiki_domain: str, extraction_config: dict` and returning `str`.
 
-#### Scenario: import-wikitext-converter-standalone
-- **WHEN** 外部脚本执行 `from scripts.mediawiki_api_extract.converters import convert_wikitext_to_markdown`
-- **THEN** 导入 SHALL 成功
+#### Scenario: public-api-standalone-call
 
-### Requirement: backward-compatible-reexports
-`strategies/__init__.py` SHALL 重新导出所有策略类和转换器，使 `from scripts.mediawiki_api_extract.strategies import HtmlToMarkdownConverter` 等原有导入路径继续可用。
+- **WHEN** external code calls `convert_html_to_markdown(html, wiki_domain="example.com", extraction_config={...})`
+- **THEN** the function SHALL return a Markdown string
+- **AND** the function SHALL NOT require instantiation of `HtmlToMarkdownConverter` or `ApiClient`
 
-#### Scenario: legacy-import-path
-- **WHEN** 既有代码执行 `from scripts.mediawiki_api_extract.strategies import HtmlToMarkdownConverter`
-- **THEN** 导入 SHALL 成功，返回与 converters 子包中相同的类
+#### Scenario: public-api-equivalent-to-instance
 
-### Requirement: no-behavior-change
-拆分后所有既有管线的输出 SHALL 与拆分前完全一致（相同输入产生相同 .md 文件）。
+- **WHEN** `convert_html_to_markdown(html, ...)` is called
+- **AND** `HtmlToMarkdownConverter(wiki_domain=..., extraction_config=...).convert_body(html)` is called with same inputs
+- **THEN** both SHALL return identical Markdown strings
 
-#### Scenario: full-pipeline-output-unchanged
-- **WHEN** 对相同站点策略运行全量管线（Phase A→B→C）
-- **THEN** 输出 .md 文件内容 SHALL 与拆分前逐字节一致
+### Requirement: infobox-rendering-delegation
 
-### Requirement: domain-parameterization
+`HtmlToMarkdownConverter._render_infobox_table()` SHALL delegate infobox rendering logic to the shared module `converters/infox_renderer.py` instead of containing the logic inline.
 
-`HtmlToMarkdownConverter.__init__` SHALL accept `wiki_domain` as a required parameter and SHALL NOT default to any specific domain name.
+The converter SHALL remain responsible for extracting the infobox container node from the DOM and passing it to the shared module.
 
-#### Scenario: domain-required
-- **WHEN** `HtmlToMarkdownConverter` is instantiated without a `wiki_domain` argument
-- **THEN** the constructor SHALL raise a `TypeError`
-- **THEN** no default value SHALL be applied
+#### Scenario: delegation-to-shared-module
 
-#### Scenario: domain-explicit
-- **WHEN** `HtmlToMarkdownConverter(wiki_domain="example.wiki.gg")` is instantiated
-- **THEN** `self.wiki_domain` SHALL be `"example.wiki.gg"`
-- **THEN** all link normalization SHALL use the provided domain
+- **WHEN** `_render_infobox_table()` is called
+- **THEN** it SHALL call `from .infox_renderer import render_infobox_table`
+- **AND** SHALL pass the parsed node + config to the shared function
+- **AND** SHALL return the result unchanged
 
-#### Scenario: domain-from-strategy
-- **WHEN** the converter is instantiated by pipeline code (Phase B/C) or standalone extraction
-- **THEN** `wiki_domain` SHALL be read from the strategy's `api.base_url` (extracted hostname) or `domain` field
-- **THEN** the pipeline SHALL pass `wiki_domain` to the converter constructor explicitly
+### Requirement: sample-converter-delegation
 
-### Requirement: config-driven-cleanup
+`sample_converter.py` SHALL delegate HTML-to-Markdown conversion to `HtmlToMarkdownConverter` via the new public API during the `convert()` function path.
 
-`HtmlToMarkdownConverter` SHALL read cleanup selectors and image filter patterns from an `extraction_config` dictionary passed at construction time, rather than from hardcoded selector strings.
+The `_apply_extraction()` function SHALL retain its extraction logic (cleanup_selectors, image_handling, lazyload, etc.) but SHALL call `HtmlToMarkdownConverter.convert_body()` for the final HTML→Markdown conversion step instead of `markdownify.markdownify()`.
 
-#### Scenario: cleanup-from-extraction-config
-- **WHEN** `HtmlToMarkdownConverter` is instantiated with `extraction_config` containing `cleanup_selectors` list
-- **THEN** `self._REMOVAL_SELECTORS` SHALL be set from `cleanup_selectors`
-- **THEN** if `cleanup_selectors` is absent or empty, a default set SHALL be used: `(".mw-editsection", ".toc", "#toc", ".hatnote")`
+#### Scenario: explore-path-uses-html-to-markdown-converter
 
-#### Scenario: image-filter-from-extraction-config
-- **WHEN** `extraction_config` contains `image_filtering.skip_patterns` list
-- **THEN** `clean_html()` SHALL remove `<img>` elements whose `src` attribute matches any pattern in the list
-- **THEN** if `image_filtering.skip_patterns` is absent or empty, no image filtering SHALL be applied
+- **WHEN** `sample_converter.py::convert()` is called
+- **THEN** the HTML→Markdown conversion SHALL be performed by `HtmlToMarkdownConverter`
+- **AND** `markdownify.markdownify()` SHALL NOT be called
+- **AND** the same `extraction_config` SHALL be passed to `HtmlToMarkdownConverter`
 
-#### Scenario: strategy-passes-extraction-config
-- **WHEN** a strategy file defines `extraction.cleanup_selectors` and `extraction.image_filtering.skip_patterns`
-- **THEN** the pipeline SHALL pass these values to `HtmlToMarkdownConverter` at instantiation
-- **THEN** the converter SHALL apply the configured cleanup without any site-specific hardcoded overrides
+#### Scenario: explore-path-output-consistent
 
-### Requirement: balanced-element-removal-method
+- **WHEN** `sample_converter.py::convert()` processes a page
+- **AND** the same page is processed by `run_phase_b()` via `HtmlRenderedAcquisitionStrategy`
+- **THEN** both outputs SHALL have identical infobox table sections
+- **AND** both outputs SHALL have the same content structure (links, images, headings)
 
-`HtmlToMarkdownConverter` SHALL provide `remove_balanced_element(html: str, tag: str, attr_pattern: str) -> str` and `remove_all_matching(html: str, tag: str, attr_pattern: str) -> str` methods as static methods.
+### Requirement: markdownify-dependency-cleanup
 
-The `attr_pattern` parameter is a regex fragment for matching opening-tag attributes. Callers MUST ensure this is a safe regex fragment.
+If `sample_converter.py` no longer calls `markdownify.markdownify()`, the `markdownify` import and dependency SHALL be removed from `sample_converter.py` and optionally from `scripts/explore/requirements.txt`.
 
-#### Scenario: import-method-available
-- **WHEN** external code imports `HtmlToMarkdownConverter`
-- **THEN** `HtmlToMarkdownConverter.remove_balanced_element` and `HtmlToMarkdownConverter.remove_all_matching` SHALL be callable as static methods
+`BeautifulSoup` import SHALL be retained for non-conversion purposes (HTML cleanup operations in `_apply_extraction()` that occur before conversion).
 
-#### Scenario: used-for-toc-removal
-- **WHEN** `clean_html()` processes page content
-- **THEN** it SHALL perform balanced/nested-aware element removal for TOC elements (via DOM-native CSS selector decomposition or equivalent)
-- **THEN** the previous non-greedy regex approach SHALL be replaced
+#### Scenario: markdownify-removed
 
-#### Scenario: used-for-edit-section-removal
-- **WHEN** `clean_html()` processes page content
-- **THEN** it SHALL perform balanced/nested-aware element removal for edit section elements (via DOM-native CSS selector decomposition or equivalent)
+- **WHEN** `sample_converter.py` is inspected
+- **THEN** `markdownify.markdownify` SHALL NOT be imported or called
+- **AND** `markdownify` SHALL be removed from `scripts/explore/requirements.txt` if no other module requires it
 
-### Requirement: tooltip-icon-link-merge-method
-
-`HtmlToMarkdownConverter` SHALL provide `merge_tooltip_links(html: str) -> str` as a static method.
-
-#### Scenario: merge-called-before-image-conversion
-- **WHEN** `convert_body()` runs the conversion pipeline
-- **THEN** `merge_tooltip_links()` SHALL be called BEFORE `convert()`
-
-### Requirement: youtube-oembed-extraction-method
-
-`HtmlToMarkdownConverter` SHALL provide `extract_video_links(html: str) -> list[str]` that extracts YouTube video IDs from `data-mw-iframeconfig` attributes and retrieves video titles via the YouTube oEmbed API.
-
-#### Scenario: extract-youtube-titles
-- **WHEN** `extract_video_links()` processes HTML containing `data-mw-iframeconfig` with a YouTube embed URL
-- **THEN** it SHALL extract the video ID and call the YouTube oEmbed API
-- **THEN** it SHALL return a Markdown link with the video title
-
-#### Scenario: oembed-failure-fallback
-- **WHEN** the oEmbed API call fails (network error, timeout, or non-200 response)
-- **THEN** the method SHALL fall back to `- [YouTube Video (VIDEO_ID)](https://www.youtube.com/watch?v=VIDEO_ID)`
-- **THEN** it SHALL NOT raise an exception or block the conversion
-
-### Requirement: video-links-insert-into-body
-
-After extracting video links, the converter SHALL insert them into the "In-game Footage" section of the Markdown body.
-
-#### Scenario: insert-into-in-game-footage
-- **WHEN** video links were extracted and the Markdown contains `## In-game Footage`
-- **THEN** the video links SHALL be inserted immediately after the heading
-- **THEN** if no "In-game Footage" heading exists, the links SHALL be appended at the end of the body
-
-### Requirement: convert-body-pipeline-method
-
-`HtmlToMarkdownConverter` SHALL provide `convert_body(html: str, source_dir: str = "") -> str` as the primary full-pipeline entry point.
-
-#### Scenario: convert-body-ordering
-- **WHEN** `convert_body()` is called
-- **THEN** it SHALL execute: `merge_tooltip_links()` → `extract_video_links()` → `clean_html()` → `convert()` → insert video links
-
-#### Scenario: pipeline-uses-convert-body
-- **WHEN** the MediaWiki API pipeline processes HTML-rendered pages
-- **THEN** `phase_b.py` and `standalone.py` SHALL call `convert_body()` instead of `clean_html() + convert()` separately
-
-### Requirement: infobox-field-handlers
-
-`HtmlToMarkdownConverter` SHALL read `infobox_field_handlers` from `extraction_config` and apply handlers during infobox field rendering.
-
-#### Scenario: handler-applied-during-render
-- **WHEN** the converter encounters a `<div data-source="field_name">` element in a portable infobox
-- **AND** `infobox_field_handlers` contains a handler for `field_name`
-- **THEN** the converter SHALL apply the specified handler to the field's raw HTML value
-- **THEN** fields not listed in the map SHALL use the default `text` handler
-
-#### Scenario: handler-map-absent
-- **WHEN** `extraction_config` does not contain `infobox_field_handlers`
-- **THEN** all infobox fields SHALL use the default `text` handler
-- **THEN** no error SHALL be raised
-
-### Requirement: hard-dependency-selectolax
-
-The converter SHALL require `selectolax` as a hard dependency. Import failure SHALL cause an immediate `ModuleNotFoundError` at module load time, NOT a silent fallback.
-
-#### Scenario: selectolax-import-fail
-- **WHEN** `selectolax` is not installed
-- **THEN** `from scripts.mediawiki_api_extract.converters.html_to_markdown import HtmlToMarkdownConverter` SHALL raise `ModuleNotFoundError`
-- **THEN** no regex fallback SHALL be attempted
-
-### Requirement: url-encoded-title-resolution
-
-`HtmlToMarkdownConverter._to_markdown_link()` SHALL decode percent-encoded characters in wiki page titles before performing manifest lookup.
-
-The resolution logic SHALL:
-1. Extract the title slug from the href (path segment after `/wiki/`)
-2. Strip query parameters and fragments
-3. Apply `urllib.parse.unquote()` to decode percent-encoding (`%27` → `'`, `%26` → `&`, etc.)
-4. Replace underscores with spaces
-5. Look up in `title_to_path` with the decoded title
-6. Fall back to underscore-form title if decoded title not found
-
-#### Scenario: percent-encoded-apostrophe
-
-- **WHEN** `_to_markdown_link()` processes href `https://bindingofisaacrebirth.wiki.gg/wiki/Mom%27s_Knife`
-- **THEN** the title slug SHALL be decoded from `Mom%27s_Knife` to `Mom's Knife`
-- **THEN** `title_to_path.get("Mom's Knife")` SHALL be attempted
-- **THEN** if found, the link SHALL be converted to a relative Markdown link
-
-#### Scenario: percent-encoded-ampersand
-
-- **WHEN** `_to_markdown_link()` processes href containing `Jacob_%26_Esau`
-- **THEN** the title slug SHALL be decoded to `Jacob & Esau`
-- **THEN** manifest lookup SHALL use the decoded title
-
-#### Scenario: no-encoding-present
-
-- **WHEN** `_to_markdown_link()` processes href `https://example.wiki.gg/wiki/Simple_Title`
-- **THEN** `unquote()` SHALL be a no-op (no percent-encoding in title)
-- **THEN** behavior SHALL be identical to pre-fix behavior
-- **THEN** existing tests SHALL pass without modification
-
-#### Scenario: fallback-to-underscore
-
-- **WHEN** decoded title `"Mom's Knife"` is not found in `title_to_path`
-- **THEN** the system SHALL attempt `title_to_path.get("Mom's_Knife")` as fallback
-- **THEN** if still not found, SHALL return None (preserving absolute URL)
-
-### Requirement: converter-link-fixer-alignment
-
-The URL decoding behavior in `HtmlToMarkdownConverter._to_markdown_link()` SHALL be consistent with the decoding behavior already implemented in `converters/link_fixer.py`'s `fix_links_in_dir()`.
-
-#### Scenario: converter-and-fixer-consistent
-
-- **WHEN** the same page with percent-encoded links is processed through both the converter and the link fixer
-- **THEN** both SHALL resolve the same set of internal links
-- **THEN** the converter SHALL NOT leave links unresolved that the link fixer can resolve
+> **Note:** `converters/fandom_html_to_markdown.py` is the sole remaining consumer of `markdownify` in this repository. It is a standalone Fandom-specific converter outside the explore/pipeline paths and is not in scope for this change.

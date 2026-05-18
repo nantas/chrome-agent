@@ -452,66 +452,21 @@ class HtmlToMarkdownConverter:
     def _render_infobox_table(self, node, source_dir: str = "") -> str:
         """Render an infobox container as a complete Markdown table.
 
-        Collects all child fields matching field_selector, extracts
-        label/value pairs (with handler support), and renders as:
-
-            ## Infobox
-
-            | Field | Value |
-            | --- | --- |
-            | **label1** | value1 |
-            | **label2** | value2 |
-
-        Returns empty string if no fields found.
+        Delegates to the shared infox_renderer module for rendering logic.
         """
-        rows: list[tuple[str, str]] = []
+        from .infox_renderer import render_infobox_table
 
-        for field_node in node.css(self._infobox_field_selector):
-            # Extract label
-            label_node = field_node.css_first(self._infobox_label_selector)
-            if label_node:
-                label_text = self._render_inline_children(label_node)
-            else:
-                label_text = ""
-
-            # Extract value with optional handler
-            ds = field_node.attributes.get("data-source")
-            if ds and ds in self._infobox_handlers:
-                raw_html_node = field_node.css_first(self._infobox_value_selector)
-                if raw_html_node is not None:
-                    raw_html = raw_html_node.html if hasattr(raw_html_node, 'html') else ""
-                else:
-                    raw_html = ""
-                handler_cfg = self._infobox_handlers[ds]
-                if isinstance(handler_cfg, dict):
-                    handler_name = handler_cfg.get("handler", "text")
-                elif isinstance(handler_cfg, str):
-                    handler_name = handler_cfg
-                else:
-                    handler_name = "text"
-                value = self._apply_infobox_handler(handler_name, raw_html)
-            else:
-                value_node = field_node.css_first(self._infobox_value_selector)
-                if value_node:
-                    value = self._render_inline_children(value_node)
-                else:
-                    value = ""
-
-            if label_text or value:
-                rows.append((label_text, value))
-
-        if not rows:
-            return ""
-
-        table = "## Infobox\n\n"
-        table += "| Field | Value |\n"
-        table += "| --- | --- |\n"
-        for label, value in rows:
-            escaped_label = label.replace("|", "\\|")
-            escaped_value = value.replace("|", "\\|")
-            table += f"| **{escaped_label}** | {escaped_value} |\n"
-
-        return table.strip()
+        return render_infobox_table(
+            node,
+            self.config,
+            self.wiki_domain,
+            field_selector=self._infobox_field_selector,
+            label_selector=self._infobox_label_selector,
+            value_selector=self._infobox_value_selector,
+            infobox_handlers=self._infobox_handlers,
+            render_inline_children_fn=self._render_inline_children,
+            apply_handler_fn=self._apply_infobox_handler,
+        )
 
     # ------------------------------------------------------------------
     # Infobox field handlers
@@ -827,4 +782,32 @@ class HtmlToMarkdownConverter:
             yield child
             child = child.next
 
+
+# ------------------------------------------------------------------
+# Public API — standalone function for external callers
+# ------------------------------------------------------------------
+
+def convert_html_to_markdown(
+    html: str,
+    wiki_domain: str,
+    extraction_config: dict | None = None,
+) -> str:
+    """Convert HTML to Markdown using HtmlToMarkdownConverter.
+
+    Convenience wrapper for external callers (e.g. sample_converter.py)
+    that do not need to manage a converter instance.
+
+    Args:
+        html: Raw HTML string to convert.
+        wiki_domain: Wiki domain (e.g. "bindingofisaacrebirth.wiki.gg").
+        extraction_config: Optional extraction config dict from strategy.
+
+    Returns:
+        Markdown string.
+    """
+    converter = HtmlToMarkdownConverter(
+        wiki_domain=wiki_domain,
+        extraction_config=extraction_config,
+    )
+    return converter.convert_body(html)
 

@@ -75,3 +75,5 @@ If `sample_converter.py` no longer calls `markdownify.markdownify()`, the `markd
 - **WHEN** `sample_converter.py` is inspected
 - **THEN** `markdownify.markdownify` SHALL NOT be imported or called
 - **AND** `markdownify` SHALL be removed from `scripts/explore/requirements.txt` if no other module requires it
+
+> **Note:** `converters/fandom_html_to_markdown.py` is the sole remaining consumer of `markdownify` in this repository. It is a standalone Fandom-specific converter outside the explore/pipeline paths and is not in scope for this change.
