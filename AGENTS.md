@@ -424,7 +424,87 @@ stat -f '%z' "$BIN/obscura" "$BIN/obscura-worker"
 - **preflight 脚本从清单读取版本**：`obscura-cli-preflight.sh` 从 `configs/engine-versions.json` 读取 `expected_version`，不再硬编码
 - **engine-version-check.sh 是唯一检测入口**：所有版本检测逻辑集中在该脚本中，preflight 和 doctor 均通过它获取结果
 
-## 9. Reference Index（参考索引）
+## 9. Development（开发指南）
+
+### 仓库结构
+
+本仓库是脚本和配置驱动的工具仓库，无编译/构建步骤。
+
+| 目录 | 语言 | 用途 |
+|------|------|------|
+| `scripts/chrome-agent-cli.mjs` | Node.js ESM | CLI 主入口（所有命令逻辑） |
+| `scripts/chrome-agent-runtime.mjs` | Node.js ESM | 全局 launcher runtime（repo 解析 + 分发） |
+| `scripts/mediawiki-api-extract/` | Python | MediaWiki API 提取管线（多子模块包） |
+| `scripts/explore/` | Python | Deep discovery 管线（explore 命令后端） |
+| `scripts/*.sh` | Bash | Preflight、版本检测、安装脚本 |
+| `configs/` | JSON | 引擎注册、版本清单、后端签名 |
+| `sites/strategies/` | YAML+MD | 站点策略（frontmatter 为权威来源） |
+| `skills/` | MD | 全局 workflow skill 源码 |
+| `openspec/` | MD | 规范与变更管理 |
+
+### 运行测试
+
+```bash
+# 运行唯一的测试文件（Node.js 内置测试框架）
+node --test tests/chrome-agent-runtime.test.mjs
+```
+
+- 测试使用 `node:test` + `node:assert/strict`，无第三方依赖
+- 测试通过 `spawnSync` 调用 runtime/cli 脚本，需要从仓库根目录执行
+- 测试创建临时 mock repo 验证 repo 解析优先级（`CHROME_AGENT_REPO` → `repo://` override → registry fallback）
+
+**注意**：当前无 Python 测试。修改 `scripts/mediawiki-api-extract/` 或 `scripts/explore/` 时需手动验证。
+
+### Node.js 脚本约定
+
+- **纯 ESM**：所有 `.mjs` 文件使用 `import`/`export`，无 CommonJS
+- **无 TypeScript**：无编译步骤，直接运行 `.mjs`
+- **依赖**：仅 `better-sqlite3` 和 `yaml`（`package.json`）
+- **CLI 输出**：JSON-first（`--format json`），text 模式仅是渲染层
+- **函数风格**：顶级函数声明（`function xxx()`），非箭头函数
+- **路径解析**：通过 `__dirname` + `path.resolve` 推断 `repoRoot`
+
+### Python 脚本约定
+
+- **Python 3.9 兼容**：避免 `X | Y` 类型注解（3.10+ 语法），用 `Optional[X]` 代替
+  - `scripts/explore/sample_converter.py` 当前有此问题（`dict | None` 在 3.9 上报 TypeError）
+- **调用方式**：`python3 -m scripts.mediawiki-api-extract <subcommand>`（非直接执行目录）
+  - `__main__.py` 会自动 re-invoke 通过 `-m` 解决包名含连字符的问题
+- **依赖**：各子模块有独立 `requirements.txt`（如 `scripts/explore/requirements.txt`），无全局 pyproject.toml
+- **Explore 模块**：通过 `sys.path.insert(0, os.path.dirname(...))` 做本地导入
+
+### Shell 脚本约定
+
+- **shebang**：`#!/bin/sh` 或 `#!/usr/bin/env bash`
+- **错误处理**：`set -eu` 或 `set -euo pipefail`
+- **路径计算**：`SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)` + `REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)`
+- **日志**：`printf '%s\n' "$*" >&2` 模式写入 stderr
+
+### 版本检查与诊断
+
+```bash
+# 检查所有引擎版本是否匹配清单
+./scripts/engine-version-check.sh
+./scripts/engine-version-check.sh --json          # JSON 输出
+./scripts/engine-version-check.sh --update        # 自动更新
+
+# CLI doctor（需先安装全局 launcher）
+export CHROME_AGENT_REPO="$PWD"
+chrome-agent doctor --format json
+
+# 安装/更新全局 CLI launcher
+./scripts/install-chrome-agent-cli.sh
+```
+
+### 常见陷阱
+
+- **`scripts/explore/` 需要 Python 3.10+**：使用了 `dict | None` 联合类型语法。macOS 自带 3.9.6 会报 TypeError。修复时改用 `Optional[dict]`
+- **MediaWiki 提取管线的 `__main__.py` 陷阱**：不能直接 `python3 scripts/mediawiki-api-extract/`，必须用 `-m` 方式调用
+- **引擎版本升级必须同步 `configs/engine-versions.json`**：不同步哈希值会导致 preflight 持续报告 `hash_mismatch`（详见 §8 引擎版本治理）
+- **`SCRAPLING_CLI_PATH` 是唯一识别变量**：CLI 不会猜测路径，未设置时走受管安装 `$HOME/.cache/chrome-agent-scrapling/bin/scrapling`
+- **修改策略文件后必须更新 `registry.json`**：手动创建策略时需手动更新索引；`bootstrap-strategy` 命令会自动更新
+
+## 10. Reference Index（参考索引）
 
 | 文档 | 位置 | 用途 |
 |------|------|------|
