@@ -40,6 +40,17 @@ structure:
         - target: entity_page
           selector: ".mw-parser-output a[href^=\"/wiki/\"]"
       requires_auth: false
+    - id: category_page
+      label: Category Page
+      url_pattern: /wiki/Category:*
+      url_example: https://bindingofisaacrebirth.wiki.gg/wiki/Category:Objects
+      type: category
+      content_type: wiki_category
+      pagination: none
+      links_to:
+        - target: entity_page
+          selector: ".mw-parser-output a[href^='/wiki/']"
+      requires_auth: false
   entry_points:
     - main_page
 api:
@@ -53,6 +64,56 @@ api:
     - html_parse
     - wikitext_parse
     - imageinfo_query
+  homepage:
+    page_title: "Binding_of_Isaac:_Rebirth_Wiki"
+    category_sections:
+      - selector: ".gallerytext a"
+        type: list_page
+    categories:
+      - {name: "Items", dir: "items"}
+      - {name: "Trinkets", dir: "trinkets"}
+      - {name: "Bosses", dir: "bosses"}
+      - {name: "Monsters", dir: "monsters"}
+      - {name: "Characters", dir: "characters"}
+      - {name: "Cards", dir: "cards"}
+      - {name: "Challenges", dir: "challenges"}
+      - {name: "Transformations", dir: "transformations"}
+      - {name: "Chapters", dir: "chapters"}
+      - {name: "Rooms", dir: "rooms"}
+      - {name: "Mechanics", dir: "mechanics"}
+      - {name: "Achievements", dir: "achievements"}
+      - {name: "Pickups", dir: "pickups"}
+      - {name: "Effects", dir: "effects"}
+      - {name: "Curses", dir: "curses"}
+      - {name: "Seeds", dir: "seeds"}
+      - {name: "Endings", dir: "endings"}
+      - {name: "Music", dir: "music"}
+      - {name: "Modes", dir: "modes"}
+      - {name: "Objects", dir: "objects"}
+    category_page_types:
+      Modes: category_page
+      Objects: category_page
+    assignment_priority:
+      - "Items"
+      - "Bosses"
+      - "Monsters"
+      - "Characters"
+      - "Cards"
+      - "Challenges"
+      - "Transformations"
+      - "Chapters"
+      - "Rooms"
+      - "Mechanics"
+      - "Achievements"
+      - "Pickups"
+      - "Effects"
+      - "Curses"
+      - "Seeds"
+      - "Endings"
+      - "Music"
+      - "Trinkets"
+      - "Modes"
+      - "Objects"
   namespaces: [0]
   content_profile:
     discovery_strategy: "allpages"
@@ -314,6 +375,7 @@ Sample validation completed with 20 pages across all content categories.
 | KI-4 | S8 template-embedded headings | resolved | P3 | pipeline | Template headings not standard mw-headline | Template artifacts — only triggers on pages with such templates |
 | KI-5 | Infobox field value concatenation | resolved | P1 | pipeline | `![]()[text](url)` without space between image and link | Pipeline: post-processing regex ensures space between image and following link |
 | KI-6 | Collectible ID 'None' prefix | resolved | P0 | pipeline | Shows 'None1' instead of '1' | Pipeline: decompose `.infobox-nav-prev` + `.infobox-nav-next` before extraction |
+| KI-7 | Link index construction & injection verification | open | P2 | pipeline | Homepage-driven crawl produces pages with absolute URLs after initial conversion | Pipeline auto-calls `fix_links_in_dir()` after extraction to convert to relative links |
 ## Evidence
 
 - Siteinfo: `api.php?action=query&meta=siteinfo&siprop=general|statistics|namespaces` — validated 2026-05-16
