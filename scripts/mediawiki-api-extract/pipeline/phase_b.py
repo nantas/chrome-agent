@@ -3,6 +3,7 @@
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import Optional
 
 from ..client import ApiClient, PageNotFoundError
 from ..strategies import ContentAcquisitionStrategy, HtmlRenderedAcquisitionStrategy, HtmlToMarkdownConverter, LinkResolver, TemplateProcessor
@@ -164,8 +165,25 @@ def run_phase_b(client: ApiClient, manifest: dict, strategy: dict,
                 link_resolver: LinkResolver,
                 template_processor: TemplateProcessor,
                 *,
-                platform_variant: str = "standard") -> tuple[dict, dict]:
+                platform_variant: str = "standard",
+                completed_pages: Optional[set] = None,
+                output_dir: Optional[str] = None,
+                resume_flush_interval: int = 100) -> tuple[dict, dict]:
     """Execute Phase B: Content Extraction.
+
+    Args:
+        client: ApiClient instance.
+        manifest: Page manifest dict with ``pages`` list.
+        strategy: Strategy configuration dict.
+        rate_limit_config: Rate limit configuration.
+        domain: Wiki domain.
+        content_strategy: Content acquisition strategy.
+        link_resolver: Link resolver.
+        template_processor: Template processor.
+        platform_variant: Platform variant string.
+        completed_pages: Set of already-completed page titles (for resume).
+        output_dir: Output directory (needed for resume file existence checks).
+        resume_flush_interval: Pages processed between state file flushes.
 
     Returns:
         (results_map, stats) where results_map is title -> {content, status},
@@ -177,11 +195,33 @@ def run_phase_b(client: ApiClient, manifest: dict, strategy: dict,
     template_map = output_config.get("template_map", {})
 
     pages = manifest["pages"]
+
+    # Filter out already-completed pages (resume mode)
+    if completed_pages is not None and output_dir:
+        filtered_pages = []
+        resumed_count = 0
+        from .state import is_page_completed, save_state
+        resume_state = {"completed_pages": list(completed_pages)}
+        for page in pages:
+            title = page["title"]
+            target_dir = page.get("target_directory", "")
+            target_filename = page.get("target_filename", f"{title.replace(' ', '_')}.md")
+            if is_page_completed(resume_state, title, output_dir, target_dir, target_filename):
+                resumed_count += 1
+                log.info("Skipping '%s' (already completed/resumed)", title)
+            else:
+                filtered_pages.append(page)
+        pages = filtered_pages
+        if resumed_count > 0:
+            log.info("Resume mode: skipping %d already-completed pages, extracting %d remaining",
+                     resumed_count, len(pages))
+
     results = {}
     success_count = 0
     failure_count = 0
     skipped_count = 0
     all_warnings = []
+    pages_since_flush = 0
 
     concurrency = rate_limit_config.concurrency if rate_limit_config else 1
     batch_delay_sec = (rate_limit_config.batch_delay_ms / 1000.0) if rate_limit_config else 1.0
@@ -221,6 +261,25 @@ def run_phase_b(client: ApiClient, manifest: dict, strategy: dict,
                 results[title] = {"title": title, "status": "error", "error": str(e)}
                 failure_count += 1
 
+            # Flush state periodically if resume is active
+            if completed_pages is not None and output_dir:
+                pages_since_flush += 1
+                if pages_since_flush >= resume_flush_interval and success_count > 0:
+                    try:
+                        updated_completed = set(completed_pages) | {
+                            k for k, v in results.items()
+                            if v.get("status") == "ok"
+                        }
+                        state = {
+                            "completed_pages": list(updated_completed),
+                            "phase": "B",
+                            "total_pages": len(manifest["pages"]),
+                        }
+                        save_state(output_dir, state)
+                        pages_since_flush = 0
+                    except Exception as e:
+                        log.warning("State flush failed (non-fatal): %s", e)
+
             done = success_count + failure_count + skipped_count
             if done % 50 == 0:
                 log.info("Phase B progress: %d/%d (success=%d, skipped=%d, failure=%d)",
@@ -229,7 +288,8 @@ def run_phase_b(client: ApiClient, manifest: dict, strategy: dict,
             time.sleep(batch_delay_sec)
 
     stats = {
-        "total": len(pages),
+        "total": len(manifest["pages"]),
+        "extracted_this_run": len(pages),
         "success": success_count,
         "skipped": skipped_count,
         "failure": failure_count,

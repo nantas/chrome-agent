@@ -8,10 +8,13 @@ from dataclasses import dataclass
 from typing import Optional
 from urllib.parse import urlparse
 
+from ..converters.link_fixer import fix_links_in_dir
+
 from ..client import ApiClient, probe_api_endpoint
 from .phase_a import run_phase_a
 from .phase_b import run_phase_b
 from .phase_c import run_phase_c
+from .phase_0 import run_phase_0
 from ..strategies import (
     AllPagesDiscoveryStrategy,
     CategoryMembersDiscoveryStrategy,
@@ -374,6 +377,25 @@ def run_pipeline(args: argparse.Namespace) -> int:
     # Determine phases to run
     phases = args.phase if args.phase else ["A", "B", "C"]
 
+    # --- Phase 0 (homepage-driven) ---
+    if "homepage" in phases:
+        # Validate api.homepage config exists
+        homepage_cfg = strategy.get("api", {}).get("homepage")
+        if not homepage_cfg:
+            log.error("--phase homepage requires strategy 'api.homepage' configuration")
+            return EXIT_STRATEGY_ERROR
+        try:
+            manifest = run_phase_0(client, strategy, origin,
+                                   platform_variant=platform_variant)
+            manifest_path = os.path.join(args.output, "page_manifest.json")
+            with open(manifest_path, "w", encoding="utf-8") as f:
+                json.dump(manifest, f, indent=2, ensure_ascii=False)
+            log.info("Phase 0 manifest saved to %s (%d pages)",
+                     manifest_path, len(manifest.get("pages", [])))
+        except Exception as e:
+            log.error("Phase 0 (homepage) failed: %s", e)
+            return EXIT_PHASE_A_FAILURE
+
     # --- Phase A ---
     if "A" in phases or "all" in phases:
         try:
@@ -392,6 +414,27 @@ def run_pipeline(args: argparse.Namespace) -> int:
             manifest = json.load(f)
         log.info("Loaded existing manifest: %d pages", len(manifest["pages"]))
 
+    # --- Resume state initialization ---
+    completed_pages_set = None
+    resume_enabled = getattr(args, "resume", True) and not getattr(args, "no_resume", False)
+    resume_flush_interval = getattr(args, "resume_flush_interval", 100)
+
+    if resume_enabled and "B" in phases or "all" in phases or "homepage" in phases:
+        from .state import load_state, initialize_state, save_state
+
+        existing_state = load_state(args.output)
+        if existing_state.get("completed_pages"):
+            log.info("Resume mode: found %d previously completed pages",
+                     len(existing_state["completed_pages"]))
+            completed_pages_set = set(existing_state["completed_pages"])
+        else:
+            # Initialize fresh state
+            completed_pages_set = set()
+            initialize_state(args.output, manifest, phase="B")
+            log.info("Resume mode: initialized fresh pipeline state")
+    else:
+        log.info("Resume disabled or not applicable — starting fresh")
+
     # --- Phase B ---
     results = None
     stats = None
@@ -400,7 +443,10 @@ def run_pipeline(args: argparse.Namespace) -> int:
             results, stats = run_phase_b(
                 client, manifest, strategy, rate_limit_config, domain,
                 strategies.content_acquisition, strategies.link_resolver, strategies.template_processor,
-                platform_variant=platform_variant
+                platform_variant=platform_variant,
+                completed_pages=completed_pages_set,
+                output_dir=args.output,
+                resume_flush_interval=resume_flush_interval,
             )
 
             if stats["failure_rate"] > 0.5:
@@ -436,6 +482,21 @@ def run_pipeline(args: argparse.Namespace) -> int:
             }
         log.info("Loaded existing results: %d pages", len(results))
 
+    # Flush state after Phase B completion
+    if resume_enabled and results is not None and completed_pages_set is not None:
+        from .state import save_state
+        all_completed = set(completed_pages_set) | {
+            title for title, r in results.items()
+            if r.get("status") == "ok"
+        }
+        final_state = {
+            "completed_pages": list(all_completed),
+            "phase": "B" if "C" not in phases else "B_done",
+            "total_pages": len(manifest.get("pages", [])),
+        }
+        save_state(args.output, final_state)
+        log.info("State flushed: %d completed pages", len(all_completed))
+
     # --- Phase C ---
     if "C" in phases or "all" in phases:
         try:
@@ -448,6 +509,34 @@ def run_pipeline(args: argparse.Namespace) -> int:
         except Exception as e:
             log.error("Phase C failed: %s", e)
             return EXIT_PHASE_C_FAILURE
+
+    # Flush final state after Phase C
+    if resume_enabled and completed_pages_set is not None:
+        from .state import save_state
+        final_completed = list(completed_pages_set) if results is None else list(
+            completed_pages_set | {
+                title for title, r in results.items()
+                if r.get("status") == "ok"
+            }
+        )
+        save_state(args.output, {
+            "completed_pages": final_completed,
+            "phase": "done",
+            "total_pages": len(manifest.get("pages", [])),
+        })
+
+    # --- Auto Link Fix ---
+    # Run fix_links_in_dir after Phase C (or after Phase B if no Phase C)
+    # to resolve any remaining absolute wiki URLs to relative links.
+    did_extraction = "B" in phases or "all" in phases or "C" in phases or "homepage" in phases
+    if did_extraction and not getattr(args, "no_auto_fix_links", False):
+        manifest_pages = manifest.get("pages", [])
+        try:
+            result = fix_links_in_dir(args.output, domain, manifest_pages)
+            log.info("Auto link fix: %d fixed, %d unchanged",
+                     result.get("fixed", 0), result.get("unchanged", 0))
+        except Exception as e:
+            log.warning("Auto link fix failed (non-fatal): %s", e)
 
     # --- L6 Validation ---
     if args.validate or ("C" in phases or "all" in phases):

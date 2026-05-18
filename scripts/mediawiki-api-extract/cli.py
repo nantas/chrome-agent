@@ -176,9 +176,18 @@ def _add_pipeline_args(parser):
                         help="Exponential backoff multiplier")
     parser.add_argument("--jitter", action="store_true", default=None,
                         help="Enable jitter on retry delays")
-    parser.add_argument("--phase", nargs="+", choices=["A", "B", "C", "all"],
+    parser.add_argument("--phase", nargs="+",
+                        choices=["A", "B", "C", "homepage", "all"],
                         default=["all"], help="Phases to run")
     parser.add_argument("--no-api-probe", action="store_true",
                         help="Skip API endpoint probing")
+    parser.add_argument("--resume", action="store_true", default=True,
+                        help="Enable resume from checkpoint (default: on)")
+    parser.add_argument("--no-resume", action="store_true", default=None,
+                        help="Disable resume, start fresh")
+    parser.add_argument("--resume-flush-interval", type=int, default=100,
+                        help="Pages processed between state file flushes (default: 100)")
+    parser.add_argument("--no-auto-fix-links", action="store_true",
+                        help="Skip automatic link fixing after pipeline completion")
     parser.add_argument("--validate", action="store_true",
                         help="Run L6 validation on output")
