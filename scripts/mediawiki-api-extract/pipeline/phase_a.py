@@ -1,6 +1,7 @@
 """Phase A: Page Discovery."""
 
 import logging
+from typing import Optional
 
 from ..client import ApiClient
 from ..strategies import DiscoveryStrategy, title_to_filepath
@@ -11,7 +12,8 @@ log = logging.getLogger("mediawiki-api-extract")
 def run_phase_a(client: ApiClient, strategy: dict, origin: str,
                 discovery_strategy: DiscoveryStrategy,
                 *,
-                platform_variant: str = "standard") -> dict:
+                platform_variant: str = "standard",
+                exclude_categories: Optional[list[str]] = None) -> dict:
     """Execute Phase A: Page Discovery. Returns manifest dict."""
     api = strategy.get("api", {})
     taxonomy = api.get("taxonomy", {})
@@ -19,9 +21,9 @@ def run_phase_a(client: ApiClient, strategy: dict, origin: str,
     page_categories = taxonomy.get("page_categories", {})
     category_filters = taxonomy.get("category_filters", [])
 
-    log.info("Phase A: Discovering pages... (platform_variant=%s)", platform_variant)
+    log.info("Allpages discovery: Discovering pages... (platform_variant=%s)", platform_variant)
     pages = discovery_strategy.discover_pages(client, strategy)
-    log.info("Discovered %d pages", len(pages))
+    log.info("Allpages discovery: Discovered %d pages", len(pages))
 
     # Fandom translation page filtering
     if platform_variant == "fandom":
@@ -57,17 +59,29 @@ def run_phase_a(client: ApiClient, strategy: dict, origin: str,
                 log.info("Filtered %d pages (missing in prop=info, %.1f%%)", filtered_missing, pct)
 
     page_titles = [p["title"] for p in pages]
-    log.info("Phase A: Discovering categories for %d pages...", len(page_titles))
+    log.info("Allpages discovery: Discovering categories for %d pages...", len(page_titles))
     categories_map = discovery_strategy.discover_categories(client, page_titles)
     log.info("Categories discovered for %d pages", len(categories_map))
 
-    log.info("Phase A: Fetching list page content (%d pages)...", len(list_pages))
+    log.info("Allpages discovery: Fetching list page content (%d pages)...", len(list_pages))
     try:
         list_page_content = discovery_strategy.fetch_list_pages(client, list_pages)
     except Exception as e:
         log.warning("Failed to fetch list page content: %s — continuing without", e)
         list_page_content = {}
     log.info("List page content fetched for %d pages", len(list_page_content))
+
+    # Apply exclude_categories filtering
+    exclude_set = set(exclude_categories or [])
+    if exclude_set:
+        before_filter = len(pages)
+        pages = [
+            p for p in pages
+            if not (exclude_set & set(categories_map.get(p["title"], [])))
+        ]
+        excluded = before_filter - len(pages)
+        if excluded:
+            log.info("Excluded %d pages matching excluded categories", excluded)
 
     # Build manifest
     namespaces = api.get("namespaces", [api.get("namespace", 0)])
@@ -118,7 +132,7 @@ def run_phase_a(client: ApiClient, strategy: dict, origin: str,
     misc_count = sum(1 for p in manifest["pages"] if p["target_directory"] == "Misc")
     total_count = len(manifest["pages"])
     misc_pct = (misc_count / total_count * 100) if total_count > 0 else 0
-    log.info("Phase A complete: %d pages classified. Misc: %d (%.1f%%)",
+    log.info("Allpages discovery complete: %d pages classified. Misc: %d (%.1f%%)",
              total_count, misc_count, misc_pct)
 
     return manifest

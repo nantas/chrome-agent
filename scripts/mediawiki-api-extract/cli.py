@@ -17,6 +17,29 @@ def cmd_pipeline(args):
     except ImportError:
         print("ERROR: 'pyyaml' package is required. Install with: pip install pyyaml", file=sys.stderr)
         return EXIT_INVALID_ARGS
+
+    # Handle deprecated --phase values
+    if args.phase:
+        normalized = []
+        for p in args.phase:
+            if p == "homepage":
+                print("DEPRECATED: --phase homepage is deprecated. Use --discovery homepage instead.", file=sys.stderr)
+                if args.discovery == "auto":
+                    args.discovery = "homepage"
+                normalized.append("all")
+            elif p == "A":
+                print("DEPRECATED: --phase A is deprecated. Use --phase extract with --discovery <strategy>.", file=sys.stderr)
+                normalized.append("extract")
+            elif p == "B":
+                print("DEPRECATED: --phase B is deprecated. Use --phase extract instead.", file=sys.stderr)
+                normalized.append("extract")
+            elif p == "C":
+                print("DEPRECATED: --phase C is deprecated. Use --phase assemble instead.", file=sys.stderr)
+                normalized.append("assemble")
+            else:
+                normalized.append(p)
+        args.phase = normalized
+
     return run_pipeline(args)
 
 
@@ -177,8 +200,11 @@ def _add_pipeline_args(parser):
     parser.add_argument("--jitter", action="store_true", default=None,
                         help="Enable jitter on retry delays")
     parser.add_argument("--phase", nargs="+",
-                        choices=["A", "B", "C", "homepage", "all"],
-                        default=["all"], help="Phases to run")
+                        choices=["all", "extract", "assemble", "A", "B", "C", "homepage"],
+                        default=["all"], help='Phases to run ("all", "extract", "assemble"; deprecated: A=extract, B=extract, C=assemble, homepage=--discovery homepage)')
+    parser.add_argument("--discovery",
+                        choices=["auto", "allpages", "homepage"],
+                        default="auto", help="Discovery strategy (default: auto)")
     parser.add_argument("--no-api-probe", action="store_true",
                         help="Skip API endpoint probing")
     parser.add_argument("--resume", action="store_true", default=True,
@@ -192,4 +218,4 @@ def _add_pipeline_args(parser):
     parser.add_argument("--validate", action="store_true",
                         help="Run L6 validation on output")
     parser.add_argument("--exclude-category", action="append", default=None,
-                        help="Category to exclude from Phase 0 (repeatable)")
+                        help="Category to exclude (repeatable)")

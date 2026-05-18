@@ -249,6 +249,29 @@ def _load_anti_crawl_strategy(anti_crawl_id: str) -> Optional[dict]:
     return yaml.safe_load(parts[1])
 
 
+# ===========================================================================
+# Exclude categories resolution
+# ===========================================================================
+
+def _resolve_exclude_categories(strategy: dict, cli_excludes: list[str]) -> list[str]:
+    """Resolve exclude_categories via priority chain.
+
+    Priority:
+    1. api.exclude_categories (new top-level location)
+    2. api.homepage.exclude_categories (legacy fallback)
+    3. CLI --exclude-category arguments (merged union)
+    """
+    api_config = strategy.get("api", {})
+    top_level = api_config.get("exclude_categories", None) or []
+    legacy = api_config.get("homepage", {}).get("exclude_categories", None) or []
+
+    merged = list(set(top_level) | set(legacy) | set(cli_excludes))
+    if merged:
+        log.info("Excluded categories: %s (api.exclude_categories=%d, api.homepage.exclude_categories=%d, cli=%d)",
+                 ", ".join(sorted(merged)), len(top_level), len(legacy), len(cli_excludes))
+    return merged
+
+
 def resolve_rate_limit_config(strategy: dict, cli_args: argparse.Namespace) -> RateLimitConfig:
     """Resolve final rate limit configuration using four-layer priority.
     
@@ -374,59 +397,79 @@ def run_pipeline(args: argparse.Namespace) -> int:
     # Create output directory
     os.makedirs(args.output, exist_ok=True)
 
-    # Determine phases to run
-    phases = args.phase if args.phase else ["A", "B", "C"]
+    # ===========================================================================
+    # Discovery phase resolution
+    # ===========================================================================
+    # Resolve discovery strategy based on --discovery CLI and strategy config
+    discovery_strategy = getattr(args, "discovery", "auto")
+    has_homepage = bool(strategy.get("api", {}).get("homepage"))
 
-    # Auto-detect homepage-driven crawl: if strategy has api.homepage and
-    # no explicit --phase was given, switch default from Phase A to Phase 0.
-    if not args.phase and strategy.get("api", {}).get("homepage"):
-        phases = ["homepage", "B", "C"]
-        log.info("Strategy has api.homepage — auto-switching to homepage-driven discovery (Phase 0)")
+    # Resolve exclude_categories via priority chain
+    cli_excludes = getattr(args, "exclude_category", None) or []
+    merged_excludes = _resolve_exclude_categories(strategy, cli_excludes)
 
-    # --- Phase 0 (homepage-driven) ---
-    if "homepage" in phases:
-        # Validate api.homepage config exists
-        homepage_cfg = strategy.get("api", {}).get("homepage")
-        if not homepage_cfg:
-            log.error("--phase homepage requires strategy 'api.homepage' configuration")
+    _dispatch_discovery = None  # "allpages" or "homepage"
+    if discovery_strategy == "homepage":
+        if not has_homepage:
+            log.error("Strategy has no 'api.homepage' configuration — cannot use homepage discovery")
             return EXIT_STRATEGY_ERROR
-        try:
-            # Merge strategy exclude_categories and CLI --exclude-category
-            strategy_excludes = (strategy.get("api", {})
-                                 .get("homepage", {})
-                                 .get("exclude_categories", None) or [])
-            cli_excludes = getattr(args, "exclude_category", None) or []
-            merged_excludes = list(set(strategy_excludes) | set(cli_excludes))
-            if merged_excludes:
-                log.info("Excluded categories: %s (source: strategy=%d, cli=%d)",
-                         ", ".join(sorted(merged_excludes)),
-                         len(strategy_excludes), len(cli_excludes))
+        _dispatch_discovery = "homepage"
+        log.info("Explicit --discovery homepage — using homepage discovery")
+    elif discovery_strategy == "allpages":
+        _dispatch_discovery = "allpages"
+        if has_homepage:
+            log.info("Discovery strategy overridden to allpages by --discovery flag")
+        else:
+            log.info("Explicit --discovery allpages — using allpages discovery")
+    else:  # auto
+        if has_homepage:
+            _dispatch_discovery = "homepage"
+            # Check if discovery_strategy in content_profile contradicts
+            content_ds = strategy.get("api", {}).get("content_profile", {}).get("discovery_strategy")
+            if content_ds and content_ds != "allpages":
+                log.warning("api.homepage defined — using homepage discovery despite discovery_strategy: %s. Use --discovery allpages to override.", content_ds)
             else:
-                log.debug("No categories excluded")
-            manifest = run_phase_0(client, strategy, origin,
-                                   platform_variant=platform_variant,
-                                   exclude_categories=merged_excludes)
-            manifest_path = os.path.join(args.output, "page_manifest.json")
-            with open(manifest_path, "w", encoding="utf-8") as f:
-                json.dump(manifest, f, indent=2, ensure_ascii=False)
-            log.info("Phase 0 manifest saved to %s (%d pages)",
-                     manifest_path, len(manifest.get("pages", [])))
-        except Exception as e:
-            log.error("Phase 0 (homepage) failed: %s", e)
-            return EXIT_PHASE_A_FAILURE
+                log.info("Strategy has api.homepage — using homepage discovery")
+        else:
+            _dispatch_discovery = "allpages"
+            log.info("No api.homepage config — using allpages discovery")
 
-    # --- Phase A ---
-    if "A" in phases or "all" in phases:
-        try:
-            manifest = run_phase_a(client, strategy, origin, strategies.discovery,
-                                       platform_variant=platform_variant)
-            manifest_path = os.path.join(args.output, "page_manifest.json")
-            with open(manifest_path, "w", encoding="utf-8") as f:
-                json.dump(manifest, f, indent=2, ensure_ascii=False)
-            log.info("Manifest saved to %s", manifest_path)
-        except Exception as e:
-            log.error("Phase A failed: %s", e)
-            return EXIT_PHASE_A_FAILURE
+    # Determine phases to run
+    phases = args.phase if args.phase else ["all"]
+
+    # --- Discovery phase ---
+    if "all" in phases or "extract" in phases or "assemble" in phases:
+        if _dispatch_discovery == "homepage":
+            try:
+                log.info("Running homepage discovery...")
+                manifest = run_phase_0(client, strategy, origin,
+                                       platform_variant=platform_variant,
+                                       exclude_categories=merged_excludes)
+                manifest_path = os.path.join(args.output, "page_manifest.json")
+                with open(manifest_path, "w", encoding="utf-8") as f:
+                    json.dump(manifest, f, indent=2, ensure_ascii=False)
+                log.info("Homepage discovery manifest saved to %s (%d pages)",
+                         manifest_path, len(manifest.get("pages", [])))
+            except Exception as e:
+                log.error("Homepage discovery failed: %s", e)
+                return EXIT_PHASE_A_FAILURE
+        elif _dispatch_discovery == "allpages":
+            try:
+                log.info("Running allpages discovery...")
+                manifest = run_phase_a(client, strategy, origin, strategies.discovery,
+                                       platform_variant=platform_variant,
+                                       exclude_categories=merged_excludes)
+                manifest_path = os.path.join(args.output, "page_manifest.json")
+                with open(manifest_path, "w", encoding="utf-8") as f:
+                    json.dump(manifest, f, indent=2, ensure_ascii=False)
+                log.info("Allpages discovery manifest saved to %s (%d pages)",
+                         manifest_path, len(manifest.get("pages", [])))
+            except Exception as e:
+                log.error("Allpages discovery failed: %s", e)
+                return EXIT_PHASE_A_FAILURE
+        else:
+            log.error("No discovery strategy resolved")
+            return EXIT_STRATEGY_ERROR
     else:
         manifest_path = os.path.join(args.output, "page_manifest.json")
         with open(manifest_path, "r", encoding="utf-8") as f:
@@ -438,7 +481,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
     resume_enabled = getattr(args, "resume", True) and not getattr(args, "no_resume", False)
     resume_flush_interval = getattr(args, "resume_flush_interval", 100)
 
-    if resume_enabled and "B" in phases or "all" in phases or "homepage" in phases:
+    if resume_enabled and ("extract" in phases or "all" in phases):
         from .state import load_state, initialize_state, save_state
 
         existing_state = load_state(args.output)
@@ -454,10 +497,10 @@ def run_pipeline(args: argparse.Namespace) -> int:
     else:
         log.info("Resume disabled or not applicable — starting fresh")
 
-    # --- Phase B ---
+    # --- Extraction Phase (B) ---
     results = None
     stats = None
-    if "B" in phases or "all" in phases:
+    if "extract" in phases or "all" in phases:
         try:
             results, stats = run_phase_b(
                 client, manifest, strategy, rate_limit_config, domain,
@@ -469,7 +512,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
             )
 
             if stats["failure_rate"] > 0.5:
-                log.error("Phase B failure rate %.1f%% exceeds 50%% threshold — fallback required",
+                log.error("Extraction phase failure rate %.1f%% exceeds 50%% threshold — fallback required",
                           stats["failure_rate"] * 100)
                 return EXIT_PHASE_B_FAILURE
 
@@ -482,9 +525,9 @@ def run_pipeline(args: argparse.Namespace) -> int:
                               for title, r in results.items()},
                 }, f, indent=2, ensure_ascii=False)
         except Exception as e:
-            log.error("Phase B failed: %s", e)
+            log.error("Extraction phase failed: %s", e)
             return EXIT_PHASE_B_FAILURE
-    elif "C" in phases:
+    elif "assemble" in phases:
         results_path = os.path.join(args.output, "extraction_results.json")
         with open(results_path, "r", encoding="utf-8") as f:
             saved = json.load(f)
@@ -501,7 +544,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
             }
         log.info("Loaded existing results: %d pages", len(results))
 
-    # Flush state after Phase B completion
+    # Flush state after extraction completion
     if resume_enabled and results is not None and completed_pages_set is not None:
         from .state import save_state
         all_completed = set(completed_pages_set) | {
@@ -510,26 +553,26 @@ def run_pipeline(args: argparse.Namespace) -> int:
         }
         final_state = {
             "completed_pages": list(all_completed),
-            "phase": "B" if "C" not in phases else "B_done",
+            "phase": "extract" if "assemble" not in phases else "extract_done",
             "total_pages": len(manifest.get("pages", [])),
         }
         save_state(args.output, final_state)
         log.info("State flushed: %d completed pages", len(all_completed))
 
-    # --- Phase C ---
-    if "C" in phases or "all" in phases:
+    # --- Assembly Phase (C) ---
+    if "assemble" in phases or "all" in phases:
         try:
             phase_c_stats = run_phase_c(
                 args.output, manifest, results, strategy, domain,
                 strategies.list_page_assembler, strategies.link_resolver,
                 client=client
             )
-            log.info("Phase C stats: %s", json.dumps(phase_c_stats, indent=2))
+            log.info("Assembly phase stats: %s", json.dumps(phase_c_stats, indent=2))
         except Exception as e:
-            log.error("Phase C failed: %s", e)
+            log.error("Assembly phase failed: %s", e)
             return EXIT_PHASE_C_FAILURE
 
-    # Flush final state after Phase C
+    # Flush final state after assembly completion
     if resume_enabled and completed_pages_set is not None:
         from .state import save_state
         final_completed = list(completed_pages_set) if results is None else list(
@@ -545,9 +588,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         })
 
     # --- Auto Link Fix ---
-    # Run fix_links_in_dir after Phase C (or after Phase B if no Phase C)
-    # to resolve any remaining absolute wiki URLs to relative links.
-    did_extraction = "B" in phases or "all" in phases or "C" in phases or "homepage" in phases
+    did_extraction = "extract" in phases or "all" in phases or "assemble" in phases
     if did_extraction and not getattr(args, "no_auto_fix_links", False):
         manifest_pages = manifest.get("pages", [])
         try:
@@ -558,7 +599,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
             log.warning("Auto link fix failed (non-fatal): %s", e)
 
     # --- L6 Validation ---
-    if args.validate or ("C" in phases or "all" in phases):
+    if args.validate or ("assemble" in phases or "all" in phases):
         try:
             from ..strategies import run_validation
             report = run_validation(args.output, client)

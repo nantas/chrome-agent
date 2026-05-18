@@ -120,7 +120,16 @@ api:
       - "Modding"
       - "Version History"
   namespaces: [0]
+  # New top-level exclude_categories. Legacy alias at api.homepage.exclude_categories
+  # still works as fallback. Both are merged (union) at runtime.
+  exclude_categories:
+    - "Music"
+    - "Modding"
+    - "Version History"
   content_profile:
+    # discovery_strategy is treated as hint for --discovery auto.
+    # When api.homepage is defined, homepage discovery takes precedence
+    # over discovery_strategy. Use --discovery allpages to override.
     discovery_strategy: "allpages"
     content_acquisition: "html_rendered"
     link_resolver: "short_name_with_cross_namespace"
@@ -167,6 +176,14 @@ api:
       Achievements: "Achievements"
       Pickups: "Pickups"
       Modding: "Modding"
+      Stages: "Chapters"
+      Runes: "Runes"
+      Item pools: "Item_pools"
+      Disambiguations: "Disambiguations"
+      Versions: "Versions"
+      Objects: "Objects"
+      Bugs: "Bugs"
+      Item tags: "Item_tags"
     category_filters:
       - "Binding of Isaac: Rebirth Wiki"
       - "Disambiguations"

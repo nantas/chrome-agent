@@ -11,8 +11,11 @@ from typing import Optional
 # Fields that are always consumed by pipeline infrastructure (not checked)
 _ALWAYS_CONSUMED = {"selectors"}
 
-# Pipeline source file relative to repo root
-_PIPELINE_REL = os.path.join("scripts", "explore", "sample_converter.py")
+# Pipeline source files relative to repo root
+_PIPELINE_FILES = [
+    os.path.join("scripts", "explore", "sample_converter.py"),
+    os.path.join("scripts", "mediawiki-api-extract", "converters", "html_to_markdown.py"),
+]
 
 
 def validate(
@@ -24,6 +27,9 @@ def validate(
     skip_patterns: Optional[list[str]] = None,
 ) -> dict:
     """Architecture Gate entry point.
+
+    Validates alignment between strategy extraction config and ALL pipeline
+    converter files (sample_converter.py AND html_to_markdown.py).
 
     Args:
         samples: List of sample dicts with 'title', 'url', 'type' keys.
@@ -39,36 +45,44 @@ def validate(
     # Determine repo root from this file's location
     this_dir = os.path.dirname(os.path.abspath(__file__))
     repo_root = os.path.abspath(os.path.join(this_dir, "..", ".."))
-    pipeline_path = os.path.join(repo_root, _PIPELINE_REL)
 
-    if not os.path.exists(pipeline_path):
-        return {
-            "status": "fail",
-            "error": f"Pipeline source not found: {pipeline_path}",
-            "strategy_to_pipeline": {"status": "fail", "dead_config": []},
-            "pipeline_to_strategy": {"status": "fail", "violations": []},
-        }
+    # Resolve all pipeline file paths
+    pipeline_paths = [os.path.join(repo_root, p) for p in _PIPELINE_FILES]
+    pipeline_names = [os.path.basename(p) for p in _PIPELINE_FILES]
 
-    # Check 1: Strategy → Pipeline (dead config detection)
+    for path, name in zip(pipeline_paths, pipeline_names):
+        if not os.path.exists(path):
+            return {
+                "status": "fail",
+                "error": f"Pipeline source not found: {path}",
+                "strategy_to_pipeline": {"status": "fail", "dead_config": [], "partial_coverage": [], "files_checked": pipeline_names},
+                "pipeline_to_strategy": {"status": "fail", "violations": []},
+            }
+
     extraction = extraction_rules.get("extraction", extraction_rules)
     if not isinstance(extraction, dict):
         extraction = extraction_rules
-    dead_config = _detect_dead_config(extraction_rules, pipeline_path)
 
-    # Check 1b: Cleanup operations enumeration
-    dead_cleanup_ops = detect_dead_cleanup_operations(extraction, pipeline_path)
+    # Check 1: Strategy → Pipeline (dual-file dead config detection)
+    dead_config, partial_coverage = _detect_dead_config_dual(extraction_rules, pipeline_paths, pipeline_names)
 
-    # Merge dead cleanup ops into dead_config reporting
+    # Check 1b: Cleanup operations enumeration (check all files)
     all_dead = list(dead_config)
-    for op in dead_cleanup_ops:
-        if op not in all_dead:
-            all_dead.append(f"cleanup.{op}")
+    for pip_path, pip_name in zip(pipeline_paths, pipeline_names):
+        dead_cleanup_ops = detect_dead_cleanup_operations(extraction, pip_path)
+        for op in dead_cleanup_ops:
+            label = f"cleanup.{op} ({pip_name})"
+            if label not in all_dead:
+                all_dead.append(label)
 
     s2p_status = "pass" if not all_dead else "fail"
 
-    # Check 2: Pipeline → Strategy (hardcoded value audit)
-    violations = _audit_pipeline(pipeline_path, extraction_rules, wiki_domain)
-    p2s_status = "pass" if not violations else "fail"
+    # Check 2: Pipeline → Strategy (hardcoded value audit for ALL files)
+    all_violations = []
+    for pip_path, pip_name in zip(pipeline_paths, pipeline_names):
+        violations = _audit_pipeline(pip_path, extraction_rules, wiki_domain, pip_name)
+        all_violations.extend(violations)
+    p2s_status = "pass" if not all_violations else "fail"
 
     overall = "pass" if s2p_status == "pass" and p2s_status == "pass" else "fail"
 
@@ -77,36 +91,65 @@ def validate(
         "strategy_to_pipeline": {
             "status": s2p_status,
             "dead_config": all_dead,
+            "partial_coverage": partial_coverage,
+            "files_checked": pipeline_names,
         },
         "pipeline_to_strategy": {
             "status": p2s_status,
-            "violations": violations,
+            "violations": all_violations,
         },
     }
 
 
 # ---------------------------------------------------------------------------
-# Check 1: Strategy → Pipeline (Dead Config Detection)
+# Check 1: Strategy → Pipeline (Dual-File Dead Config Detection)
 # ---------------------------------------------------------------------------
 
-def _detect_dead_config(strategy: dict, pipeline_path: str) -> list[str]:
-    """Return list of strategy extraction fields with no pipeline consumer."""
-    with open(pipeline_path, "r", encoding="utf-8") as f:
-        source = f.read()
+def _read_file(path: str) -> str:
+    """Read file contents as string."""
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def _detect_dead_config_dual(
+    strategy: dict,
+    pipeline_paths: list[str],
+    pipeline_names: list[str],
+) -> tuple[list[str], list[dict]]:
+    """Return (dead_config, partial_coverage) across all pipeline files.
+
+    A field is dead_config if NEITHER pipeline file references it.
+    A field is partial_coverage if only ONE pipeline file references it.
+    A field is covered if EITHER pipeline file references it.
+    """
+    sources = [_read_file(p) for p in pipeline_paths]
 
     extraction = strategy.get("extraction", strategy)
     if not isinstance(extraction, dict):
         extraction = strategy
 
     dead = []
+    partial = []
     for key in extraction:
         if key in _ALWAYS_CONSUMED:
             continue
-        if _field_is_consumed(key, source):
-            continue
-        dead.append(key)
 
-    return dead
+        consumed_by = []
+        for idx, source in enumerate(sources):
+            if _field_is_consumed(key, source):
+                consumed_by.append(pipeline_names[idx])
+
+        if len(consumed_by) == 0:
+            dead.append(key)
+        elif len(consumed_by) == 1:
+            partial.append({
+                "field": key,
+                "consumed_by": consumed_by[0],
+                "missing_from": [n for n in pipeline_names if n not in consumed_by],
+                "severity": "warning",
+            })
+
+    return dead, partial
 
 
 def _field_is_consumed(key: str, source: str) -> bool:
@@ -168,6 +211,7 @@ def _audit_pipeline(
     pipeline_path: str,
     strategy: dict,
     wiki_domain: str,
+    file_name: str = "sample_converter.py",
 ) -> list[dict]:
     """Audit pipeline source for hardcoded site-specific values."""
     with open(pipeline_path, "r", encoding="utf-8") as f:
@@ -217,32 +261,32 @@ def _audit_pipeline(
 
     # Check A: Hardcoded HTML selectors
     violations.extend(
-        _check_hardcoded_selectors(lines, known_selectors, known_class_names, known_cleanup_ops)
+        _check_hardcoded_selectors(lines, known_selectors, known_class_names, known_cleanup_ops, file_name)
     )
 
     # Check B: Hardcoded CSS class names (via string literals in soup.select/find calls)
     violations.extend(
-        _check_hardcoded_css_classes(lines, known_class_names, known_cleanup_ops)
+        _check_hardcoded_css_classes(lines, known_class_names, known_cleanup_ops, file_name)
     )
 
     # Check B+: Hardcoded values in list literals
     violations.extend(
-        _check_hardcoded_list_literals(lines, known_class_names, known_selectors, known_cleanup_ops)
+        _check_hardcoded_list_literals(lines, known_class_names, known_selectors, known_cleanup_ops, file_name)
     )
 
     # Check C: Hardcoded domain names
     violations.extend(
-        _check_hardcoded_domains(lines, known_domains)
+        _check_hardcoded_domains(lines, known_domains, file_name)
     )
 
     # Check D: Hardcoded filename patterns
     violations.extend(
-        _check_hardcoded_filename_patterns(lines, known_patterns)
+        _check_hardcoded_filename_patterns(lines, known_patterns, file_name)
     )
 
     # Check E: Unconditional site-specific operations
     violations.extend(
-        _check_unconditional_operations(lines, extraction)
+        _check_unconditional_operations(lines, extraction, file_name)
     )
 
     return violations
@@ -253,6 +297,7 @@ def _check_hardcoded_selectors(
     known_selectors: set[str],
     known_class_names: set[str],
     known_cleanup_ops: set[str],
+    file_name: str = "sample_converter.py",
 ) -> list[dict]:
     """Check A: detect hardcoded HTML selectors not from strategy config."""
     violations = []
@@ -297,7 +342,7 @@ def _check_hardcoded_selectors(
             violations.append({
                 "type": "hardcoded_selector",
                 "detail": f"Hardcoded selector '{selector}' not sourced from strategy config",
-                "location": f"sample_converter.py:{i}",
+                "location": f"{file_name}:{i}",
                 "remediation": f"Move selector to strategy extraction config and read via extraction_rules",
             })
 
@@ -308,6 +353,7 @@ def _check_hardcoded_css_classes(
     lines: list[str],
     known_class_names: set[str],
     known_cleanup_ops: set[str],
+    file_name: str = "sample_converter.py",
 ) -> list[dict]:
     """Check B: detect hardcoded CSS class names in find/select calls."""
     violations = []
@@ -362,7 +408,7 @@ def _check_hardcoded_css_classes(
             violations.append({
                 "type": "hardcoded_css_class",
                 "detail": f"Hardcoded CSS class '{cls_name}' not in strategy config known_class_names",
-                "location": f"sample_converter.py:{i}",
+                "location": f"{file_name}:{i}",
                 "remediation": f"Move to strategy config (cleanup_selectors or infobox.selector)",
             })
 
@@ -374,6 +420,7 @@ def _check_hardcoded_list_literals(
     known_class_names: set[str],
     known_selectors: set[str],
     known_cleanup_ops: set[str],
+    file_name: str = "sample_converter.py",
 ) -> list[dict]:
     """Check B+: detect hardcoded CSS class names in list literals not from strategy config.
 
@@ -428,7 +475,7 @@ def _check_hardcoded_list_literals(
             violations.append({
                 "type": "hardcoded_list_value",
                 "detail": f"Hardcoded CSS class '{qs}' in list literal not from strategy config",
-                "location": f"sample_converter.py:{line_no}",
+                "location": f"{file_name}:{line_no}",
                 "remediation": f"Move to strategy config (cleanup_selectors) and read from extraction_rules",
             })
 
@@ -438,6 +485,7 @@ def _check_hardcoded_list_literals(
 def _check_hardcoded_domains(
     lines: list[str],
     known_domains: set[str],
+    file_name: str = "sample_converter.py",
 ) -> list[dict]:
     """Check C: detect hardcoded domain names not from strategy config."""
     violations = []
@@ -472,7 +520,7 @@ def _check_hardcoded_domains(
             violations.append({
                 "type": "hardcoded_domain",
                 "detail": f"Hardcoded domain '{domain}' not derived from strategy config",
-                "location": f"sample_converter.py:{i}",
+                "location": f"{file_name}:{i}",
                 "remediation": f"Use image_handling.base_url or domain from strategy config instead",
             })
 
@@ -482,6 +530,7 @@ def _check_hardcoded_domains(
 def _check_hardcoded_filename_patterns(
     lines: list[str],
     known_patterns: set[str],
+    file_name: str = "sample_converter.py",
 ) -> list[dict]:
     """Check D: detect hardcoded filename/file patterns not from strategy config."""
     violations = []
@@ -507,7 +556,7 @@ def _check_hardcoded_filename_patterns(
             violations.append({
                 "type": "hardcoded_filename_pattern",
                 "detail": f"Hardcoded file pattern '{pattern}' not from strategy skip_patterns",
-                "location": f"sample_converter.py:{i}",
+                "location": f"{file_name}:{i}",
                 "remediation": f"Add to image_filtering.skip_patterns in strategy config",
             })
 
@@ -517,6 +566,7 @@ def _check_hardcoded_filename_patterns(
 def _check_unconditional_operations(
     lines: list[str],
     extraction: dict,
+    file_name: str = "sample_converter.py",
 ) -> list[dict]:
     """Check E: detect site-specific operations not guarded by config checks."""
     violations = []
@@ -554,6 +604,7 @@ def _check_unconditional_operations(
         # Check if the operation is guarded
         # Match pattern: <var> = extraction_rules.get("op_key") ... if <var>.get("enabled")
         # The variable name can be anything (yt_cfg, url_cfg, etc.)
+        has_guard = False
         assign_pattern = rf'extraction_rules\.get\(\s*["\']' + re.escape(op_key) + r'["\']\s*[\),]'
         assign_match = re.search(assign_pattern, source)
         if assign_match:
@@ -578,7 +629,7 @@ def _check_unconditional_operations(
             violations.append({
                 "type": "unconditional_operation",
                 "detail": f"{desc} runs unconditionally — not guarded by config enabled check",
-                "location": "sample_converter.py",
+                "location": file_name,
                 "remediation": f"Wrap in `if {op_key}_cfg.get('enabled'):` guard reading from extraction_rules",
             })
 

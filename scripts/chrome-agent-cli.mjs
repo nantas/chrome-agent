@@ -1965,6 +1965,12 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
         "--output", runDir,
         "--concurrency", String(concurrency),
       ];
+      // Pass --discovery based on strategy config
+      if (apiConfig?.homepage) {
+        apiArgs.push("--discovery", "homepage");
+      } else {
+        apiArgs.push("--discovery", "allpages");
+      }
       const apiResult = spawnSync("python3", apiArgs, {
         cwd: repoRoot,
         encoding: "utf-8",

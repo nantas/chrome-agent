@@ -65,12 +65,12 @@ def run_phase_0(client, strategy: dict, origin: str,
                          "Phase 0 requires api.homepage to be defined.")
 
     # Step 1: Parse homepage to extract category links
-    log.info("Phase 0: Parsing homepage...")
+    log.info("Homepage discovery: Parsing homepage...")
     categories = parse_homepage(client, strategy)
-    log.info("Phase 0: Discovered %d category links", len(categories))
+    log.info("Homepage discovery: Discovered %d category links", len(categories))
 
     if not categories:
-        log.warning("Phase 0: No categories found on homepage — manifest will be empty")
+        log.warning("Homepage discovery: No categories found on homepage — manifest will be empty")
         return {
             "pages": [],
             "phase": "homepage",
@@ -87,13 +87,13 @@ def run_phase_0(client, strategy: dict, origin: str,
         unmatched = exclude_set - cat_names
         if excluded_names:
             categories = [c for c in categories if c["name"] not in excluded_names]
-            log.info("Excluded %d categories: %s", len(excluded_names),
+            log.info("Homepage discovery: Excluded %d categories: %s", len(excluded_names),
                      ", ".join(sorted(excluded_names)))
         for name in sorted(unmatched):
-            log.info("Exclude category '%s' not found in homepage categories — ignoring", name)
+            log.info("Homepage discovery: Exclude category '%s' not found in homepage categories — ignoring", name)
 
     if not categories:
-        log.warning("Phase 0: No categories found on homepage — manifest will be empty")
+        log.warning("Homepage discovery: No categories found on homepage — manifest will be empty")
         return {
             "pages": [],
             "phase": "homepage",
@@ -103,27 +103,21 @@ def run_phase_0(client, strategy: dict, origin: str,
         }
 
     # Step 2: Discover pages for each category
-    log.info("Phase 0: Discovering pages for %d categories...", len(categories))
+    log.info("Homepage discovery: Discovering pages for %d categories...", len(categories))
     all_pages = _discover_category_pages(client, categories, origin)
 
     # Step 3: Assign pages to output directories
-    log.info("Phase 0: Assigning %d pages to directories...", len(all_pages))
+    log.info("Homepage discovery: Assigning %d pages to directories...", len(all_pages))
     if all_pages:
         assigned_pages = assign_pages(all_pages, categories, strategy, client)
     else:
         assigned_pages = []
 
-    # Step 4: Build manifest
-    manifest = {
-        "pages": assigned_pages,
-        "phase": "homepage",
-        "source": "homepage-driven-discovery",
-        "total_pages": len(assigned_pages),
-        "categories_discovered": len(categories),
-    }
+    # Step 4: Build manifest (includes category pages + list_page_content)
+    manifest = _build_homepage_manifest(assigned_pages, categories, client)
 
-    log.info("Phase 0 complete: %d pages from %d categories",
-             len(assigned_pages), len(categories))
+    log.info("Homepage discovery complete: %d pages from %d categories",
+             len(manifest["pages"]), len(categories))
     return manifest
 
 
@@ -216,6 +210,110 @@ def _discover_list_page_pages(client, page_title: str, origin: str) -> list[str]
         log.warning("Failed to discover links from '%s': %s", page_title, e)
 
     return page_titles
+
+
+# ===========================================================================
+# Manifest builder (includes category pages + list_page_content)
+# ===========================================================================
+
+
+def _build_homepage_manifest(assigned_pages: list[dict],
+                              categories: list[dict],
+                              client) -> dict:
+    """Build the final manifest, including category pages and list_page_content.
+
+    Steps:
+    1. Add category pages themselves to assigned_pages (with is_list_page=true)
+    2. Fetch list_page_content for all list_page type categories
+    3. Build the final manifest dict
+
+    Args:
+        assigned_pages: Pages already assigned by assign_pages().
+        categories: List of category dicts from homepage parsing.
+        client: ApiClient instance for API calls.
+
+    Returns:
+        Manifest dict compatible with Phase B/Phase C consumption.
+    """
+    # Build lookup of existing pages by title
+    existing_titles: dict[str, int] = {}
+    for i, p in enumerate(assigned_pages):
+        existing_titles[p["title"]] = i
+
+    cat_dir_map: dict[str, dict] = {}
+    for c in categories:
+        cat_dir_map[c["name"]] = c
+
+    # Step 1: Add category pages (with is_list_page=true) if not already present
+    for cat in categories:
+        page_title = cat.get("page_title", cat["name"])
+        cat_dir = cat.get("dir", "")
+        cat_name = cat["name"]
+
+        if page_title in existing_titles:
+            # Update existing entry: add is_list_page and ensure assignment
+            idx = existing_titles[page_title]
+            assigned_pages[idx]["is_list_page"] = True
+            assigned_pages[idx]["assignment_method"] = "homepage_category"
+            if cat_dir:
+                assigned_pages[idx]["target_directory"] = cat_dir
+            assigned_pages[idx]["target_filename"] = "index.md"
+            if cat_name not in assigned_pages[idx].get("source_categories", []):
+                assigned_pages[idx].setdefault("source_categories", []).append(cat_name)
+        else:
+            # Add new entry for the category page itself
+            entry = {
+                "title": page_title,
+                "target_directory": cat_dir,
+                "target_filename": "index.md",
+                "assigned_category": cat_name,
+                "mw_categories": [],
+                "assignment_method": "homepage_category",
+                "source_categories": [cat_name],
+                "is_list_page": True,
+            }
+            assigned_pages.append(entry)
+            existing_titles[page_title] = len(assigned_pages) - 1
+
+    # Step 2: Fetch list_page_content for all list_page categories
+    list_page_content: dict[str, str] = {}
+    list_pages_to_fetch = [
+        c for c in categories
+        if c.get("type", "list_page") == "list_page"
+    ]
+
+    if list_pages_to_fetch:
+        log.info("Homepage discovery: Fetching list page content for %d categories...",
+                 len(list_pages_to_fetch))
+        for cat in list_pages_to_fetch:
+            page_title = cat.get("page_title", cat["name"])
+            try:
+                data = client.parse(page=page_title, prop="wikitext")
+                wikitext = data.get("parse", {}).get("wikitext", {}).get("*", "")
+                if wikitext:
+                    list_page_content[page_title] = wikitext
+                    log.debug("Fetched wikitext for list page '%s' (%d chars)",
+                              page_title, len(wikitext))
+                else:
+                    log.warning("List page '%s' returned empty wikitext", page_title)
+            except Exception as e:
+                log.warning("Failed to fetch list page content for '%s': %s — continuing",
+                            page_title, e)
+
+    # Step 3: Build manifest
+    manifest = {
+        "pages": assigned_pages,
+        "list_page_content": list_page_content,
+        "phase": "homepage",
+        "source": "homepage-driven-discovery",
+        "total_pages": len(assigned_pages),
+        "categories_discovered": len(categories),
+    }
+
+    list_count = len(list_page_content)
+    log.info("Homepage discovery manifest built: %d pages, %d list page contents",
+             len(assigned_pages), list_count)
+    return manifest
 
 
 def _discover_category_page_members(client, page_title: str,

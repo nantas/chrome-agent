@@ -50,6 +50,17 @@ class HtmlToMarkdownConverter:
         self.title_to_path: dict[str, tuple[str, str]] = {}
         # Image skip patterns from config
         self._skip_patterns: list[str] = self.config.get("image_filtering", {}).get("skip_patterns", [])
+        # Infobox config: read extraction.infox settings
+        infobox_cfg = self.config.get("infobox", {})
+        self._infobox_enabled = infobox_cfg.get("enabled", False)
+        self._infobox_selector = infobox_cfg.get("selector", "aside.portable-infobox")
+        self._infobox_field_selector = infobox_cfg.get("field_selector", "div.pi-data")
+        self._infobox_label_selector = infobox_cfg.get("label_selector", "h3.pi-data-label")
+        self._infobox_value_selector = infobox_cfg.get("value_selector", "div.pi-data-value")
+        # Parse infobox selector for tag + class matching
+        sel_parts = self._infobox_selector.lstrip(".").split(".")
+        self._infobox_tag = sel_parts[0]
+        self._infobox_class_list = sel_parts[1:] if len(sel_parts) > 1 else []
         # Infobox field handlers from config
         self._infobox_handlers: dict = self.config.get("infobox_field_handlers", {})
 
@@ -246,7 +257,7 @@ class HtmlToMarkdownConverter:
                 node.decompose()
 
         for node in parser.css("[style]"):
-            style = node.attributes.get("style", "")
+            style = node.attributes.get("style", "") or ""
             if "display:none" in style.replace(" ", ""):
                 node.decompose()
 
@@ -364,7 +375,10 @@ class HtmlToMarkdownConverter:
             ).strip()
 
         if tag == "pre":
-            code = node.text(deep=True, separator="", strip=False).strip("\n")
+            code = node.text(deep=True, separator="", strip=False)
+            if code is None:
+                code = ""
+            code = code.strip("\n")
             if not code:
                 return ""
             return f"```\n{code}\n```"
@@ -383,6 +397,14 @@ class HtmlToMarkdownConverter:
 
         if tag in {"strong", "b", "em", "i", "code", "a"}:
             return self._render_inline(node, source_dir=source_dir)
+
+        # Infobox container detection — render as complete Markdown table
+        if self._infobox_enabled and tag == self._infobox_tag:
+            cls = node.attributes.get("class", "") or ""
+            if all(c in cls for c in self._infobox_class_list):
+                result = self._render_infobox_table(node, source_dir=source_dir)
+                if result:
+                    return result
 
         if self._has_block_children(node):
             return self._render_blocks(self._child_nodes(node), source_dir=source_dir)
@@ -422,6 +444,74 @@ class HtmlToMarkdownConverter:
                 inline_parts.append(rendered)
         header = f"{indent}{prefix} {self._render_inline_part_list(inline_parts)}" if inline_parts else f"{indent}{prefix}"
         return [header, *nested_lines]
+
+    # ------------------------------------------------------------------
+    # Infobox table rendering
+    # ------------------------------------------------------------------
+
+    def _render_infobox_table(self, node, source_dir: str = "") -> str:
+        """Render an infobox container as a complete Markdown table.
+
+        Collects all child fields matching field_selector, extracts
+        label/value pairs (with handler support), and renders as:
+
+            ## Infobox
+
+            | Field | Value |
+            | --- | --- |
+            | **label1** | value1 |
+            | **label2** | value2 |
+
+        Returns empty string if no fields found.
+        """
+        rows: list[tuple[str, str]] = []
+
+        for field_node in node.css(self._infobox_field_selector):
+            # Extract label
+            label_node = field_node.css_first(self._infobox_label_selector)
+            if label_node:
+                label_text = self._render_inline_children(label_node)
+            else:
+                label_text = ""
+
+            # Extract value with optional handler
+            ds = field_node.attributes.get("data-source")
+            if ds and ds in self._infobox_handlers:
+                raw_html_node = field_node.css_first(self._infobox_value_selector)
+                if raw_html_node is not None:
+                    raw_html = raw_html_node.html if hasattr(raw_html_node, 'html') else ""
+                else:
+                    raw_html = ""
+                handler_cfg = self._infobox_handlers[ds]
+                if isinstance(handler_cfg, dict):
+                    handler_name = handler_cfg.get("handler", "text")
+                elif isinstance(handler_cfg, str):
+                    handler_name = handler_cfg
+                else:
+                    handler_name = "text"
+                value = self._apply_infobox_handler(handler_name, raw_html)
+            else:
+                value_node = field_node.css_first(self._infobox_value_selector)
+                if value_node:
+                    value = self._render_inline_children(value_node)
+                else:
+                    value = ""
+
+            if label_text or value:
+                rows.append((label_text, value))
+
+        if not rows:
+            return ""
+
+        table = "## Infobox\n\n"
+        table += "| Field | Value |\n"
+        table += "| --- | --- |\n"
+        for label, value in rows:
+            escaped_label = label.replace("|", "\\|")
+            escaped_value = value.replace("|", "\\|")
+            table += f"| **{escaped_label}** | {escaped_value} |\n"
+
+        return table.strip()
 
     # ------------------------------------------------------------------
     # Infobox field handlers
@@ -605,7 +695,10 @@ class HtmlToMarkdownConverter:
             text = self._render_inline_children(node, source_dir=source_dir)
             return f"*{text}*" if text else ""
         if tag == "code":
-            text = node.text(deep=True, separator="", strip=False).strip()
+            text = node.text(deep=True, separator="", strip=False)
+            if text is None:
+                text = ""
+            text = text.strip()
             return f"`{text}`" if text else ""
         if tag == "br":
             return "\n"
@@ -645,7 +738,7 @@ class HtmlToMarkdownConverter:
     # Link resolution helpers
     # ------------------------------------------------------------------
 
-    def _normalize_href(self, href: Optional[str]) -> Optional[str]:
+    def _normalize_href(self, href: str | None) -> str | None:
         if href is None:
             return None
         normalized = href.strip()
@@ -718,7 +811,9 @@ class HtmlToMarkdownConverter:
             result += f" {part}"
         return result.strip()
 
-    def _normalize_text(self, text: str) -> str:
+    def _normalize_text(self, text: str | None) -> str:
+        if text is None:
+            return ""
         collapsed = re.sub(r"\s+", " ", text)
         return collapsed.strip()
 
