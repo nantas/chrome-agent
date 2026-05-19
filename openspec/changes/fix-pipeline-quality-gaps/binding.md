@@ -3,13 +3,11 @@
 ## 标准与项目页面绑定
 
 - `spec_standard_ref`:
-  - `openspec/specs/homepage-driven-discovery/spec.md` — Phase 0 首页驱动发现行为真源
-  - `openspec/specs/mediawiki-api-extraction-pipeline/spec.md` — Pipeline 编排与 phase dispatch 行为真源
-  - `openspec/specs/pipeline-converters/spec.md` — HTML→Markdown 转换器行为真源
-  - `openspec/specs/explore-architecture-gate/spec.md` — Architecture Gate 校验范围真源
-  - `openspec/specs/pipeline-strategy-schema/spec.md` — 策略 schema 真源
-  - `openspec/specs/page-assignment/spec.md` — 页面分配行为真源
-  - `openspec/specs/pipeline-cli-entry/spec.md` — CLI 入口与参数定义真源
+  - `openspec/specs/pipeline/pipeline-discovery.md` — Phase 0 首页驱动发现行为真源（原 homepage-driven-discovery）
+  - `openspec/specs/pipeline/pipeline-core.md` — Pipeline 编排与 phase dispatch 行为真源（原 mediawiki-api-extraction-pipeline + pipeline-cli-entry）
+  - `openspec/specs/pipeline/pipeline-conversion.md` — HTML→Markdown 转换器 + 页面分配行为真源（原 pipeline-converters + page-assignment）
+  - `openspec/specs/explore/explore-validation.md` — Architecture Gate 校验范围真源（原 explore-architecture-gate）
+  - `openspec/specs/pipeline/pipeline-registry.md` — 策略 schema 与 registry 真源（原 pipeline-strategy-schema）
 - `project_page_ref`:
   - `outputs/handoffs/20260518-crawl-bindingofisaacrebirth-wiki-gg/handoff.md` — 问题汇报文档，本次 change 的问题来源
   - `sites/strategies/bindingofisaacrebirth.wiki.gg/strategy.md` — BOI 站点策略，本次 change 的验证目标

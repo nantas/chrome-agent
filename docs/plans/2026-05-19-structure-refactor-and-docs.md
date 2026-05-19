@@ -290,10 +290,16 @@ Phase 3 (CLI 层)
   │
   └── Change 5: 拆分 CLI 大函数
 
-Phase 4 (文档, 可并行)
+Phase 4 (文档, 可并行)  ✅ 已完成
   │
-  ├── Change D1: 核心架构文档 (8 篇)
-  └── Change D2: Spec 合并 (68 → ~20)
+  ├── Change D1: 核心架构文档 (8 篇)  ✅ 已实现
+  └── Change D2: Spec 合并 (68 → ~20)  ✅ 已实现
+
+> **完成详情：** 创建 `docs/architecture/` 下 8 篇真源架构文档（87KB）；
+> 82 个源 spec 合并为 23 个能力域 spec；
+> 归档 2 个已完成 change；AGENTS.md 瘦身 39KB → 3.3KB；
+> 冻结 9 个 change spec delta 至 `openspec/specs/`。
+> 详见 `openspec/changes/phase-4-docs-and-spec-consolidation/`。
 ```
 
 ### Change 1: 提取共享库 `lib/`

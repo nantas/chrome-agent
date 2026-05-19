@@ -128,6 +128,7 @@ Phase 1: 治理基础重建  →  Phase 2: 契约冻结  →  Phase 4: 引擎扩
 
 ## 相关资源
 
+- [核心架构文档](docs/architecture/01-overview.md) — 系统总览、管线流、策略 Schema 等 8 篇真源文档
 - [总体规划文档](docs/governance-and-capability-plan.md)
 - [治理文档（AGENTS.md）](AGENTS.md)
 - [决策记录](docs/decisions/)

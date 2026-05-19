@@ -67,13 +67,11 @@
 
 - 关联 binding: `binding.md`
 - 已确认标准页：
-  - `openspec/specs/homepage-driven-discovery/spec.md`
-  - `openspec/specs/mediawiki-api-extraction-pipeline/spec.md`
-  - `openspec/specs/pipeline-converters/spec.md`
-  - `openspec/specs/explore-architecture-gate/spec.md`
-  - `openspec/specs/pipeline-strategy-schema/spec.md`
-  - `openspec/specs/page-assignment/spec.md`
-  - `openspec/specs/pipeline-cli-entry/spec.md`
+  - `openspec/specs/pipeline/pipeline-discovery.md`（原 homepage-driven-discovery）
+  - `openspec/specs/pipeline/pipeline-core.md`（原 mediawiki-api-extraction-pipeline + pipeline-cli-entry）
+  - `openspec/specs/pipeline/pipeline-conversion.md`（原 pipeline-converters + page-assignment）
+  - `openspec/specs/explore/explore-validation.md`（原 explore-architecture-gate）
+  - `openspec/specs/pipeline/pipeline-registry.md`（原 pipeline-strategy-schema）
 - 已确认项目页：
   - `outputs/handoffs/20260518-crawl-bindingofisaacrebirth-wiki-gg/handoff.md`
   - `sites/strategies/bindingofisaacrebirth.wiki.gg/strategy.md`
