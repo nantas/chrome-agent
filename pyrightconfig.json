@@ -1,0 +1,11 @@
+{
+  "include": [
+    "scripts"
+  ],
+  "executionEnvironments": [
+    {
+      "root": "scripts"
+    }
+  ],
+  "pythonVersion": "3.9"
+}
