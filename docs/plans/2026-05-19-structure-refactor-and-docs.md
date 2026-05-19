@@ -662,7 +662,7 @@ node --test tests/  # 测试通过
 
 ---
 
-### Change 5: 拆分 CLI 大函数
+### Change 5: 拆分 CLI 大函数 ✅ 完成
 
 | 属性 | 内容 |
 |------|------|
@@ -840,7 +840,7 @@ Week 3-4: Phase 2 (管线层)
   └── Change 4: 重命名 Phase 文件          [1-2天]
 
 Week 5: Phase 3 (CLI 层)
-  └── Change 5: 拆分 CLI 大函数            [1-2天]
+  └── Change 5: 拆分 CLI 大函数            ✅ 完成
 
 Week 3-5: Phase 4 (文档，与 Phase 2 并行)
   ├── Change D1: 核心架构文档              [持续]

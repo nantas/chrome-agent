@@ -1988,38 +1988,14 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
   const { strategy } = findStrategy(repoRoot, targetUrl);
 
   if (!strategy) {
-    if (emitReport) {
-      const report = buildCrawlReport({
-        targetUrl,
-        repoRef,
-        resolutionMode,
-        strategy: null,
-        events: ["No matching site strategy exists, so crawl was refused before traversal started."],
-        result: "failure",
-      });
-      writeTextFile(reportPath, report);
-    }
-    const artifacts = [];
-    if (emitReport) {
-      artifacts.push(absoluteArtifact(reportPath, "durable", "Crawl refusal report"));
-    }
-    // Handoff: strategy gap is an internal failure
-    const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir: null, error: { reason: "strategy_gap", summary: "No matching site strategy exists." }, strategy: null });
-    return makeResult(
-      "crawl",
-      targetUrl,
-      repoRef,
-      "Crawl refused because no matching site strategy exists.",
-      artifacts,
-      `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
-      "failure",
-      {
-        workflow: "content_retrieval",
-        engine_path: "strategy_registry -> strategy_gap",
-        handoff_path: handoff.path,
-        handoff_summary: handoff.summary,
-      },
-    );
+    return crawlInternalError({
+      targetUrl, repoRef, resolutionMode, strategy: null, runDir: null, reportPath, emitReport,
+      eventMsg: "No matching site strategy exists, so crawl was refused before traversal started.",
+      resultMsg: "Crawl refused because no matching site strategy exists.",
+      handoffReason: "strategy_gap",
+      handoffSummary: "No matching site strategy exists.",
+      enginePath: "strategy_registry -> strategy_gap",
+    });
   }
 
   const doc = strategy.document;
@@ -2033,635 +2009,666 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
     null;
 
   if (!startPage) {
-    if (emitReport) {
-      const report = buildCrawlReport({
-        targetUrl,
-        repoRef,
-        resolutionMode,
-        strategy,
-        events: ["Strategy exists but no usable entry point could be resolved."],
-        result: "failure",
-      });
-      writeTextFile(reportPath, report);
-    }
-    const artifacts = [];
-    if (emitReport) {
-      artifacts.push(absoluteArtifact(reportPath, "durable", "Crawl failure report"));
-    }
-    // Handoff: missing entry point is an internal failure
-    const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: "conversion_failure", summary: "Strategy exists but no usable entry point could be resolved." }, strategy });
-    return makeResult(
-      "crawl",
-      targetUrl,
-      repoRef,
-      "Crawl could not resolve a declared entry point.",
-      artifacts,
-      `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
-      "failure",
-      {
-        workflow: "content_retrieval",
-        engine_path: `strategy_registry -> ${path.relative(repoRoot, strategy.path)} -> missing_entry_point`,
-        handoff_path: handoff.path,
-        handoff_summary: handoff.summary,
-      },
-    );
+    return crawlInternalError({
+      targetUrl, repoRef, resolutionMode, strategy, runDir, reportPath, emitReport,
+      eventMsg: "Strategy exists but no usable entry point could be resolved.",
+      resultMsg: "Crawl could not resolve a declared entry point.",
+      handoffReason: "conversion_failure",
+      handoffSummary: "Strategy exists but no usable entry point could be resolved.",
+      enginePath: `strategy_registry -> ${path.relative(repoRoot, strategy.path)} -> missing_entry_point`,
+    });
   }
 
-  // --- MediaWiki API route ---
   const apiConfig = doc?.api;
   if (apiConfig && apiConfig.platform === "mediawiki") {
-    const extractionScript = path.join(repoRoot, "scripts", "pipeline");
-    if (fs.existsSync(extractionScript)) {
-      console.log("Strategy has api.platform=mediawiki — routing to MediaWiki API extraction pipeline");
-      const apiArgs = [
-        "-m", "scripts.pipeline",
-        targetUrl,
-        "--strategy", strategy.path,
-        "--output", runDir,
-        "--concurrency", String(concurrency),
-      ];
-      // Pass --discovery based on strategy config
-      if (apiConfig?.homepage) {
-        apiArgs.push("--discovery", "homepage");
-      } else {
-        apiArgs.push("--discovery", "allpages");
-      }
-      // Pass --phase discover when --discovery-only
+    return runCrawlMediawikiApi(repoRoot, repoRef, resolutionMode, runDir, reportPath, manifestPath, emitReport, targetUrl, strategy, doc, startPage, matchingPage, entryPoints, opts);
+  }
+  if (discoveryOnly && !doc?.api?.platform) {
+    return runCrawlScraplingDiscovery(repoRoot, repoRef, resolutionMode, runDir, reportPath, emitReport, targetUrl, strategy, doc, startPage, opts);
+  }
+  return runCrawlScrapling(repoRoot, repoRef, resolutionMode, runDir, reportPath, manifestPath, emitReport, targetUrl, strategy, doc, startPage, matchingPage, entryPoints, opts);
+}
+
+function crawlInternalError({ targetUrl, repoRef, resolutionMode, strategy, runDir, reportPath, emitReport, eventMsg, resultMsg, handoffReason, handoffSummary, enginePath }) {
+  if (emitReport) {
+    const report = buildCrawlReport({
+      targetUrl, repoRef, resolutionMode, strategy,
+      events: [eventMsg],
+      result: "failure",
+    });
+    writeTextFile(reportPath, report);
+  }
+  const artifacts = [];
+  if (emitReport) {
+    artifacts.push(absoluteArtifact(reportPath, "durable", "Crawl failure report"));
+  }
+  const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: handoffReason, summary: handoffSummary }, strategy });
+  return makeResult(
+    "crawl", targetUrl, repoRef, resultMsg, artifacts,
+    `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
+    "failure",
+    { workflow: "content_retrieval", engine_path: enginePath, handoff_path: handoff.path, handoff_summary: handoff.summary },
+  );
+}
+
+function runCrawlMediawikiApi(repoRoot, repoRef, resolutionMode, runDir, reportPath, manifestPath, emitReport, targetUrl, strategy, doc, startPage, matchingPage, entryPoints, opts) {
+  const {
+    maxPages = 3,
+    concurrency = 5,
+    discoveryOnly = false,
+    fromManifest = null,
+    yes: yesFlag = false,
+    excludeCategory = [],
+    phase = null,
+    reFetch = false,
+  } = opts;
+  const apiConfig = doc?.api;
+  const extractionScript = path.join(repoRoot, "scripts", "pipeline");
+  if (fs.existsSync(extractionScript)) {
+    console.log("Strategy has api.platform=mediawiki — routing to MediaWiki API extraction pipeline");
+    const apiArgs = [
+      "-m", "scripts.pipeline",
+      targetUrl,
+      "--strategy", strategy.path,
+      "--output", runDir,
+      "--concurrency", String(concurrency),
+    ];
+    // Pass --discovery based on strategy config
+    if (apiConfig?.homepage) {
+      apiArgs.push("--discovery", "homepage");
+    } else {
+      apiArgs.push("--discovery", "allpages");
+    }
+    // Pass --phase discover when --discovery-only
+    if (discoveryOnly) {
+      apiArgs.push("--phase", "discover");
+    }
+    // Pass --phase from opts (fetch, convert, assemble)
+    if (phase && !discoveryOnly) {
+      apiArgs.push("--phase", phase);
+    }
+    // Pass --re-fetch flag
+    if (reFetch) {
+      apiArgs.push("--re-fetch");
+    }
+    // Pass --from-manifest when resuming from existing manifest
+    if (fromManifest) {
+      apiArgs.push("--from-manifest", fromManifest);
+    }
+    // Pass --exclude-category
+    for (const cat of excludeCategory) {
+      apiArgs.push("--exclude-category", cat);
+    }
+    // Pass --max-pages
+    if (maxPages) {
+      apiArgs.push("--max-pages", String(maxPages));
+    }
+    const apiResult = spawnSync("python3", apiArgs, {
+      cwd: repoRoot,
+      encoding: "utf-8",
+      timeout: 600_000,  // 10 min max
+    });
+
+    const exitCode = apiResult.status ?? 1;
+    const isApiSuccess = exitCode === 0;
+    const isApiPartial = exitCode === 1;
+    const isApiFailure = exitCode >= 10;  // API_UNREACHABLE, PHASE_A/B/C_FAILURE
+
+    if (isApiSuccess || isApiPartial) {
+      // --- Discovery-only mode: return summary and exit early ---
       if (discoveryOnly) {
-        apiArgs.push("--phase", "discover");
-      }
-      // Pass --phase from opts (fetch, convert, assemble)
-      if (phase && !discoveryOnly) {
-        apiArgs.push("--phase", phase);
-      }
-      // Pass --re-fetch flag
-      if (reFetch) {
-        apiArgs.push("--re-fetch");
-      }
-      // Pass --from-manifest when resuming from existing manifest
-      if (fromManifest) {
-        apiArgs.push("--from-manifest", fromManifest);
-      }
-      // Pass --exclude-category
-      for (const cat of excludeCategory) {
-        apiArgs.push("--exclude-category", cat);
-      }
-      // Pass --max-pages
-      if (maxPages) {
-        apiArgs.push("--max-pages", String(maxPages));
-      }
-      const apiResult = spawnSync("python3", apiArgs, {
-        cwd: repoRoot,
-        encoding: "utf-8",
-        timeout: 600_000,  // 10 min max
-      });
-
-      const exitCode = apiResult.status ?? 1;
-      const isApiSuccess = exitCode === 0;
-      const isApiPartial = exitCode === 1;
-      const isApiFailure = exitCode >= 10;  // API_UNREACHABLE, PHASE_A/B/C_FAILURE
-
-      if (isApiSuccess || isApiPartial) {
-        // --- Discovery-only mode: return summary and exit early ---
-        if (discoveryOnly) {
-          const discoverySummaryPath = path.join(runDir, "discovery_summary.json");
-          const pageManifestPath = path.join(runDir, "page_manifest.json");
-          const discArtifacts = [];
-          if (fs.existsSync(pageManifestPath)) {
-            discArtifacts.push(absoluteArtifact(pageManifestPath, "disposable", "Page manifest"));
-          }
-          if (fs.existsSync(discoverySummaryPath)) {
-            discArtifacts.push(absoluteArtifact(discoverySummaryPath, "disposable", "Discovery summary"));
-          }
-          return makeResult("crawl", targetUrl, repoRef,
-            `Discovery-only completed via MediaWiki API pipeline.`,
-            discArtifacts,
-            "Review discovery summary. Use --from-manifest to proceed with extraction.",
-            isApiSuccess ? "success" : "partial_success",
-            {
-              workflow: "content_retrieval",
-              engine_path: `strategy_registry -> mediawiki_api_pipeline -> discovery_only -> exit:${exitCode}`,
-              extraction_method: "mediawiki_api",
-              discovery_only: true,
-              discovery_summary_path: fs.existsSync(discoverySummaryPath) ? path.resolve(discoverySummaryPath) : null,
-              manifest_path: fs.existsSync(pageManifestPath) ? path.resolve(pageManifestPath) : null,
-              confirmation_bypassed: yesFlag,
-            });
+        const discoverySummaryPath = path.join(runDir, "discovery_summary.json");
+        const pageManifestPath = path.join(runDir, "page_manifest.json");
+        const discArtifacts = [];
+        if (fs.existsSync(pageManifestPath)) {
+          discArtifacts.push(absoluteArtifact(pageManifestPath, "disposable", "Page manifest"));
         }
-
-        // Collect artifacts from the output directory
-        const apiArtifacts = [absoluteArtifact(manifestPath, "disposable", "Crawl manifest")];
-        for (const file of fs.readdirSync(runDir, { recursive: true })) {
-          const filePath = path.join(runDir, String(file));
-          if (String(file).endsWith(".md")) {
-            apiArtifacts.push(absoluteArtifact(filePath, "disposable", `API extracted: ${file}`));
-          }
+        if (fs.existsSync(discoverySummaryPath)) {
+          discArtifacts.push(absoluteArtifact(discoverySummaryPath, "disposable", "Discovery summary"));
         }
-        // Add extraction results if present
-        const resultsPath = path.join(runDir, "extraction_results.json");
-        if (fs.existsSync(resultsPath)) {
-          apiArtifacts.push(absoluteArtifact(resultsPath, "disposable", "Extraction results"));
-        }
-
-        const extractionMethod = "mediawiki_api";
-        const resultState = isApiSuccess ? "success" : "partial_success";
-        const summary = isApiSuccess
-          ? `Crawl completed via MediaWiki API extraction pipeline.`
-          : `Crawl completed via MediaWiki API pipeline with partial success (some pages failed).`;
-
-        if (emitReport) {
-          const report = buildCrawlReport({
-            targetUrl, repoRef, resolutionMode, strategy,
-            events: [
-              `Routed to MediaWiki API extraction pipeline (platform=mediawiki).`,
-              `Pipeline exit code: ${exitCode}`,
-            ],
-            result: resultState,
-            extractionMethod,
-          });
-          writeTextFile(reportPath, report);
-          apiArtifacts.unshift(absoluteArtifact(reportPath, "durable", "Crawl report"));
-        }
-
-        return makeResult("crawl", targetUrl, repoRef, summary, apiArtifacts,
-          "Inspect the crawl outputs in the run directory.",
-          resultState, {
+        return makeResult("crawl", targetUrl, repoRef,
+          `Discovery-only completed via MediaWiki API pipeline.`,
+          discArtifacts,
+          "Review discovery summary. Use --from-manifest to proceed with extraction.",
+          isApiSuccess ? "success" : "partial_success",
+          {
             workflow: "content_retrieval",
-            engine_path: `strategy_registry -> mediawiki_api_pipeline -> exit:${exitCode}`,
-            extraction_method: extractionMethod,
+            engine_path: `strategy_registry -> mediawiki_api_pipeline -> discovery_only -> exit:${exitCode}`,
+            extraction_method: "mediawiki_api",
+            discovery_only: true,
+            discovery_summary_path: fs.existsSync(discoverySummaryPath) ? path.resolve(discoverySummaryPath) : null,
+            manifest_path: fs.existsSync(pageManifestPath) ? path.resolve(pageManifestPath) : null,
             confirmation_bypassed: yesFlag,
           });
       }
 
-      // API failure — log and fall through to Scrapling
-      console.warn(`MediaWiki API pipeline failed (exit code ${exitCode}), falling back to Scrapling`);
-      events = [`MediaWiki API pipeline failed with exit code ${exitCode}. Falling back to Scrapling.`];
-      fallbackReason = `api_pipeline_exit_${exitCode}`;
-    } else {
-      console.warn("pipeline script not found, falling back to Scrapling");
-      events = ["MediaWiki API extraction script not found. Falling back to Scrapling."];
-      fallbackReason = "api_script_missing";
-    }
-  }
-
-  // --- Scrapling discovery-only path (non-API sites) ---
-  if (discoveryOnly && !doc?.api?.platform) {
-    const preflight = runScraplingPreflight(repoRoot, true);
-    if (!preflight.ok) {
-      return makeResult("crawl", targetUrl, repoRef,
-        "Scrapling CLI preflight failed for discovery-only mode.",
-        [],
-        "Fix Scrapling CLI preflight and retry.",
-        "failure",
-        { workflow: "content_retrieval", engine_path: "scrapling_preflight -> discovery_only_blocked" });
-    }
-
-    const fetcher = selectFetcher(strategy, startPage);
-    const outputPath = path.join(runDir, "_homepage.html");
-    const fetchResult = runEngineFetch(repoRoot, fetcher, targetUrl, outputPath);
-    if (!fetchResult.ok) {
-      return makeResult("crawl", targetUrl, repoRef,
-        `Failed to fetch main page for discovery: ${fetchResult.stderr || "unknown error"}`,
-        [], "Check URL and retry.", "failure",
-        { workflow: "content_retrieval", engine_path: `scrapling:${fetcher} -> discovery_fetch_failed` });
-    }
-
-    // Extract links matching links_to selectors and group by structure.pages
-    const categories = [];
-    const linksTo = startPage?.links_to ?? [];
-    const structurePages = doc?.structure?.pages ?? [];
-    const categoryMap = new Map(); // pageId -> { urls: Set }
-
-    for (const link of linksTo) {
-      const targetPage = structurePages.find((p) => p.id === link.target);
-      if (!targetPage) continue;
-
-      const discovered = collectLinksFromHtml(outputPath, targetUrl, link.selector);
-      if (!categoryMap.has(targetPage.id)) {
-        categoryMap.set(targetPage.id, { page: targetPage, urls: new Set() });
-      }
-      for (const url of discovered) {
-        if (pagePatternMatches(targetPage, url)) {
-          categoryMap.get(targetPage.id).urls.add(url);
+      // Collect artifacts from the output directory
+      const apiArtifacts = [absoluteArtifact(manifestPath, "disposable", "Crawl manifest")];
+      for (const file of fs.readdirSync(runDir, { recursive: true })) {
+        const filePath = path.join(runDir, String(file));
+        if (String(file).endsWith(".md")) {
+          apiArtifacts.push(absoluteArtifact(filePath, "disposable", `API extracted: ${file}`));
         }
       }
+      // Add extraction results if present
+      const resultsPath = path.join(runDir, "extraction_results.json");
+      if (fs.existsSync(resultsPath)) {
+        apiArtifacts.push(absoluteArtifact(resultsPath, "disposable", "Extraction results"));
+      }
+
+      const extractionMethod = "mediawiki_api";
+      const resultState = isApiSuccess ? "success" : "partial_success";
+      const summary = isApiSuccess
+        ? `Crawl completed via MediaWiki API extraction pipeline.`
+        : `Crawl completed via MediaWiki API pipeline with partial success (some pages failed).`;
+
+      if (emitReport) {
+        const report = buildCrawlReport({
+          targetUrl, repoRef, resolutionMode, strategy,
+          events: [
+            `Routed to MediaWiki API extraction pipeline (platform=mediawiki).`,
+            `Pipeline exit code: ${exitCode}`,
+          ],
+          result: resultState,
+          extractionMethod,
+        });
+        writeTextFile(reportPath, report);
+        apiArtifacts.unshift(absoluteArtifact(reportPath, "durable", "Crawl report"));
+      }
+
+      return makeResult("crawl", targetUrl, repoRef, summary, apiArtifacts,
+        "Inspect the crawl outputs in the run directory.",
+        resultState, {
+          workflow: "content_retrieval",
+          engine_path: `strategy_registry -> mediawiki_api_pipeline -> exit:${exitCode}`,
+          extraction_method: extractionMethod,
+          confirmation_bypassed: yesFlag,
+        });
     }
 
-    let totalPages = 0;
-    for (const [pageId, data] of categoryMap) {
-      const count = data.urls.size;
-      totalPages += count;
-      const samples = [...data.urls].slice(0, 5).map((u) => {
-        try { return decodeURIComponent(new URL(u).pathname.split("/").pop() || u).replace(/_/g, " "); } catch { return u; }
-      });
-      categories.push({
-        name: data.page.label || data.page.id,
-        directory: data.page.id,
-        type: data.page.type || "static_article",
-        is_index_page: false,
-        page_count: count,
-        sample_pages: samples,
-        page_type: data.page.content_type || "wiki_article",
-      });
-    }
-
-    const discoverySummary = {
-      discovery_method: "first_level_links",
-      site_title: doc.description?.split(" - ")[0] || targetUrl,
-      domain: new URL(targetUrl).hostname,
-      categories,
-      excluded: [],
-      unclassified: { count: 0, directory: "misc", sample_pages: [] },
-      total_pages: totalPages,
-      estimated_time_minutes: Math.max(Math.ceil(totalPages * 5 / 60), 1),
-      manifest_path: null,
-      warnings: [],
-      caveats: [
-        "Only first-level links from the main page were discovered.",
-        "Actual page counts may differ after full traversal.",
-      ],
-      failure_rate: 0.0,
-    };
-
-    const summaryPath = path.join(runDir, "discovery_summary.json");
-    writeTextFile(summaryPath, JSON.stringify(discoverySummary, null, 2));
-
-    return makeResult("crawl", targetUrl, repoRef,
-      `Discovery-only completed via Scrapling first-level link extraction (${totalPages} links across ${categories.length} categories).`,
-      [absoluteArtifact(summaryPath, "disposable", "Discovery summary")],
-      "Review discovery summary. Use --from-manifest to proceed with extraction (note: Scrapling path does not produce a page manifest).",
-      "success",
-      {
-        workflow: "content_retrieval",
-        engine_path: `strategy_registry -> scrapling_discovery_only -> first_level_links`,
-        extraction_method: "scrapling",
-        discovery_only: true,
-        discovery_summary_path: path.resolve(summaryPath),
-        manifest_path: null,
-        confirmation_bypassed: yesFlag,
-      });
+    // API failure — log and fall through to Scrapling
+    console.warn(`MediaWiki API pipeline failed (exit code ${exitCode}), falling back to Scrapling`);
+    // API failure — delegate to Scrapling crawl
+    return runCrawlScrapling(repoRoot, repoRef, resolutionMode, runDir, reportPath, manifestPath, emitReport, targetUrl, strategy, doc, startPage, matchingPage, entryPoints, opts);
+  } else {
+    console.warn("pipeline script not found, falling back to Scrapling");
+    // Script missing — delegate to Scrapling crawl
+    return runCrawlScrapling(repoRoot, repoRef, resolutionMode, runDir, reportPath, manifestPath, emitReport, targetUrl, strategy, doc, startPage, matchingPage, entryPoints, opts);
   }
+}
 
-  // --- Standard Scrapling crawl path ---
-  let events = [];
-  let fallbackReason = null;
+function runCrawlScraplingDiscovery(repoRoot, repoRef, resolutionMode, runDir, reportPath, emitReport, targetUrl, strategy, doc, startPage, opts) {
+  const { yes: yesFlag = false } = opts;
   const preflight = runScraplingPreflight(repoRoot, true);
   if (!preflight.ok) {
-    if (emitReport) {
-      const report = buildCrawlReport({
-        targetUrl,
-        repoRef,
-        resolutionMode,
-        strategy,
-        events: ["Scrapling CLI preflight failed before crawl traversal."],
-        result: "failure",
-      });
-      writeTextFile(reportPath, report);
-    }
-    const artifacts = [];
-    if (emitReport) {
-      artifacts.push(absoluteArtifact(reportPath, "durable", "Crawl preflight report"));
-    }
-    // Handoff: Scrapling preflight failure is internal
-    const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: "preflight_failure", summary: `Scrapling CLI preflight failed (${preflight.status ?? "unknown"}).`, stderr: `${preflight.stdout ?? ""}${preflight.stderr ?? ""}`.trim() }, strategy });
-    return makeResult(
-      "crawl",
-      targetUrl,
-      repoRef,
-      "Crawl stopped because Scrapling CLI preflight failed.",
-      artifacts,
-      `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
+    return makeResult("crawl", targetUrl, repoRef,
+      "Scrapling CLI preflight failed for discovery-only mode.",
+      [],
+      "Fix Scrapling CLI preflight and retry.",
       "failure",
-      {
-        workflow: "content_retrieval",
-        engine_path: `strategy_registry -> scrapling_preflight:${preflight.status ?? "unavailable"} -> blocked`,
-        handoff_path: handoff.path,
-        handoff_summary: handoff.summary,
-      },
-    );
+      { workflow: "content_retrieval", engine_path: "scrapling_preflight -> discovery_only_blocked" });
   }
 
-  const queue = [];
-  // --- from-manifest: seed queue from existing manifest ---
-  if (fromManifest && fs.existsSync(fromManifest)) {
-    try {
-      const loadedManifest = JSON.parse(fs.readFileSync(fromManifest, "utf8"));
-      const loadedVisited = loadedManifest.visited ?? [];
-      for (const url of loadedVisited) {
-        const page = pages.find((p) => pagePatternMatches(p, url));
-        if (page) {
-          queue.push({ url, page, paginationIndex: 1 });
-        }
-      }
-      log.info(`Loaded ${queue.length} URLs from manifest for Scrapling traversal`);
-    } catch (err) {
-      console.warn(`Failed to load manifest: ${err.message}`);
-    }
+  const fetcher = selectFetcher(strategy, startPage);
+  const outputPath = path.join(runDir, "_homepage.html");
+  const fetchResult = runEngineFetch(repoRoot, fetcher, targetUrl, outputPath);
+  if (!fetchResult.ok) {
+    return makeResult("crawl", targetUrl, repoRef,
+      `Failed to fetch main page for discovery: ${fetchResult.stderr || "unknown error"}`,
+      [], "Check URL and retry.", "failure",
+      { workflow: "content_retrieval", engine_path: `scrapling:${fetcher} -> discovery_fetch_failed` });
   }
-  if (queue.length === 0) {
-    const startUrl = matchingPage && matchingPage.id === startPage.id ? targetUrl : startPage.url_example;
-    queue.push({ url: startUrl, page: startPage, paginationIndex: 1 });
-  }
-  const visited = new Set();
-  const artifacts = [];
-  // events already declared above (let events)
-  let failures = 0;
 
-  while (queue.length > 0 && visited.size < maxPages) {
-    const item = queue.shift();
-    if (!item || visited.has(item.url)) {
-      continue;
-    }
-    // --exclude-category filtering for Scrapling path (match by page id/label)
-    if (excludeCategory.length > 0 && item.page) {
-      const pageIdLower = (item.page.id || "").toLowerCase();
-      const pageLabelLower = (item.page.label || "").toLowerCase();
-      const isExcluded = excludeCategory.some(
-        (cat) => cat.toLowerCase() === pageIdLower || cat.toLowerCase() === pageLabelLower,
-      );
-      if (isExcluded) {
-        events.push(`Skipped ${item.url} — excluded category: ${item.page.id}`);
-        continue;
-      }
-    }
-    visited.add(item.url);
-    const fetcher = selectFetcher(strategy, item.page);
-    const pageSlug = `${String(visited.size).padStart(2, "0")}-${item.page.id}`;
-    const outputPath = path.join(runDir, `${pageSlug}.html`);
-    const fetchResult = runEngineFetch(repoRoot, fetcher, item.url, outputPath);
+  // Extract links matching links_to selectors and group by structure.pages
+  const categories = [];
+  const linksTo = startPage?.links_to ?? [];
+  const structurePages = doc?.structure?.pages ?? [];
+  const categoryMap = new Map(); // pageId -> { urls: Set }
 
-    if (fetchResult.ok) {
-      artifacts.push(absoluteArtifact(outputPath, "disposable", `Crawled page ${item.page.id}`));
-      events.push(`Fetched ${item.url} via ${fetcher} for page ${item.page.id}.`);
-    } else {
-      failures += 1;
-      const errorPath = path.join(runDir, `${pageSlug}.stderr.log`);
-      writeTextFile(errorPath, fetchResult.stderr || "Scrapling crawl fetch failed.");
-      artifacts.push(absoluteArtifact(errorPath, "disposable", `Crawl error for ${item.page.id}`));
-      events.push(`Failed ${item.url} via ${fetcher} for page ${item.page.id}.`);
-      continue;
-    }
+  for (const link of linksTo) {
+    const targetPage = structurePages.find((p) => p.id === link.target);
+    if (!targetPage) continue;
 
-    for (const link of item.page.links_to ?? []) {
-      const nextPage = pages.find((page) => page.id === link.target);
-      if (!nextPage) {
-        events.push(`Skipped undeclared target page ${link.target} from ${item.page.id}.`);
-        continue;
-      }
-      const discovered = collectLinksFromHtml(outputPath, item.url, link.selector);
-      for (const url of discovered) {
-        if (pagePatternMatches(nextPage, url) && !visited.has(url)) {
-          queue.push({ url, page: nextPage, paginationIndex: 1 });
-        }
-      }
-      if (discovered.length === 0) {
-        events.push(`No bounded links matched selector ${link.selector} from ${item.page.id}.`);
-      }
+    const discovered = collectLinksFromHtml(outputPath, targetUrl, link.selector);
+    if (!categoryMap.has(targetPage.id)) {
+      categoryMap.set(targetPage.id, { page: targetPage, urls: new Set() });
     }
-
-    if (item.page.pagination && item.page.pagination !== "none" && queue.length + visited.size < maxPages) {
-      if (item.page.pagination.mechanism === "url_parameter") {
-        const nextPageNumber = item.paginationIndex + 1;
-        const nextUrl = nextPaginationUrl(item.url, item.page.pagination, nextPageNumber);
-        if (nextUrl && !visited.has(nextUrl) && queue.length + visited.size < maxPages) {
-          queue.push({ url: nextUrl, page: item.page, paginationIndex: nextPageNumber });
-          events.push(`Queued bounded pagination URL ${nextUrl} from ${item.page.id}.`);
-        }
-      } else {
-        events.push(`Pagination mechanism ${item.page.pagination.mechanism} is bounded but not auto-followed in this implementation.`);
+    for (const url of discovered) {
+      if (pagePatternMatches(targetPage, url)) {
+        categoryMap.get(targetPage.id).urls.add(url);
       }
     }
   }
 
-  const manifest = {
-    command: "crawl",
-    target: targetUrl,
-    repo_ref: repoRef,
-    resolution_mode: resolutionMode,
-    strategy_file: path.relative(repoRoot, strategy.path),
-    visited: [...visited],
-    max_pages: maxPages,
-    start_page: startPage.id,
-    bounded_by: {
-      entry_points: entryPoints,
-      links_to: true,
-      pagination: true,
-      unrestricted_recursive_spider: false,
-    },
+  let totalPages = 0;
+  for (const [pageId, data] of categoryMap) {
+    const count = data.urls.size;
+    totalPages += count;
+    const samples = [...data.urls].slice(0, 5).map((u) => {
+      try { return decodeURIComponent(new URL(u).pathname.split("/").pop() || u).replace(/_/g, " "); } catch { return u; }
+    });
+    categories.push({
+      name: data.page.label || data.page.id,
+      directory: data.page.id,
+      type: data.page.type || "static_article",
+      is_index_page: false,
+      page_count: count,
+      sample_pages: samples,
+      page_type: data.page.content_type || "wiki_article",
+    });
+  }
+
+  const discoverySummary = {
+    discovery_method: "first_level_links",
+    site_title: doc.description?.split(" - ")[0] || targetUrl,
+    domain: new URL(targetUrl).hostname,
+    categories,
+    excluded: [],
+    unclassified: { count: 0, directory: "misc", sample_pages: [] },
+    total_pages: totalPages,
+    estimated_time_minutes: Math.max(Math.ceil(totalPages * 5 / 60), 1),
+    manifest_path: null,
+    warnings: [],
+    caveats: [
+      "Only first-level links from the main page were discovered.",
+      "Actual page counts may differ after full traversal.",
+    ],
+    failure_rate: 0.0,
   };
 
-  // Determine domain for cache operations
-  const crawlDomain = new URL(targetUrl).hostname;
-  let phase2Result = null;
+  const summaryPath = path.join(runDir, "discovery_summary.json");
+  writeTextFile(summaryPath, JSON.stringify(discoverySummary, null, 2));
 
-  // --- Scrapling --phase fetch: save visited pages to cache, skip conversion ---
-  if (phase === "fetch" && visited.size > 0) {
-    const domainCacheDir = scraplingCacheDir(repoRoot, crawlDomain);
-    ensureDir(domainCacheDir);
-    let cacheWriteCount = 0;
-    let cacheSkipCount = 0;
-    for (const url of visited) {
-      const slug = scraplingSlugFromUrl(url);
-      if (!reFetch && isScraplingCached(repoRoot, crawlDomain, slug)) {
-        cacheSkipCount++;
-        events.push(`Skipping cache write for ${url} (already cached)`);
-        continue;
-      }
-      // Find the fetched HTML file for this URL
-      let htmlContent = null;
-      for (const f of fs.readdirSync(runDir)) {
-        if (f.endsWith(".html")) {
-          const fpath = path.join(runDir, f);
-          const content = fs.readFileSync(fpath, "utf8");
-          if (content.includes(url) || f.includes(slug)) {
-            htmlContent = content;
-            break;
-          }
-        }
-      }
-      if (htmlContent) {
-        saveScraplingCache(repoRoot, crawlDomain, slug, htmlContent, {
-          url, fetcher: "scrapling",
-        });
-        cacheWriteCount++;
-        events.push(`Cached ${url} -> .cache/scrapling/${crawlDomain}/${slug}.html`);
-      }
-    }
-    console.log(`Scrapling fetch phase: ${cacheWriteCount} cached, ${cacheSkipCount} skipped`);
-  }
+  return makeResult("crawl", targetUrl, repoRef,
+    `Discovery-only completed via Scrapling first-level link extraction (${totalPages} links across ${categories.length} categories).`,
+    [absoluteArtifact(summaryPath, "disposable", "Discovery summary")],
+    "Review discovery summary. Use --from-manifest to proceed with extraction (note: Scrapling path does not produce a page manifest).",
+    "success",
+    {
+      workflow: "content_retrieval",
+      engine_path: `strategy_registry -> scrapling_discovery_only -> first_level_links`,
+      extraction_method: "scrapling",
+      discovery_only: true,
+      discovery_summary_path: path.resolve(summaryPath),
+      manifest_path: null,
+      confirmation_bypassed: yesFlag,
+    });
+}
 
-  // --- Scrapling --phase convert: read from cache and convert ---
-  if (phase === "convert" && fromManifest) {
-    const manifestData = JSON.parse(fs.readFileSync(fromManifest, "utf8"));
-    const urls = manifestData.visited || [];
-    let convertOk = 0;
-    let convertFail = 0;
-    for (const url of urls) {
-      const slug = scraplingSlugFromUrl(url);
-      const cached = loadScraplingCache(repoRoot, crawlDomain, slug);
-      if (!cached) {
-        events.push(`Cache miss for ${url} — skipping`);
-        convertFail++;
-        continue;
-      }
-      const tmpHtmlPath = path.join(runDir, `_cached_${slug}.html`);
-      writeTextFile(tmpHtmlPath, cached.html);
-      const mdPath = urlToStructuredPath(url, runDir);
-      const scraplingResult = runEngineFetch(repoRoot, "get", `file://${tmpHtmlPath}`, mdPath, ["--ai-targeted"]);
-      if (scraplingResult.ok) {
-        convertOk++;
-        events.push(`Converted cached ${url} to Markdown`);
-      } else {
-        convertFail++;
-        events.push(`Failed to convert cached ${url}`);
-      }
-      try { fs.unlinkSync(tmpHtmlPath); } catch {}
-    }
-    phase2Result = {
-      successful: urls.slice(0, convertOk).map((url, i) => ({ url })),
-      failed: urls.slice(0, convertFail).map((url, i) => ({ url, error: "conversion_failed" })),
-      mergedPath: null,
-    };
-    console.log(`Scrapling convert phase: ${convertOk} converted, ${convertFail} failed`);
-  }
-
-  // Phase 2: Markdown conversion (standard path, not --phase fetch/convert)
-  let extractionMethod = "scrapling";
-  let parallelFallbackReason = null;
-
-  if (markdown && visited.size > 0 && phase !== "fetch" && phase2Result === null) {
-    if (parallel) {
-      const obscuraPreflight = runObscuraPreflight(repoRoot, true);
-      if (obscuraPreflight.ok && obscuraPreflight.workerOk) {
-        try {
-          const port = await findAvailablePort();
-          const serveHandle = await startObscuraServe(obscuraPreflight.path, workers, port);
-          const fetchResults = await concurrentFetch(serveHandle, [...visited], 15);
-          stopObscuraServe(serveHandle);
-
-          const prefetchedHtml = {};
-          for (const r of fetchResults) {
-            if (r.html) {
-              prefetchedHtml[r.url] = r.html;
-            }
-          }
-
-          phase2Result = convertTraversalToMarkdown(repoRoot, runDir, manifest, {
-            fetcherFn: (url) => {
-              const page = pages.find((p) => pagePatternMatches(p, url));
-              return selectFetcher(strategy, page);
-            },
-            concurrency,
-            merge,
-            cleanupHtml: !keepHtml,
-            outputName: "crawl-output",
-            prefetchedHtml,
-          });
-          extractionMethod = "obscura-serve-pool";
-        } catch (err) {
-          console.warn(`Obscura parallel fetch failed: ${err.message}. Falling back to Scrapling serial.`);
-          parallelFallbackReason = err.message;
-        }
-      } else {
-        console.warn("Obscura preflight failed or worker binary missing. Falling back to Scrapling serial.");
-        parallelFallbackReason = "obscura_preflight_unavailable";
-      }
-    }
-
-    if (!phase2Result) {
-      phase2Result = convertTraversalToMarkdown(repoRoot, runDir, manifest, {
-        fetcherFn: (url) => {
-          const page = pages.find((p) => pagePatternMatches(p, url));
-          return selectFetcher(strategy, page);
-        },
-        concurrency,
-        merge,
-        cleanupHtml: !keepHtml,
-        outputName: "crawl-output",
-      });
-    }
-
-    manifest.phase2 = {
-      successful_count: phase2Result.successful.length,
-      failed_count: phase2Result.failed.length,
-      failed_urls: phase2Result.failed.map((f) => f.url),
-      merged_path: phase2Result.mergedPath,
-    };
-  }
-
-  writeTextFile(manifestPath, JSON.stringify(manifest, null, 2));
-
-  // Rebuild artifacts based on output mode
-  const finalArtifacts = [absoluteArtifact(manifestPath, "disposable", "Crawl manifest")];
-
-  if (markdown) {
-    finalArtifacts.push(...collectMarkdownArtifacts(runDir));
-    // Ensure merged file gets a descriptive label if found by collectMarkdownArtifacts
-    for (const { url } of (phase2Result?.failed ?? [])) {
-      const idx = manifest.visited.indexOf(url);
-      if (idx >= 0) {
-        const errorPath = path.join(runDir, `${String(idx + 1).padStart(2, "0")}.md.error.log`);
-        if (fs.existsSync(errorPath)) {
-          finalArtifacts.push(absoluteArtifact(errorPath, "disposable", `Conversion error for ${url}`));
-        }
-      }
-    }
-  } else {
-    for (const file of fs.readdirSync(runDir)) {
-      if (file.endsWith(".html")) {
-        finalArtifacts.push(absoluteArtifact(path.join(runDir, file), "disposable", `Crawled page ${file}`));
-      }
-    }
-  }
-
-  const traversalOk = visited.size > 0 && failures === 0;
-  const conversionOk = !markdown || (phase2Result && phase2Result.failed.length === 0);
-  const resultState =
-    traversalOk && conversionOk ? "success" : visited.size > failures ? "partial_success" : "failure";
-
-  const finalExtractionMethod = extractionMethod;
-  const finalFallbackReason = parallelFallbackReason ?? fallbackReason;
-
+async function runCrawlScrapling(repoRoot, repoRef, resolutionMode, runDir, reportPath, manifestPath, emitReport, targetUrl, strategy, doc, startPage, matchingPage, entryPoints, opts) {
+  const {
+    maxPages = 3,
+    concurrency = 5,
+    fromManifest = null,
+    yes: yesFlag = false,
+    excludeCategory = [],
+    phase = null,
+    reFetch = false,
+    keepHtml = false,
+    markdown = true,
+    merge = false,
+    parallel = false,
+    workers = 5,
+  } = opts;
+let events = [];
+let fallbackReason = null;
+const preflight = runScraplingPreflight(repoRoot, true);
+if (!preflight.ok) {
   if (emitReport) {
     const report = buildCrawlReport({
       targetUrl,
       repoRef,
       resolutionMode,
       strategy,
-      events,
-      result: resultState,
-      phase2: markdown && phase2Result
-        ? {
-            successful: phase2Result.successful.length,
-            failed: phase2Result.failed.length,
-            mergedPath: phase2Result.mergedPath,
-          }
-        : null,
-      extractionMethod: finalExtractionMethod,
-      fallbackReason: finalFallbackReason,
+      events: ["Scrapling CLI preflight failed before crawl traversal."],
+      result: "failure",
     });
     writeTextFile(reportPath, report);
-    finalArtifacts.unshift(absoluteArtifact(reportPath, "durable", "Crawl report"));
+  }
+  const artifacts = [];
+  if (emitReport) {
+    artifacts.push(absoluteArtifact(reportPath, "durable", "Crawl preflight report"));
+  }
+  // Handoff: Scrapling preflight failure is internal
+  const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: "preflight_failure", summary: `Scrapling CLI preflight failed (${preflight.status ?? "unknown"}).`, stderr: `${preflight.stdout ?? ""}${preflight.stderr ?? ""}`.trim() }, strategy });
+  return makeResult(
+    "crawl",
+    targetUrl,
+    repoRef,
+    "Crawl stopped because Scrapling CLI preflight failed.",
+    artifacts,
+    `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
+    "failure",
+    {
+      workflow: "content_retrieval",
+      engine_path: `strategy_registry -> scrapling_preflight:${preflight.status ?? "unavailable"} -> blocked`,
+      handoff_path: handoff.path,
+      handoff_summary: handoff.summary,
+    },
+  );
+}
+
+const queue = [];
+// --- from-manifest: seed queue from existing manifest ---
+if (fromManifest && fs.existsSync(fromManifest)) {
+  try {
+    const loadedManifest = JSON.parse(fs.readFileSync(fromManifest, "utf8"));
+    const loadedVisited = loadedManifest.visited ?? [];
+    for (const url of loadedVisited) {
+      const page = pages.find((p) => pagePatternMatches(p, url));
+      if (page) {
+        queue.push({ url, page, paginationIndex: 1 });
+      }
+    }
+    log.info(`Loaded ${queue.length} URLs from manifest for Scrapling traversal`);
+  } catch (err) {
+    console.warn(`Failed to load manifest: ${err.message}`);
+  }
+}
+if (queue.length === 0) {
+  const startUrl = matchingPage && matchingPage.id === startPage.id ? targetUrl : startPage.url_example;
+  queue.push({ url: startUrl, page: startPage, paginationIndex: 1 });
+}
+const visited = new Set();
+const artifacts = [];
+// events already declared above (let events)
+let failures = 0;
+
+while (queue.length > 0 && visited.size < maxPages) {
+  const item = queue.shift();
+  if (!item || visited.has(item.url)) {
+    continue;
+  }
+  // --exclude-category filtering for Scrapling path (match by page id/label)
+  if (excludeCategory.length > 0 && item.page) {
+    const pageIdLower = (item.page.id || "").toLowerCase();
+    const pageLabelLower = (item.page.label || "").toLowerCase();
+    const isExcluded = excludeCategory.some(
+      (cat) => cat.toLowerCase() === pageIdLower || cat.toLowerCase() === pageLabelLower,
+    );
+    if (isExcluded) {
+      events.push(`Skipped ${item.url} — excluded category: ${item.page.id}`);
+      continue;
+    }
+  }
+  visited.add(item.url);
+  const fetcher = selectFetcher(strategy, item.page);
+  const pageSlug = `${String(visited.size).padStart(2, "0")}-${item.page.id}`;
+  const outputPath = path.join(runDir, `${pageSlug}.html`);
+  const fetchResult = runEngineFetch(repoRoot, fetcher, item.url, outputPath);
+
+  if (fetchResult.ok) {
+    artifacts.push(absoluteArtifact(outputPath, "disposable", `Crawled page ${item.page.id}`));
+    events.push(`Fetched ${item.url} via ${fetcher} for page ${item.page.id}.`);
+  } else {
+    failures += 1;
+    const errorPath = path.join(runDir, `${pageSlug}.stderr.log`);
+    writeTextFile(errorPath, fetchResult.stderr || "Scrapling crawl fetch failed.");
+    artifacts.push(absoluteArtifact(errorPath, "disposable", `Crawl error for ${item.page.id}`));
+    events.push(`Failed ${item.url} via ${fetcher} for page ${item.page.id}.`);
+    continue;
   }
 
-  const summary =
-    resultState === "success"
-      ? `Crawl completed within declared strategy boundaries and visited ${visited.size} page(s)${markdown ? `; ${phase2Result.successful.length} converted to Markdown` : ""}.`
-      : resultState === "partial_success"
-        ? `Crawl visited ${visited.size} page(s)${markdown ? `; ${phase2Result.successful.length} converted, ${phase2Result.failed.length} failed` : ` with ${failures} fetch failure(s)`}.`
-        : "Crawl failed before any page completed successfully.";
-  const nextAction =
-    resultState === "failure"
-      ? "Review the crawl report, strategy selectors, or authentication requirements before retrying."
-      : "Inspect the crawl outputs. Extend the site strategy if more bounded traversal is needed.";
+  for (const link of item.page.links_to ?? []) {
+    const nextPage = pages.find((page) => page.id === link.target);
+    if (!nextPage) {
+      events.push(`Skipped undeclared target page ${link.target} from ${item.page.id}.`);
+      continue;
+    }
+    const discovered = collectLinksFromHtml(outputPath, item.url, link.selector);
+    for (const url of discovered) {
+      if (pagePatternMatches(nextPage, url) && !visited.has(url)) {
+        queue.push({ url, page: nextPage, paginationIndex: 1 });
+      }
+    }
+    if (discovered.length === 0) {
+      events.push(`No bounded links matched selector ${link.selector} from ${item.page.id}.`);
+    }
+  }
 
-  return makeResult("crawl", targetUrl, repoRef, summary, finalArtifacts, nextAction, resultState, {
-    workflow: "content_retrieval",
-    engine_path: `strategy_registry -> bounded_crawl -> scrapling_preflight:${preflight.status ?? "unknown"}${markdown ? ` -> markdown_conversion(${phase2Result?.successful.length ?? 0}/${visited.size})` : ""}`,
-    extraction_method: finalExtractionMethod,
-    ...(finalFallbackReason ? { fallback_reason: finalFallbackReason } : {}),
-    confirmation_bypassed: yesFlag,
+  if (item.page.pagination && item.page.pagination !== "none" && queue.length + visited.size < maxPages) {
+    if (item.page.pagination.mechanism === "url_parameter") {
+      const nextPageNumber = item.paginationIndex + 1;
+      const nextUrl = nextPaginationUrl(item.url, item.page.pagination, nextPageNumber);
+      if (nextUrl && !visited.has(nextUrl) && queue.length + visited.size < maxPages) {
+        queue.push({ url: nextUrl, page: item.page, paginationIndex: nextPageNumber });
+        events.push(`Queued bounded pagination URL ${nextUrl} from ${item.page.id}.`);
+      }
+    } else {
+      events.push(`Pagination mechanism ${item.page.pagination.mechanism} is bounded but not auto-followed in this implementation.`);
+    }
+  }
+}
+
+const manifest = {
+  command: "crawl",
+  target: targetUrl,
+  repo_ref: repoRef,
+  resolution_mode: resolutionMode,
+  strategy_file: path.relative(repoRoot, strategy.path),
+  visited: [...visited],
+  max_pages: maxPages,
+  start_page: startPage.id,
+  bounded_by: {
+    entry_points: entryPoints,
+    links_to: true,
+    pagination: true,
+    unrestricted_recursive_spider: false,
+  },
+};
+
+// Determine domain for cache operations
+const crawlDomain = new URL(targetUrl).hostname;
+let phase2Result = null;
+
+// --- Scrapling --phase fetch: save visited pages to cache, skip conversion ---
+if (phase === "fetch" && visited.size > 0) {
+  const domainCacheDir = scraplingCacheDir(repoRoot, crawlDomain);
+  ensureDir(domainCacheDir);
+  let cacheWriteCount = 0;
+  let cacheSkipCount = 0;
+  for (const url of visited) {
+    const slug = scraplingSlugFromUrl(url);
+    if (!reFetch && isScraplingCached(repoRoot, crawlDomain, slug)) {
+      cacheSkipCount++;
+      events.push(`Skipping cache write for ${url} (already cached)`);
+      continue;
+    }
+    // Find the fetched HTML file for this URL
+    let htmlContent = null;
+    for (const f of fs.readdirSync(runDir)) {
+      if (f.endsWith(".html")) {
+        const fpath = path.join(runDir, f);
+        const content = fs.readFileSync(fpath, "utf8");
+        if (content.includes(url) || f.includes(slug)) {
+          htmlContent = content;
+          break;
+        }
+      }
+    }
+    if (htmlContent) {
+      saveScraplingCache(repoRoot, crawlDomain, slug, htmlContent, {
+        url, fetcher: "scrapling",
+      });
+      cacheWriteCount++;
+      events.push(`Cached ${url} -> .cache/scrapling/${crawlDomain}/${slug}.html`);
+    }
+  }
+  console.log(`Scrapling fetch phase: ${cacheWriteCount} cached, ${cacheSkipCount} skipped`);
+}
+
+// --- Scrapling --phase convert: read from cache and convert ---
+if (phase === "convert" && fromManifest) {
+  const manifestData = JSON.parse(fs.readFileSync(fromManifest, "utf8"));
+  const urls = manifestData.visited || [];
+  let convertOk = 0;
+  let convertFail = 0;
+  for (const url of urls) {
+    const slug = scraplingSlugFromUrl(url);
+    const cached = loadScraplingCache(repoRoot, crawlDomain, slug);
+    if (!cached) {
+      events.push(`Cache miss for ${url} — skipping`);
+      convertFail++;
+      continue;
+    }
+    const tmpHtmlPath = path.join(runDir, `_cached_${slug}.html`);
+    writeTextFile(tmpHtmlPath, cached.html);
+    const mdPath = urlToStructuredPath(url, runDir);
+    const scraplingResult = runEngineFetch(repoRoot, "get", `file://${tmpHtmlPath}`, mdPath, ["--ai-targeted"]);
+    if (scraplingResult.ok) {
+      convertOk++;
+      events.push(`Converted cached ${url} to Markdown`);
+    } else {
+      convertFail++;
+      events.push(`Failed to convert cached ${url}`);
+    }
+    try { fs.unlinkSync(tmpHtmlPath); } catch {}
+  }
+  phase2Result = {
+    successful: urls.slice(0, convertOk).map((url, i) => ({ url })),
+    failed: urls.slice(0, convertFail).map((url, i) => ({ url, error: "conversion_failed" })),
+    mergedPath: null,
+  };
+  console.log(`Scrapling convert phase: ${convertOk} converted, ${convertFail} failed`);
+}
+
+// Phase 2: Markdown conversion (standard path, not --phase fetch/convert)
+let extractionMethod = "scrapling";
+let parallelFallbackReason = null;
+
+if (markdown && visited.size > 0 && phase !== "fetch" && phase2Result === null) {
+  if (parallel) {
+    const obscuraPreflight = runObscuraPreflight(repoRoot, true);
+    if (obscuraPreflight.ok && obscuraPreflight.workerOk) {
+      try {
+        const port = await findAvailablePort();
+        const serveHandle = await startObscuraServe(obscuraPreflight.path, workers, port);
+        const fetchResults = await concurrentFetch(serveHandle, [...visited], 15);
+        stopObscuraServe(serveHandle);
+
+        const prefetchedHtml = {};
+        for (const r of fetchResults) {
+          if (r.html) {
+            prefetchedHtml[r.url] = r.html;
+          }
+        }
+
+        phase2Result = convertTraversalToMarkdown(repoRoot, runDir, manifest, {
+          fetcherFn: (url) => {
+            const page = pages.find((p) => pagePatternMatches(p, url));
+            return selectFetcher(strategy, page);
+          },
+          concurrency,
+          merge,
+          cleanupHtml: !keepHtml,
+          outputName: "crawl-output",
+          prefetchedHtml,
+        });
+        extractionMethod = "obscura-serve-pool";
+      } catch (err) {
+        console.warn(`Obscura parallel fetch failed: ${err.message}. Falling back to Scrapling serial.`);
+        parallelFallbackReason = err.message;
+      }
+    } else {
+      console.warn("Obscura preflight failed or worker binary missing. Falling back to Scrapling serial.");
+      parallelFallbackReason = "obscura_preflight_unavailable";
+    }
+  }
+
+  if (!phase2Result) {
+    phase2Result = convertTraversalToMarkdown(repoRoot, runDir, manifest, {
+      fetcherFn: (url) => {
+        const page = pages.find((p) => pagePatternMatches(p, url));
+        return selectFetcher(strategy, page);
+      },
+      concurrency,
+      merge,
+      cleanupHtml: !keepHtml,
+      outputName: "crawl-output",
+    });
+  }
+
+  manifest.phase2 = {
+    successful_count: phase2Result.successful.length,
+    failed_count: phase2Result.failed.length,
+    failed_urls: phase2Result.failed.map((f) => f.url),
+    merged_path: phase2Result.mergedPath,
+  };
+}
+
+writeTextFile(manifestPath, JSON.stringify(manifest, null, 2));
+
+// Rebuild artifacts based on output mode
+const finalArtifacts = [absoluteArtifact(manifestPath, "disposable", "Crawl manifest")];
+
+if (markdown) {
+  finalArtifacts.push(...collectMarkdownArtifacts(runDir));
+  // Ensure merged file gets a descriptive label if found by collectMarkdownArtifacts
+  for (const { url } of (phase2Result?.failed ?? [])) {
+    const idx = manifest.visited.indexOf(url);
+    if (idx >= 0) {
+      const errorPath = path.join(runDir, `${String(idx + 1).padStart(2, "0")}.md.error.log`);
+      if (fs.existsSync(errorPath)) {
+        finalArtifacts.push(absoluteArtifact(errorPath, "disposable", `Conversion error for ${url}`));
+      }
+    }
+  }
+} else {
+  for (const file of fs.readdirSync(runDir)) {
+    if (file.endsWith(".html")) {
+      finalArtifacts.push(absoluteArtifact(path.join(runDir, file), "disposable", `Crawled page ${file}`));
+    }
+  }
+}
+
+const traversalOk = visited.size > 0 && failures === 0;
+const conversionOk = !markdown || (phase2Result && phase2Result.failed.length === 0);
+const resultState =
+  traversalOk && conversionOk ? "success" : visited.size > failures ? "partial_success" : "failure";
+
+const finalExtractionMethod = extractionMethod;
+const finalFallbackReason = parallelFallbackReason ?? fallbackReason;
+
+if (emitReport) {
+  const report = buildCrawlReport({
+    targetUrl,
+    repoRef,
+    resolutionMode,
+    strategy,
+    events,
+    result: resultState,
+    phase2: markdown && phase2Result
+      ? {
+          successful: phase2Result.successful.length,
+          failed: phase2Result.failed.length,
+          mergedPath: phase2Result.mergedPath,
+        }
+      : null,
+    extractionMethod: finalExtractionMethod,
+    fallbackReason: finalFallbackReason,
   });
+  writeTextFile(reportPath, report);
+  finalArtifacts.unshift(absoluteArtifact(reportPath, "durable", "Crawl report"));
+}
+
+const summary =
+  resultState === "success"
+    ? `Crawl completed within declared strategy boundaries and visited ${visited.size} page(s)${markdown ? `; ${phase2Result.successful.length} converted to Markdown` : ""}.`
+    : resultState === "partial_success"
+      ? `Crawl visited ${visited.size} page(s)${markdown ? `; ${phase2Result.successful.length} converted, ${phase2Result.failed.length} failed` : ` with ${failures} fetch failure(s)`}.`
+      : "Crawl failed before any page completed successfully.";
+const nextAction =
+  resultState === "failure"
+    ? "Review the crawl report, strategy selectors, or authentication requirements before retrying."
+    : "Inspect the crawl outputs. Extend the site strategy if more bounded traversal is needed.";
+
+return makeResult("crawl", targetUrl, repoRef, summary, finalArtifacts, nextAction, resultState, {
+  workflow: "content_retrieval",
+  engine_path: `strategy_registry -> bounded_crawl -> scrapling_preflight:${preflight.status ?? "unknown"}${markdown ? ` -> markdown_conversion(${phase2Result?.successful.length ?? 0}/${visited.size})` : ""}`,
+  extraction_method: finalExtractionMethod,
+  ...(finalFallbackReason ? { fallback_reason: finalFallbackReason } : {}),
+  confirmation_bypassed: yesFlag,
+});
 }
 
 function extractAllLinks(htmlPath, baseUrl, opts = {}) {

@@ -1,5 +1,21 @@
 # AGENTS.md — chrome-agent 治理文档
 
+## 0. Critical Rule
+
+本仓库安装了 `lsp-pi` 扩展，提供 Python（pyright）和 TypeScript 的代码智能。**在调查代码结构、调用链和重构影响时，必须优先使用 `lsp` 工具**，而非 `grep` + `read` + 人眼扫描。 详见后面开发指南里的详细工具指导。
+
+### 操作决策表
+
+| 场景 | 用 `lsp` action | 禁止的替代方案 |
+|------|-----------------|----------------|
+| 找函数/类的定义位置 | `definition` | ❌ grep 搜名 + read + 人眼定位 |
+| 查谁调用了某函数 | `references`（从函数定义行出发） | ❌ grep 搜名 + 人工筛 import/注释 |
+| 列出文件中的函数和类 | `symbols` | ❌ read 全文 + 人眼扫描 |
+| 查变量类型签名 | `hover` | ❌ 人眼追踪类型链 |
+| 修改前检查影响范围 | `references` + `diagnostics` | ❌ 凭记忆 grep |
+| 跨文件重命名 | `rename` | ❌ 逐文件 sed |
+| 编辑后验证 | `diagnostics` | ❌ 等运行时错误 |
+
 ## 1. Service Identity（服务身份）
 
 **chrome-agent** 是**跨仓库网页抓取服务（cross-repo web scraping service）**，提供标准化、可复用的网页内容获取流程。推荐的 agent-facing 正式入口是全局 `chrome-agent` workflow skill，repo-backed 的全局 `chrome-agent` CLI 是低层显式执行面与 shell/backend 入口；具体执行仍由当前仓库内部的 `AGENTS.md`、specs、策略库与引擎规则负责。区别于通用的浏览器调试工具仓库，其核心职责是获取和分析网页内容，将浏览器访问与诊断能力作为下层服务的能力层使用。
@@ -262,192 +278,7 @@ Handoff 文档包含完整的上下文（命令、URL、时间戳、策略路径
 
 `docs/decisions/README.md` 维持所有决策的索引清单，包括标题、日期和一句话摘要。
 
-## 6. Spec and Change Governance（规范与变更治理）
-
-本仓库使用 Orbitos Spec Standard v0.3 管理规范与变更。
-
-- 行为规范真源位于 `openspec/specs/<capability-id>/spec.md`
-- 活跃变更位于 `openspec/changes/<change-name>/`
-- 已归档变更位于 `openspec/changes/archive/YYYY-MM-DD-<name>/`
-- 项目页面（Obsidian）不替代 spec delta 作为实现与验证依据
-- 回写只同步结论、状态、摘要与链接，不复制整份 spec/design/tasks
-
-## 7. 策略库治理（Strategy Library Governance）
-
-### 目录结构
-
-```
-sites/
-├── anti-crawl/                # 反爬策略（按保护机制命名）
-│   ├── default.md             #   默认 Scrapling-first 策略
-│   ├── <mechanism>.md         #   具体反爬策略
-│   └── registry.json          #   索引
-└── strategies/                # 站点策略（按域名文件夹组织）
-    ├── <domain>/
-    │   ├── strategy.md        #   站点策略（YAML frontmatter + body）
-    │   └── _attachments/      #   操作附件（可选）
-    └── registry.json          #   索引
-```
-
-### 治理约束
-
-- **frontmatter 为权威来源**：`registry.json` 仅为索引摘要，不一致时以 frontmatter 为准
-- **新增策略需更新 registry.json**：每次添加或修改策略文件必须同步更新对应的 `registry.json`
-- **反爬策略按机制命名**：文件名匹配保护机制（如 `cloudflare-turnstile.md`），而非来源站点
-- **站点策略按域名组织**：文件夹名匹配 `domain` 字段，策略文件必须为 `strategy.md`
-- **操作内容分离**：脚本、配置等操作内容放入 `_attachments/`，不混入 `strategy.md`
-- **受控词汇表**：`protection_level`、`page_type`、`protection_type` 的枚举值定义在各自的 spec 中，新增值需通过 openspec change
-
-### 策略派生（Bootstrap）
-
-- **`bootstrap-strategy` 命令自动生成并更新 registry.json**：通过 `chrome-agent bootstrap-strategy <url> --from <domain>` 派生的策略会自动写入 `sites/strategies/<domain>/strategy.md` 并追加 `registry.json` 条目，无需手动更新索引
-- **手动创建策略仍需人工更新 registry.json**：当不通过 `bootstrap-strategy` 而是直接新建 `strategy.md` 时，必须手动添加对应 registry 条目
-- **`backend` 字段为可选 advisory 字段**：用于标记后端家族关系（如 `weird-gloop-mediawiki-1.45`），不作为运行时策略匹配键；无效值仅触发警告，不阻断执行
-- **bootstrap 生成的策略必须 review**：生成的 `strategy.md` 包含 `<!-- Bootstrapped from ...; review recommended -->` 标记，使用前必须完成验证并替换为实际操作细节
-
-更多细节参见 `sites/README.md`。
-
-### Pipeline Strategy Schema 治理
-
-#### 权威来源
-
-`scripts/pipeline/pipeline/registry.py` 中的 `_STRATEGY_REGISTRY` 是策略 ID 的唯一权威来源。
-
-每个 `content_profile` 维度的合法值由 `_STRATEGY_REGISTRY` 中对应维度的 key 定义。
-
-#### 策略文件约束
-
-- 策略文件的 `api.content_profile` 各字段只能引用 `_STRATEGY_REGISTRY` 中对应维度已注册的 ID
-- Pipeline 启动时执行 hard-fail 校验：引用未注册 ID 导致 `EXIT_STRATEGY_ERROR`，不降级执行
-- `bootstrap-strategy` 输出时同步校验：写入策略文件前检查所有 `content_profile` ID 的有效性
-- 未指定 `content_profile` 的策略文件使用 `DEFAULT_STRATEGIES` 默认值，不触发校验
-
-#### 扩展协议
-
-新增策略实现必须严格遵守以下顺序：
-
-1. **实现 Strategy 类**（继承或实现对应接口 Protocol）
-2. **注册到 `_STRATEGY_REGISTRY`** 对应维度的 dict 中
-3. **在策略文件中引用**已注册的 ID
-
-严禁在 Step 2（注册）之前执行 Step 3（策略文件引用）。违反此顺序的策略文件引用会被 pipeline 的启动校验拒绝。
-
-#### 当前注册 ID 清单
-
-> 此清单为快速参考，不替代 `_STRATEGY_REGISTRY` 作为权威来源。以代码为准。
-
-| 维度 | 合法 ID |
-|------|--------|
-| `discovery` | `allpages`, `category_members` |
-| `content_acquisition` | `wikitext_only`, `hybrid_wikitext_plus_rendered`, `html_rendered` |
-| `link_resolver` | `exact_title_match`, `short_name_with_cross_namespace` |
-| `template_processor` | `simple_substitution`, `structured_with_lua_fallback` |
-| `list_page_assembler` | `frontmatter_driven`, `hybrid_frontmatter_and_rendered` |
-
-#### Registry 变更约束
-
-删除或重命名 registry 中的 ID 前必须：
-
-1. 扫描所有 `sites/strategies/*/strategy.md` 确认无策略文件引用该 ID
-2. 更新任何引用该 ID 的策略文件
-3. 同步更新 `sites/templates/` 中的模板文件（如模板包含该 ID）
-
-新增 registry ID 无此约束（新增是向后兼容的）。
-
-#### platform_variant 声明
-
-策略文件的 `api` 对象中可选声明 `platform_variant` 字段，用于 MediaWiki 平台子类型化：
-
-| 值 | 描述 |
-|------|------|
-| `fandom` | Fandom-hosted MediaWiki |
-| `wiki-gg` | wiki.gg-hosted MediaWiki |
-| `standard` | 标准 MediaWiki（默认值，未指定时使用） |
-
-Pipeline 在 `run_pipeline()` 中解析此字段并传递给各阶段函数。当前阶段仅接受和记录，不实现行为分支。
-
-## 8. 引擎扩展治理（Engine Extension Governance）
-
-- **新引擎必须通过 openspec change 接入**：不得绕过 `openspec/changes/` 工作流直接新增或替换引擎能力。
-- **注册索引必须同步更新**：新增、修改或 supersede 任一引擎时，必须同步更新 `configs/engine-registry.json`，并以对应 contract spec 为权威来源。
-- **artifact checklist 以 spec 为准**：接入时必须遵循 `openspec/specs/extension-api/spec.md` 中定义的 artifact checklist、验证条件与命名规范。
-- **注册格式以 spec 为准**：引擎条目的字段结构、特性评分、`composite_score`、`default_rank` 与生命周期状态由 `openspec/specs/engine-registry/spec.md` 约束。
-- **聚合索引只保留跨引擎关注点**：`openspec/specs/engine-contracts/spec.md` 负责错误矩阵、选择映射、smoke-check 聚合；具体引擎清单不再内联维护。
-
-### 已注册引擎概览
-
-| 引擎 | 类型 | 状态 | default_rank | 适用场景 |
-|------|------|------|--------------|----------|
-| `scrapling-get` | `http` | frozen | 1 | 静态页面、低保护 |
-| `obscura-fetch` | `cdp_lightweight` | draft | 2 | 动态内容、SPA、动态列表、静态文章 |
-| `scrapling-fetch` | `playwright` | frozen | 3 | SPA、动态交互（完整浏览器） |
-| `scrapling-bulk-fetch` | `playwright_bulk` | frozen | 4 | 批量操作 |
-| `cloakbrowser-fetch` | `playwright_stealth` | draft | 4 | 高保护页面、Turnstile、reCAPTCHA、TLS 指纹 |
-| `scrapling-stealthy-fetch` | `playwright_stealth` | superseded | 4 | ~~高保护页面~~（已被 cloakbrowser-fetch 替代） |
-| `chrome-devtools-mcp` | `cdp_managed` | frozen | 5 | 诊断证据 |
-| `chrome-cdp` | `cdp_live` | frozen | 6 | 实时会话、认证延续 |
-
-新增引擎示例：`obscura-fetch` 作为 `cdp_lightweight` 类型接入，填补 `scrapling-get` 与 `scrapling-fetch` 之间的效率断层。预编译二进制通过 GitHub Releases 获取，受管安装路径为 `$HOME/.cache/chrome-agent-obscura/bin/obscura`；详见 [docs/playbooks/obscura-cli-preflight.md](docs/playbooks/obscura-cli-preflight.md)。
-
-新增引擎示例：`cloakbrowser-fetch` 作为 `playwright_stealth` 类型接入，替代 `scrapling-stealthy-fetch` 处理高保护页面。57 个 C++ 源码级 Chromium patch 提供 TLS 指纹绕过、Cloudflare Turnstile 自动解析、reCAPTCHA v3 高分等 stealth 能力。用户通过 `pip install cloakbrowser` 安装，binary 缓存于 `~/.cloakbrowser/chromium-{version}/`；详见 `scripts/cloakbrowser-preflight.sh`。
-
-### 引擎版本治理（Engine Version Governance）
-
-#### 权威来源
-
-`configs/engine-versions.json` 是所有引擎依赖版本的唯一权威来源（single source of truth）。每个引擎条目声明 `expected_version`、检测方法、文件哈希（如适用）和更新来源。
-
-#### 升级约束
-
-当操作者（agent 或人工）执行引擎 runtime 版本升级时，**必须同步更新** `configs/engine-versions.json` 中对应引擎的以下字段：
-
-| 字段 | 必须更新 | 说明 |
-|------|---------|------|
-| `expected_version` | ✅ | 新版本号 |
-| `detection.binaries[].expected_size` | ✅（Obscura） | 新二进制文件大小（字节） |
-| `detection.binaries[].expected_md5` | ✅（Obscura） | 新二进制 MD5 哈希 |
-
-仅更新 `expected_version` 而不同步哈希值，会导致 preflight 和 `engine-version-check.sh` 持续报告 `hash_mismatch`，obscura-cli-preflight.sh 会反复触发重新下载。
-
-#### 升级工作流
-
-引擎 runtime 升级必须遵循以下顺序：
-
-1. **确认目标版本可用**：检查 GitHub Release / PyPI 确认目标版本已发布
-2. **更新清单**：修改 `configs/engine-versions.json` 中的 `expected_version` 及相关哈希/大小字段
-3. **执行安装**：运行 `./scripts/engine-version-check.sh --update --engine <name>` 或对应 preflight 脚本
-4. **验证安装**：运行 `./scripts/engine-version-check.sh --json` 确认 `all_ok: true`
-5. **doctor 集成验证**：运行 `chrome-agent doctor --format json` 确认 `version_<engine>` check 通过
-6. **提交变更**：将 `configs/engine-versions.json` 的更新随升级提交一起 commit
-
-**禁止**在未更新 `configs/engine-versions.json` 的情况下手动替换二进制文件或通过 pip 重装——这会绕过版本治理，导致后续 preflight 和 doctor 报告不可靠的结果。
-
-#### 清单字段获取方法
-
-| 引擎 | `expected_version` | `expected_md5` / `expected_size` |
-|------|--------------------|-------------------------------|
-| Scrapling | PyPI 版本号 | 不适用（pip 管理版本） |
-| Obscura | GitHub Release tag（去 `v` 前缀） | 安装后执行 `md5 -q` + `stat -f '%z'` 获取 |
-| CloakBrowser | `pip show cloakbrowser` 的 `Version` | 不适用（pip 管理版本） |
-
-Obscura 哈希获取示例（升级后立即执行）：
-```bash
-BIN="$HOME/.cache/chrome-agent-obscura/bin"
-md5 -q "$BIN/obscura" "$BIN/obscura-worker"
-stat -f '%z' "$BIN/obscura" "$BIN/obscura-worker"
-```
-
-#### doctor 中的版本检查
-
-`runDoctor()` 通过 `scripts/engine-version-check.sh --json` 自动收集所有引擎的版本状态，并在 checks 中输出 `version_<engine>` 条目。版本不匹配会反映为 `partial_success` 或 `failure`，具体取决于其他检查的结果。
-
-#### 与其他治理规则的交互
-
-- **engine-registry.json 不作为版本来源**：`configs/engine-registry.json` 中的 prose 版本引用（如 `"v0.1.2 with expanded release history"`）仅为人工参考，不参与自动化版本检测
-- **preflight 脚本从清单读取版本**：`obscura-cli-preflight.sh` 从 `configs/engine-versions.json` 读取 `expected_version`，不再硬编码
-- **engine-version-check.sh 是唯一检测入口**：所有版本检测逻辑集中在该脚本中，preflight 和 doctor 均通过它获取结果
-
-## 9. Development（开发指南）
+## 6. Development（开发指南）
 
 ### 仓库结构
 
@@ -613,6 +444,191 @@ chrome-agent doctor --format json
 - **引擎版本升级必须同步 `configs/engine-versions.json`**：不同步哈希值会导致 preflight 持续报告 `hash_mismatch`（详见 §8 引擎版本治理）
 - **`SCRAPLING_CLI_PATH` 是唯一识别变量**：CLI 不会猜测路径，未设置时走受管安装 `$HOME/.cache/chrome-agent-scrapling/bin/scrapling`
 - **修改策略文件后必须更新 `registry.json`**：手动创建策略时需手动更新索引；`bootstrap-strategy` 命令会自动更新
+
+## 7. Spec and Change Governance（规范与变更治理）
+
+本仓库使用 Orbitos Spec Standard v0.3 管理规范与变更。
+
+- 行为规范真源位于 `openspec/specs/<capability-id>/spec.md`
+- 活跃变更位于 `openspec/changes/<change-name>/`
+- 已归档变更位于 `openspec/changes/archive/YYYY-MM-DD-<name>/`
+- 项目页面（Obsidian）不替代 spec delta 作为实现与验证依据
+- 回写只同步结论、状态、摘要与链接，不复制整份 spec/design/tasks
+
+## 8. 策略库治理（Strategy Library Governance）
+
+### 目录结构
+
+```
+sites/
+├── anti-crawl/                # 反爬策略（按保护机制命名）
+│   ├── default.md             #   默认 Scrapling-first 策略
+│   ├── <mechanism>.md         #   具体反爬策略
+│   └── registry.json          #   索引
+└── strategies/                # 站点策略（按域名文件夹组织）
+    ├── <domain>/
+    │   ├── strategy.md        #   站点策略（YAML frontmatter + body）
+    │   └── _attachments/      #   操作附件（可选）
+    └── registry.json          #   索引
+```
+
+### 治理约束
+
+- **frontmatter 为权威来源**：`registry.json` 仅为索引摘要，不一致时以 frontmatter 为准
+- **新增策略需更新 registry.json**：每次添加或修改策略文件必须同步更新对应的 `registry.json`
+- **反爬策略按机制命名**：文件名匹配保护机制（如 `cloudflare-turnstile.md`），而非来源站点
+- **站点策略按域名组织**：文件夹名匹配 `domain` 字段，策略文件必须为 `strategy.md`
+- **操作内容分离**：脚本、配置等操作内容放入 `_attachments/`，不混入 `strategy.md`
+- **受控词汇表**：`protection_level`、`page_type`、`protection_type` 的枚举值定义在各自的 spec 中，新增值需通过 openspec change
+
+### 策略派生（Bootstrap）
+
+- **`bootstrap-strategy` 命令自动生成并更新 registry.json**：通过 `chrome-agent bootstrap-strategy <url> --from <domain>` 派生的策略会自动写入 `sites/strategies/<domain>/strategy.md` 并追加 `registry.json` 条目，无需手动更新索引
+- **手动创建策略仍需人工更新 registry.json**：当不通过 `bootstrap-strategy` 而是直接新建 `strategy.md` 时，必须手动添加对应 registry 条目
+- **`backend` 字段为可选 advisory 字段**：用于标记后端家族关系（如 `weird-gloop-mediawiki-1.45`），不作为运行时策略匹配键；无效值仅触发警告，不阻断执行
+- **bootstrap 生成的策略必须 review**：生成的 `strategy.md` 包含 `<!-- Bootstrapped from ...; review recommended -->` 标记，使用前必须完成验证并替换为实际操作细节
+
+更多细节参见 `sites/README.md`。
+
+### Pipeline Strategy Schema 治理
+
+#### 权威来源
+
+`scripts/pipeline/pipeline/registry.py` 中的 `_STRATEGY_REGISTRY` 是策略 ID 的唯一权威来源。
+
+每个 `content_profile` 维度的合法值由 `_STRATEGY_REGISTRY` 中对应维度的 key 定义。
+
+#### 策略文件约束
+
+- 策略文件的 `api.content_profile` 各字段只能引用 `_STRATEGY_REGISTRY` 中对应维度已注册的 ID
+- Pipeline 启动时执行 hard-fail 校验：引用未注册 ID 导致 `EXIT_STRATEGY_ERROR`，不降级执行
+- `bootstrap-strategy` 输出时同步校验：写入策略文件前检查所有 `content_profile` ID 的有效性
+- 未指定 `content_profile` 的策略文件使用 `DEFAULT_STRATEGIES` 默认值，不触发校验
+
+#### 扩展协议
+
+新增策略实现必须严格遵守以下顺序：
+
+1. **实现 Strategy 类**（继承或实现对应接口 Protocol）
+2. **注册到 `_STRATEGY_REGISTRY`** 对应维度的 dict 中
+3. **在策略文件中引用**已注册的 ID
+
+严禁在 Step 2（注册）之前执行 Step 3（策略文件引用）。违反此顺序的策略文件引用会被 pipeline 的启动校验拒绝。
+
+#### 当前注册 ID 清单
+
+> 此清单为快速参考，不替代 `_STRATEGY_REGISTRY` 作为权威来源。以代码为准。
+
+| 维度 | 合法 ID |
+|------|--------|
+| `discovery` | `allpages`, `category_members` |
+| `content_acquisition` | `wikitext_only`, `hybrid_wikitext_plus_rendered`, `html_rendered` |
+| `link_resolver` | `exact_title_match`, `short_name_with_cross_namespace` |
+| `template_processor` | `simple_substitution`, `structured_with_lua_fallback` |
+| `list_page_assembler` | `frontmatter_driven`, `hybrid_frontmatter_and_rendered` |
+
+#### Registry 变更约束
+
+删除或重命名 registry 中的 ID 前必须：
+
+1. 扫描所有 `sites/strategies/*/strategy.md` 确认无策略文件引用该 ID
+2. 更新任何引用该 ID 的策略文件
+3. 同步更新 `sites/templates/` 中的模板文件（如模板包含该 ID）
+
+新增 registry ID 无此约束（新增是向后兼容的）。
+
+#### platform_variant 声明
+
+策略文件的 `api` 对象中可选声明 `platform_variant` 字段，用于 MediaWiki 平台子类型化：
+
+| 值 | 描述 |
+|------|------|
+| `fandom` | Fandom-hosted MediaWiki |
+| `wiki-gg` | wiki.gg-hosted MediaWiki |
+| `standard` | 标准 MediaWiki（默认值，未指定时使用） |
+
+Pipeline 在 `run_pipeline()` 中解析此字段并传递给各阶段函数。当前阶段仅接受和记录，不实现行为分支。
+
+## 9. 引擎扩展治理（Engine Extension Governance）
+
+- **新引擎必须通过 openspec change 接入**：不得绕过 `openspec/changes/` 工作流直接新增或替换引擎能力。
+- **注册索引必须同步更新**：新增、修改或 supersede 任一引擎时，必须同步更新 `configs/engine-registry.json`，并以对应 contract spec 为权威来源。
+- **artifact checklist 以 spec 为准**：接入时必须遵循 `openspec/specs/extension-api/spec.md` 中定义的 artifact checklist、验证条件与命名规范。
+- **注册格式以 spec 为准**：引擎条目的字段结构、特性评分、`composite_score`、`default_rank` 与生命周期状态由 `openspec/specs/engine-registry/spec.md` 约束。
+- **聚合索引只保留跨引擎关注点**：`openspec/specs/engine-contracts/spec.md` 负责错误矩阵、选择映射、smoke-check 聚合；具体引擎清单不再内联维护。
+
+### 已注册引擎概览
+
+| 引擎 | 类型 | 状态 | default_rank | 适用场景 |
+|------|------|------|--------------|----------|
+| `scrapling-get` | `http` | frozen | 1 | 静态页面、低保护 |
+| `obscura-fetch` | `cdp_lightweight` | draft | 2 | 动态内容、SPA、动态列表、静态文章 |
+| `scrapling-fetch` | `playwright` | frozen | 3 | SPA、动态交互（完整浏览器） |
+| `scrapling-bulk-fetch` | `playwright_bulk` | frozen | 4 | 批量操作 |
+| `cloakbrowser-fetch` | `playwright_stealth` | draft | 4 | 高保护页面、Turnstile、reCAPTCHA、TLS 指纹 |
+| `scrapling-stealthy-fetch` | `playwright_stealth` | superseded | 4 | ~~高保护页面~~（已被 cloakbrowser-fetch 替代） |
+| `chrome-devtools-mcp` | `cdp_managed` | frozen | 5 | 诊断证据 |
+| `chrome-cdp` | `cdp_live` | frozen | 6 | 实时会话、认证延续 |
+
+新增引擎示例：`obscura-fetch` 作为 `cdp_lightweight` 类型接入，填补 `scrapling-get` 与 `scrapling-fetch` 之间的效率断层。预编译二进制通过 GitHub Releases 获取，受管安装路径为 `$HOME/.cache/chrome-agent-obscura/bin/obscura`；详见 [docs/playbooks/obscura-cli-preflight.md](docs/playbooks/obscura-cli-preflight.md)。
+
+新增引擎示例：`cloakbrowser-fetch` 作为 `playwright_stealth` 类型接入，替代 `scrapling-stealthy-fetch` 处理高保护页面。57 个 C++ 源码级 Chromium patch 提供 TLS 指纹绕过、Cloudflare Turnstile 自动解析、reCAPTCHA v3 高分等 stealth 能力。用户通过 `pip install cloakbrowser` 安装，binary 缓存于 `~/.cloakbrowser/chromium-{version}/`；详见 `scripts/cloakbrowser-preflight.sh`。
+
+### 引擎版本治理（Engine Version Governance）
+
+#### 权威来源
+
+`configs/engine-versions.json` 是所有引擎依赖版本的唯一权威来源（single source of truth）。每个引擎条目声明 `expected_version`、检测方法、文件哈希（如适用）和更新来源。
+
+#### 升级约束
+
+当操作者（agent 或人工）执行引擎 runtime 版本升级时，**必须同步更新** `configs/engine-versions.json` 中对应引擎的以下字段：
+
+| 字段 | 必须更新 | 说明 |
+|------|---------|------|
+| `expected_version` | ✅ | 新版本号 |
+| `detection.binaries[].expected_size` | ✅（Obscura） | 新二进制文件大小（字节） |
+| `detection.binaries[].expected_md5` | ✅（Obscura） | 新二进制 MD5 哈希 |
+
+仅更新 `expected_version` 而不同步哈希值，会导致 preflight 和 `engine-version-check.sh` 持续报告 `hash_mismatch`，obscura-cli-preflight.sh 会反复触发重新下载。
+
+#### 升级工作流
+
+引擎 runtime 升级必须遵循以下顺序：
+
+1. **确认目标版本可用**：检查 GitHub Release / PyPI 确认目标版本已发布
+2. **更新清单**：修改 `configs/engine-versions.json` 中的 `expected_version` 及相关哈希/大小字段
+3. **执行安装**：运行 `./scripts/engine-version-check.sh --update --engine <name>` 或对应 preflight 脚本
+4. **验证安装**：运行 `./scripts/engine-version-check.sh --json` 确认 `all_ok: true`
+5. **doctor 集成验证**：运行 `chrome-agent doctor --format json` 确认 `version_<engine>` check 通过
+6. **提交变更**：将 `configs/engine-versions.json` 的更新随升级提交一起 commit
+
+**禁止**在未更新 `configs/engine-versions.json` 的情况下手动替换二进制文件或通过 pip 重装——这会绕过版本治理，导致后续 preflight 和 doctor 报告不可靠的结果。
+
+#### 清单字段获取方法
+
+| 引擎 | `expected_version` | `expected_md5` / `expected_size` |
+|------|--------------------|-------------------------------|
+| Scrapling | PyPI 版本号 | 不适用（pip 管理版本） |
+| Obscura | GitHub Release tag（去 `v` 前缀） | 安装后执行 `md5 -q` + `stat -f '%z'` 获取 |
+| CloakBrowser | `pip show cloakbrowser` 的 `Version` | 不适用（pip 管理版本） |
+
+Obscura 哈希获取示例（升级后立即执行）：
+```bash
+BIN="$HOME/.cache/chrome-agent-obscura/bin"
+md5 -q "$BIN/obscura" "$BIN/obscura-worker"
+stat -f '%z' "$BIN/obscura" "$BIN/obscura-worker"
+```
+
+#### doctor 中的版本检查
+
+`runDoctor()` 通过 `scripts/engine-version-check.sh --json` 自动收集所有引擎的版本状态，并在 checks 中输出 `version_<engine>` 条目。版本不匹配会反映为 `partial_success` 或 `failure`，具体取决于其他检查的结果。
+
+#### 与其他治理规则的交互
+
+- **engine-registry.json 不作为版本来源**：`configs/engine-registry.json` 中的 prose 版本引用（如 `"v0.1.2 with expanded release history"`）仅为人工参考，不参与自动化版本检测
+- **preflight 脚本从清单读取版本**：`obscura-cli-preflight.sh` 从 `configs/engine-versions.json` 读取 `expected_version`，不再硬编码
+- **engine-version-check.sh 是唯一检测入口**：所有版本检测逻辑集中在该脚本中，preflight 和 doctor 均通过它获取结果
 
 ## 10. Reference Index（参考索引）
 
