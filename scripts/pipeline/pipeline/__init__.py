@@ -1,7 +1,7 @@
 """Pipeline sub-package — orchestration, phases, and rate limiting."""
 
-# --- Exit codes (from orchestrate.py) ---
-from .orchestrate import (
+# --- Exit codes (from orchestrator.py) ---
+from .orchestrator import (
     run_pipeline,
     validate_api_config,
     EXIT_SUCCESS,

@@ -6,12 +6,24 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Optional
 
 from ...client import ApiClient, PageNotFoundError
-from ..phase_b import fetch_single_page
 from .. import cache as cache_mod
 from ...strategies import ContentAcquisitionStrategy
 
 log = logging.getLogger("pipeline")
 
+
+
+def fetch_single_page(client: ApiClient, page_info: dict,
+                      content_strategy: ContentAcquisitionStrategy) -> dict:
+    """Fetch raw content for a single page via API.
+
+    Returns a raw dict with fields: html, wikitext, rendered_html, images, title.
+    Raises PageNotFoundError if the page does not exist.
+    """
+    title = page_info["title"]
+    raw = content_strategy.fetch_page_content(client, title, {})
+    raw["title"] = title
+    return raw
 
 def run_phase_fetch(client: ApiClient, manifest: dict, strategy: dict,
                     rate_limit_config, domain: str,

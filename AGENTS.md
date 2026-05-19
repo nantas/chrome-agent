@@ -512,6 +512,84 @@ python3 scripts/pipeline/tests/test_discovery_summary.py
 - **路径计算**：`SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)` + `REPO_ROOT=$(cd "$SCRIPT_DIR/.." && pwd)`
 - **日志**：`printf '%s\n' "$*" >&2` 模式写入 stderr
 
+### LSP 代码智能
+
+本仓库安装了 `lsp-pi` 扩展，提供 Python（pyright）和 TypeScript 的代码智能。**在调查代码结构、调用链和重构影响时，必须优先使用 `lsp` 工具**，而非 `grep` + `read` + 人眼扫描。
+
+#### 操作决策表
+
+| 场景 | 用 `lsp` action | 禁止的替代方案 |
+|------|-----------------|----------------|
+| 找函数/类的定义位置 | `definition` | ❌ grep 搜名 + read + 人眼定位 |
+| 查谁调用了某函数 | `references`（从函数定义行出发） | ❌ grep 搜名 + 人工筛 import/注释 |
+| 列出文件中的函数和类 | `symbols` | ❌ read 全文 + 人眼扫描 |
+| 查变量类型签名 | `hover` | ❌ 人眼追踪类型链 |
+| 修改前检查影响范围 | `references` + `diagnostics` | ❌ 凭记忆 grep |
+| 跨文件重命名 | `rename` | ❌ 逐文件 sed |
+| 编辑后验证 | `diagnostics` | ❌ 等运行时错误 |
+
+#### 仓库特定的 LSP 使用模式
+
+以下模式基于本仓库代码结构的实践验证，避免常见陷阱：
+
+**模式 1：判断函数是否为死代码**
+
+```
+lsp references(file="path/to/module.py", line=<def行号>, column=5)
+```
+
+- 从函数**定义行**出发查 references，而非调用行——这样可以一次性拿到所有调用方
+- 返回结果分 3 类需人工判断：
+  - 函数自身定义行 → 不算引用
+  - import 语句（`from .module import func`）→ 仅表示模块级依赖，不代表运行时调用
+  - 实际调用行 → 真正的引用方
+- **死代码判定**：如果 references 仅包含自身定义 + import 行（无调用行），则为死导入。如果 import 方自身也是死代码，则形成**闭环死链**，可安全删除整条链
+
+**模式 2：验证 import 是否为死导入**
+
+```
+# Step 1: 对 import 语句中的别名做 references
+lsp references(file="orchestrate.py", line=20, column=29)
+
+# Step 2: 如果仅返回定义行（无调用行），确认为死导入
+```
+
+- import 行的 column 应指向导入的符号名（如 `run_phase_b` 的起始列），而非 `from` 关键字
+- 死导入不影响运行时但增加维护负担，重构时应清理
+
+**模式 3：追踪跨文件函数调用链**
+
+```
+# 从调用点跳到定义
+lsp definition(file="phases/fetch.py", line=9, column=23)
+
+# 从定义查找所有调用方
+lsp references(file="phase_b.py", line=27, column=5)
+```
+
+- `definition` 精确跳转到函数定义行，无需猜测文件位置
+- `references` 从定义出发返回所有调用点，包含文件名和行号，无需 grep + 人工筛选
+- 比 `grep -rn "func_name" | grep -v __pycache__ | grep -v "#" | grep -v "def "` 更可靠
+
+**模式 4：重构前的影响评估**
+
+```
+# Step 1: 查找所有引用方
+lsp references(file="phase_b.py", line=44, column=5)
+
+# Step 2: 对每个引用方确认调用方式
+lsp hover(file="phases/convert.py", line=86, column=22)
+
+# Step 3: 移动代码后运行诊断
+lsp diagnostics(file="phases/convert.py", severity="error")
+```
+
+#### LSP references 的已知行为
+
+- **Python 相对 import 的限制**：`references` 对同一文件内的调用解析可靠，但跨文件的 import 行有时不返回调用方的引用（表现为 `from .phase_a import run_phase_a` 的 references 为空）。此时应**从函数定义行出发**而非 import 行，即可拿到完整引用列表
+- **column 精度**：`references` 和 `definition` 的 column 必须指向符号名的起始位置。指向空白或括号会返回空结果。可通过 `symbols` 先确认行号
+- **diagnostics 噪音**：`orchestrate.py` 的 `manifest` 变量有大量 "possibly unbound" 警告（因条件分支赋值），属于 pyright 的保守推断，非实际 bug
+
 ### 版本检查与诊断
 
 ```bash

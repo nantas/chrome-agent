@@ -16,10 +16,9 @@ from ...lib.config_resolver import (
 )
 
 from ..client import ApiClient, probe_api_endpoint
-from .phase_a import run_phase_a
-from .phase_b import run_phase_b
-from .phase_c import run_phase_c
-from .phase_0 import run_phase_0
+from .phases.discovery_allpages import run_phase_a
+from .phases.assemble import run_phase_c
+from .phases.discovery_homepage import run_phase_0
 
 from .registry import (
     PipelineStrategies,

@@ -8,8 +8,8 @@ import json
 import logging
 from typing import Optional
 
-from .homepage_parser import parse_homepage
-from .page_assigner import assign_pages
+from ..homepage_parser import parse_homepage
+from ..page_assigner import assign_pages
 
 log = logging.getLogger("pipeline")
 
