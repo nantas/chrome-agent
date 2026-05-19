@@ -100,6 +100,8 @@ function parseArgs(argv) {
   let workers = 5;
   let discoveryOnly = false;
   let fromManifest = null;
+  let phase = null;
+  let reFetch = false;
   let yes = false;
   let excludeCategory = [];
   const positionals = [];
@@ -191,6 +193,7 @@ function parseArgs(argv) {
       continue;
     }
     if (value === "--no-markdown") {
+      console.error("Tip: Use --phase fetch for persistent caching of raw content");
       markdown = false;
       continue;
     }
@@ -217,6 +220,7 @@ function parseArgs(argv) {
       continue;
     }
     if (value === "--keep-html") {
+      console.error("WARNING: --keep-html is deprecated; HTML is now persisted via --phase fetch cache");
       keepHtml = true;
       continue;
     }
@@ -259,6 +263,19 @@ function parseArgs(argv) {
       excludeCategory.push(value.slice("--exclude-category=".length));
       continue;
     }
+    if (value === "--phase" && i + 1 < passthrough.length) {
+      phase = passthrough[i + 1];
+      i += 1;
+      continue;
+    }
+    if (value.startsWith("--phase=")) {
+      phase = value.slice("--phase=".length);
+      continue;
+    }
+    if (value === "--re-fetch") {
+      reFetch = true;
+      continue;
+    }
     if (!value.startsWith("-")) {
       positionals.push(value);
     }
@@ -284,6 +301,8 @@ function parseArgs(argv) {
     workers: Number.isFinite(workers) && workers > 0 ? Math.min(workers, 30) : 5,
     discoveryOnly,
     fromManifest,
+    phase,
+    reFetch,
     yes,
     excludeCategory,
     command: positionals[0] ?? null,
@@ -358,6 +377,58 @@ function ensureDir(dirPath) {
 function writeTextFile(filePath, content) {
   ensureDir(path.dirname(filePath));
   fs.writeFileSync(filePath, content, "utf8");
+}
+
+// --- Scrapling cache helpers (file-system based, .cache/scrapling/<domain>/) ---
+
+function scraplingCacheDir(repoRoot, domain) {
+  return path.join(repoRoot, ".cache", "scrapling", domain);
+}
+
+function scraplingSlugFromUrl(urlStr) {
+  const u = new URL(urlStr);
+  let p = u.pathname.replace(/^\/+/, "").replace(/\/+$/, "");
+  if (!p) p = "index";
+  return p.replace(/[^a-zA-Z0-9/_-]/g, "_").replace(/_+/g, "_").replace(/(^_|_$)/g, "");
+}
+
+function saveScraplingCache(repoRoot, domain, slug, html, meta) {
+  const dir = scraplingCacheDir(repoRoot, domain);
+  ensureDir(dir);
+  const htmlPath = path.join(dir, `${slug}.html`);
+  const metaPath = path.join(dir, `${slug}.meta.json`);
+  fs.writeFileSync(htmlPath, html, "utf8");
+  fs.writeFileSync(metaPath, JSON.stringify({
+    url: meta.url ?? "",
+    fetched_at: new Date().toISOString(),
+    fetcher: meta.fetcher ?? "unknown",
+  }, null, 2), "utf8");
+  return { htmlPath, metaPath };
+}
+
+function loadScraplingCache(repoRoot, domain, slug) {
+  const dir = scraplingCacheDir(repoRoot, domain);
+  const htmlPath = path.join(dir, `${slug}.html`);
+  const metaPath = path.join(dir, `${slug}.meta.json`);
+  if (!fs.existsSync(htmlPath) || !fs.existsSync(metaPath)) return null;
+  return {
+    html: fs.readFileSync(htmlPath, "utf8"),
+    meta: JSON.parse(fs.readFileSync(metaPath, "utf8")),
+  };
+}
+
+function isScraplingCached(repoRoot, domain, slug) {
+  const dir = scraplingCacheDir(repoRoot, domain);
+  return fs.existsSync(path.join(dir, `${slug}.html`)) &&
+         fs.existsSync(path.join(dir, `${slug}.meta.json`));
+}
+
+function listScraplingCached(repoRoot, domain) {
+  const dir = scraplingCacheDir(repoRoot, domain);
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter(f => f.endsWith(".html"))
+    .map(f => f.replace(/\.html$/, ""));
 }
 
 function readFrontmatter(strategyPath) {
@@ -1906,6 +1977,8 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
     fromManifest = null,
     yes: yesFlag = false,
     excludeCategory = [],
+    phase = null,
+    reFetch = false,
   } = opts;
 
   const { runDir, reportPath } = buildRunPaths(repoRoot, "crawl", targetUrl);
@@ -2016,6 +2089,14 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
       // Pass --phase discover when --discovery-only
       if (discoveryOnly) {
         apiArgs.push("--phase", "discover");
+      }
+      // Pass --phase from opts (fetch, convert, assemble)
+      if (phase && !discoveryOnly) {
+        apiArgs.push("--phase", phase);
+      }
+      // Pass --re-fetch flag
+      if (reFetch) {
+        apiArgs.push("--re-fetch");
       }
       // Pass --from-manifest when resuming from existing manifest
       if (fromManifest) {
@@ -2369,12 +2450,86 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
     },
   };
 
-  // Phase 2: Markdown conversion
+  // Determine domain for cache operations
+  const crawlDomain = new URL(targetUrl).hostname;
   let phase2Result = null;
+
+  // --- Scrapling --phase fetch: save visited pages to cache, skip conversion ---
+  if (phase === "fetch" && visited.size > 0) {
+    const domainCacheDir = scraplingCacheDir(repoRoot, crawlDomain);
+    ensureDir(domainCacheDir);
+    let cacheWriteCount = 0;
+    let cacheSkipCount = 0;
+    for (const url of visited) {
+      const slug = scraplingSlugFromUrl(url);
+      if (!reFetch && isScraplingCached(repoRoot, crawlDomain, slug)) {
+        cacheSkipCount++;
+        events.push(`Skipping cache write for ${url} (already cached)`);
+        continue;
+      }
+      // Find the fetched HTML file for this URL
+      let htmlContent = null;
+      for (const f of fs.readdirSync(runDir)) {
+        if (f.endsWith(".html")) {
+          const fpath = path.join(runDir, f);
+          const content = fs.readFileSync(fpath, "utf8");
+          if (content.includes(url) || f.includes(slug)) {
+            htmlContent = content;
+            break;
+          }
+        }
+      }
+      if (htmlContent) {
+        saveScraplingCache(repoRoot, crawlDomain, slug, htmlContent, {
+          url, fetcher: "scrapling",
+        });
+        cacheWriteCount++;
+        events.push(`Cached ${url} -> .cache/scrapling/${crawlDomain}/${slug}.html`);
+      }
+    }
+    console.log(`Scrapling fetch phase: ${cacheWriteCount} cached, ${cacheSkipCount} skipped`);
+  }
+
+  // --- Scrapling --phase convert: read from cache and convert ---
+  if (phase === "convert" && fromManifest) {
+    const manifestData = JSON.parse(fs.readFileSync(fromManifest, "utf8"));
+    const urls = manifestData.visited || [];
+    let convertOk = 0;
+    let convertFail = 0;
+    for (const url of urls) {
+      const slug = scraplingSlugFromUrl(url);
+      const cached = loadScraplingCache(repoRoot, crawlDomain, slug);
+      if (!cached) {
+        events.push(`Cache miss for ${url} — skipping`);
+        convertFail++;
+        continue;
+      }
+      const tmpHtmlPath = path.join(runDir, `_cached_${slug}.html`);
+      writeTextFile(tmpHtmlPath, cached.html);
+      const mdPath = urlToStructuredPath(url, runDir);
+      const scraplingResult = runEngineFetch(repoRoot, "get", `file://${tmpHtmlPath}`, mdPath, ["--ai-targeted"]);
+      if (scraplingResult.ok) {
+        convertOk++;
+        events.push(`Converted cached ${url} to Markdown`);
+      } else {
+        convertFail++;
+        events.push(`Failed to convert cached ${url}`);
+      }
+      try { fs.unlinkSync(tmpHtmlPath); } catch {}
+    }
+    phase2Result = {
+      successful: urls.slice(0, convertOk).map((url, i) => ({ url })),
+      failed: urls.slice(0, convertFail).map((url, i) => ({ url, error: "conversion_failed" })),
+      mergedPath: null,
+    };
+    console.log(`Scrapling convert phase: ${convertOk} converted, ${convertFail} failed`);
+  }
+
+  // Phase 2: Markdown conversion (standard path, not --phase fetch/convert)
   let extractionMethod = "scrapling";
   let parallelFallbackReason = null;
 
-  if (markdown && visited.size > 0) {
+  if (markdown && visited.size > 0 && phase !== "fetch" && phase2Result === null) {
     if (parallel) {
       const obscuraPreflight = runObscuraPreflight(repoRoot, true);
       if (obscuraPreflight.ok && obscuraPreflight.workerOk) {
@@ -3547,6 +3702,8 @@ async function main() {
           workers: parsed.workers,
           discoveryOnly: parsed.discoveryOnly,
           fromManifest: parsed.fromManifest,
+          phase: parsed.phase,
+          reFetch: parsed.reFetch,
           yes: parsed.yes,
           excludeCategory: parsed.excludeCategory,
         });

@@ -120,7 +120,10 @@ When `explore` returns `partial_success` with a strategy gap (no existing strate
 > `scrapling-stealthy-fetch` 已被 `cloakbrowser-fetch` 替代（superseded），保留在 registry 中供历史引用。
 
 **API 路径：MediaWiki API 提取管线**（仅 `crawl` 命令）
-- 策略含 `api.platform: mediawiki` → `scripts/mediawiki-api-extract`（Phase A: Discovery → Phase B: Extraction → Phase C: Assembly）
+- 策略含 `api.platform: mediawiki` → `scripts/mediawiki-api-extract`（Phase A: Discovery → Phase Fetch → Phase Convert → Phase C: Assembly）
+- Phase Fetch 从 API 获取原始内容并写入 `.cache/` 持久化缓存，支持跨 session 复用和 `--re-fetch` 强制刷新
+- Phase Convert 从缓存读取原始内容并执行 HTML→Markdown 转换，纯本地执行无网络请求
+- `--phase fetch` / `--phase convert` 可独立执行；`--phase all` 保持全流程默认行为
 - API 管线失败时自动 fallback 到 Scrapling crawl
 - `fetch` 和 `scrape` 命令不触发 API 路径
 - 输出 Markdown 与 Scrapling 输出格式兼容，并额外包含结构化 frontmatter

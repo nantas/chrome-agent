@@ -12,9 +12,10 @@ from ..converters.link_fixer import fix_links_in_dir
 
 from ..client import ApiClient, probe_api_endpoint
 from .phase_a import run_phase_a
-from .phase_b import run_phase_b
+from .phase_b import run_phase_b, fetch_single_page, convert_single_page
 from .phase_c import run_phase_c
 from .phase_0 import run_phase_0
+from . import cache as cache_mod
 from ..strategies import (
     AllPagesDiscoveryStrategy,
     CategoryMembersDiscoveryStrategy,
@@ -600,6 +601,221 @@ def _estimate_time(total_pages: int,
 
 
 # ===========================================================================
+# Phase Fetch — independent fetch (API → cache)
+# ===========================================================================
+
+def run_phase_fetch(client: ApiClient, manifest: dict, strategy: dict,
+                    rate_limit_config, domain: str,
+                    content_strategy: ContentAcquisitionStrategy,
+                    repo_root: str,
+                    re_fetch: bool = False) -> dict:
+    """Execute Phase Fetch: acquire raw content from API and write to cache.
+
+    Args:
+        client: ApiClient instance.
+        manifest: Page manifest dict with ``pages`` list.
+        strategy: Strategy configuration dict.
+        rate_limit_config: Rate limit configuration.
+        domain: Wiki domain.
+        content_strategy: Content acquisition strategy.
+        repo_root: Repository root path for cache directory.
+        re_fetch: If True, ignore existing cache and re-fetch all pages.
+
+    Returns:
+        Stats dict with total, fetched, skipped, failed counts.
+    """
+    platform = strategy.get("api", {}).get("platform", "mediawiki")
+    pages = manifest["pages"]
+
+    concurrency = rate_limit_config.concurrency if rate_limit_config else 1
+    batch_delay_sec = (rate_limit_config.batch_delay_ms / 1000.0) if rate_limit_config else 1.0
+
+    log.info("Phase Fetch: %d pages (concurrency=%d, batch_delay_ms=%d, re_fetch=%s)...",
+             len(pages), concurrency,
+             rate_limit_config.batch_delay_ms if rate_limit_config else 1000,
+             re_fetch)
+
+    # Pre-compute cached pages unless re_fetch
+    cached_pages = set() if re_fetch else cache_mod.list_cached_pages(repo_root, platform, domain)
+    if cached_pages and not re_fetch:
+        log.info("Cache: %d pages already cached, will skip", len(cached_pages))
+
+    fetched_count = 0
+    skipped_count = 0
+    failed_count = 0
+
+    import time
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from ..client import PageNotFoundError
+
+    def _fetch_one(page_info: dict) -> dict:
+        """Fetch a single page and write to cache. Returns status dict."""
+        title = page_info["title"]
+        # Skip if cached (unless re_fetch)
+        if not re_fetch and title in cached_pages:
+            return {"title": title, "status": "skipped", "reason": "cached"}
+        try:
+            raw = fetch_single_page(client, page_info, content_strategy)
+            # Add metadata for cache
+            raw.setdefault("content_acquisition", strategy.get("api", {})
+                             .get("content_profile", {})
+                             .get("content_acquisition", "unknown"))
+            raw.setdefault("base_url", client.base_url)
+            cache_mod.save_page_cache(repo_root, platform, domain, raw)
+            return {"title": title, "status": "ok"}
+        except PageNotFoundError:
+            log.info("Page not found, skipping: %s", title)
+            return {"title": title, "status": "not_found"}
+        except Exception as e:
+            log.warning("Fetch failed for '%s': %s", title, e)
+            return {"title": title, "status": "error", "error": str(e)}
+
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        futures = {executor.submit(_fetch_one, page): page["title"] for page in pages}
+        for future in as_completed(futures):
+            title = futures[future]
+            try:
+                result = future.result()
+                if result["status"] == "ok":
+                    fetched_count += 1
+                elif result["status"] == "skipped":
+                    skipped_count += 1
+                    log.info("Skipping '%s' (already cached)", title)
+                elif result["status"] == "not_found":
+                    skipped_count += 1
+                else:
+                    failed_count += 1
+                    log.warning("Fetch failed for '%s': %s", title, result.get("error", "unknown"))
+            except Exception as e:
+                failed_count += 1
+                log.warning("Fetch failed for '%s': %s", title, e)
+
+            done = fetched_count + skipped_count + failed_count
+            if done % 50 == 0:
+                log.info("Phase Fetch progress: %d/%d (fetched=%d, skipped=%d, failed=%d)",
+                         done, len(pages), fetched_count, skipped_count, failed_count)
+
+            time.sleep(batch_delay_sec)
+
+    stats = {
+        "total": len(pages),
+        "fetched": fetched_count,
+        "skipped": skipped_count,
+        "failed": failed_count,
+    }
+    log.info("Fetch phase complete: %d total, %d fetched, %d skipped (cached), %d failed",
+             stats["total"], fetched_count, skipped_count, failed_count)
+    return stats
+
+
+# ===========================================================================
+# Phase Convert — independent convert (cache → Markdown + assembly)
+# ===========================================================================
+
+def run_phase_convert(output_dir: str, manifest: dict, strategy: dict,
+                      domain: str, repo_root: str) -> tuple[dict, dict]:
+    """Execute Phase Convert: read from cache and convert to Markdown.
+
+    No network requests are made. All input comes from local cache files.
+
+    Args:
+        output_dir: Output directory for extracted content.
+        manifest: Page manifest dict with ``pages`` list.
+        strategy: Strategy configuration dict.
+        domain: Wiki domain.
+        repo_root: Repository root path for cache directory.
+
+    Returns:
+        (results_map, stats) where results_map is title -> result dict.
+    """
+    from ..strategies import (
+        SimpleSubstitutionTemplateProcessor,
+    )
+    from .phase_b import convert_single_page
+
+    platform = strategy.get("api", {}).get("platform", "mediawiki")
+    api = strategy.get("api", {})
+    output_config = api.get("output", {})
+    frontmatter_fields = output_config.get("frontmatter_fields", [])
+    template_map = output_config.get("template_map", {})
+    extraction_config = strategy.get("extraction", {})
+
+    # Build link resolver and template processor from strategy
+    link_resolver_strategies = strategy.get("api", {}).get("content_profile", {}).get("link_resolver", "exact_title_match")
+    template_processor_strategies = strategy.get("api", {}).get("content_profile", {}).get("template_processor", "simple_substitution")
+
+    # Use strategy-derived instances
+    strategies_obj = None
+    try:
+        strategies_obj = build_pipeline(strategy, domain)
+    except ValueError:
+        pass
+
+    link_resolver = strategies_obj.link_resolver if strategies_obj else ExactTitleLinkResolver()
+    template_processor = strategies_obj.template_processor if strategies_obj else SimpleSubstitutionTemplateProcessor()
+
+    pages = manifest["pages"]
+    results = {}
+    success_count = 0
+    cache_miss_count = 0
+    failed_count = 0
+
+    log.info("Phase Convert: converting %d pages from cache (platform=%s)...",
+             len(pages), platform)
+
+    for page in pages:
+        title = page["title"]
+
+        # Load from cache
+        raw = cache_mod.load_page_cache(repo_root, platform, domain, title)
+        if raw is None:
+            cache_miss_count += 1
+            results[title] = {
+                "title": title,
+                "status": "error",
+                "error": "cache_miss",
+            }
+            log.warning("Cache miss for '%s' — skipping (run --phase fetch first)", title)
+            continue
+
+        # Check content_acquisition mismatch warning
+        current_acq = strategy.get("api", {}).get("content_profile", {}).get("content_acquisition")
+        cached_acq = raw.get("content_acquisition")
+        if current_acq and cached_acq and current_acq != cached_acq:
+            log.warning("Content acquisition mismatch for '%s': cached='%s', current='%s'. Conversion may be incomplete. Use --re-fetch to refresh.",
+                        title, cached_acq, current_acq)
+
+        try:
+            result = convert_single_page(
+                raw, page, pages, domain,
+                frontmatter_fields, template_map,
+                link_resolver, template_processor, extraction_config
+            )
+            results[title] = result
+            if result["status"] == "ok":
+                success_count += 1
+            else:
+                failed_count += 1
+                log.warning("Convert failed for '%s': %s", title, result.get("error", "unknown"))
+        except Exception as e:
+            failed_count += 1
+            results[title] = {"title": title, "status": "error", "error": str(e)}
+            log.warning("Convert failed for '%s': %s", title, e)
+
+    stats = {
+        "total": len(pages),
+        "success": success_count,
+        "failure": failed_count,
+        "cache_miss": cache_miss_count,
+        "failed": failed_count,
+    }
+    log.info("Convert phase complete: %d total, %d converted, %d cache_miss, %d failed",
+             stats["total"], success_count, cache_miss_count, failed_count)
+
+    return results, stats
+
+
+# ===========================================================================
 # Main pipeline
 # ===========================================================================
 
@@ -707,7 +923,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         # Discovery is fully skipped — no discovery_summary generated
 
     # --- Discovery phase (only when NOT using --from-manifest) ---
-    if not from_manifest and ("all" in phases or "discover" in phases or "extract" in phases or "assemble" in phases):
+    if not from_manifest and ("all" in phases or "discover" in phases or "fetch" in phases or "convert" in phases or "assemble" in phases):
         if _dispatch_discovery == "homepage":
             try:
                 log.info("Running homepage discovery...")
@@ -747,7 +963,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         log.info("Loaded existing manifest: %d pages", len(manifest["pages"]))
 
     # --- Discovery summary generation ---
-    if not from_manifest and ("all" in phases or "discover" in phases or "extract" in phases):
+    if not from_manifest and ("all" in phases or "discover" in phases or "fetch" in phases or "convert" in phases):
         # Generate discovery_summary.json after discovery
         discovery_method_val = "homepage" if _dispatch_discovery == "homepage" else "allpages"
         summary = build_discovery_summary(
@@ -804,7 +1020,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
     resume_enabled = getattr(args, "resume", True) and not getattr(args, "no_resume", False)
     resume_flush_interval = getattr(args, "resume_flush_interval", 100)
 
-    if resume_enabled and ("extract" in phases or "all" in phases):
+    if resume_enabled and ("fetch" in phases or "convert" in phases or "all" in phases):
         from .state import load_state, initialize_state, save_state
 
         existing_state = load_state(args.output)
@@ -820,41 +1036,84 @@ def run_pipeline(args: argparse.Namespace) -> int:
     else:
         log.info("Resume disabled or not applicable — starting fresh")
 
-    # --- Extraction Phase (B) ---
+    # --- Determine repo_root for cache ---
+    repo_root = getattr(args, "repo_root", None)
+    if not repo_root:
+        # Fallback: derive from strategy path (assume strategy is in repo)
+        strategy_dir = os.path.dirname(os.path.abspath(args.strategy))
+        # Walk up to find repo root (look for .git or scripts/ dir)
+        candidate = strategy_dir
+        for _ in range(10):
+            if os.path.isdir(os.path.join(candidate, ".git")) or os.path.isdir(os.path.join(candidate, "scripts")):
+                repo_root = candidate
+                break
+            candidate = os.path.dirname(candidate)
+        if not repo_root:
+            repo_root = os.getcwd()
+            log.warning("Could not determine repo_root, using cwd: %s", repo_root)
+
+    re_fetch = getattr(args, "re_fetch", False)
+
+    # --- Fetch Phase ---
+    fetch_stats = None
+    if "fetch" in phases or "all" in phases:
+        try:
+            fetch_stats = run_phase_fetch(
+                client, manifest, strategy, rate_limit_config, domain,
+                strategies.content_acquisition, repo_root,
+                re_fetch=re_fetch,
+            )
+        except Exception as e:
+            log.error("Fetch phase failed: %s", e)
+            return EXIT_PHASE_B_FAILURE
+
+        # Early exit for fetch-only
+        if "fetch" in phases and "all" not in phases:
+            log.info("--phase fetch complete — cache populated")
+            return EXIT_SUCCESS
+
+    # --- Convert Phase ---
+    if "convert" in phases and "all" not in phases and not from_manifest:
+        log.error("--phase convert requires --from-manifest")
+        return EXIT_INVALID_ARGS
+
     results = None
     stats = None
-    if "extract" in phases or "all" in phases:
+    if "convert" in phases or "all" in phases:
         try:
-            results, stats = run_phase_b(
-                client, manifest, strategy, rate_limit_config, domain,
-                strategies.content_acquisition, strategies.link_resolver, strategies.template_processor,
-                platform_variant=platform_variant,
-                completed_pages=completed_pages_set,
-                output_dir=args.output,
-                resume_flush_interval=resume_flush_interval,
+            results, stats = run_phase_convert(
+                args.output, manifest, strategy, domain, repo_root
             )
 
-            if stats["failure_rate"] > 0.5:
-                log.error("Extraction phase failure rate %.1f%% exceeds 50%% threshold — fallback required",
-                          stats["failure_rate"] * 100)
-                return EXIT_PHASE_B_FAILURE
-
+            # Save extraction results WITH content and rendered_html (fixes data loss bug)
             results_path = os.path.join(args.output, "extraction_results.json")
             with open(results_path, "w", encoding="utf-8") as f:
                 json.dump({
                     "stats": {k: v for k, v in stats.items() if k != "warnings"},
-                    "warnings_count": len(stats.get("warnings", [])),
-                    "pages": {title: {"status": r["status"], "error": r.get("error")}
-                              for title, r in results.items()},
+                    "pages": {
+                        title: {
+                            "status": r.get("status"),
+                            "error": r.get("error"),
+                            "content": r.get("content"),
+                            "rendered_html": r.get("rendered_html"),
+                            "images": r.get("images"),
+                        }
+                        for title, r in results.items()
+                    },
                 }, f, indent=2, ensure_ascii=False)
+
+            if stats.get("failed", 0) > 0 and stats["failed"] / max(stats["total"], 1) > 0.5:
+                log.error("Convert phase failure rate exceeds 50%% threshold")
+                return EXIT_PHASE_B_FAILURE
+
         except Exception as e:
-            log.error("Extraction phase failed: %s", e)
+            log.error("Convert phase failed: %s", e)
             return EXIT_PHASE_B_FAILURE
     elif "assemble" in phases:
         results_path = os.path.join(args.output, "extraction_results.json")
         with open(results_path, "r", encoding="utf-8") as f:
             saved = json.load(f)
-        # Reconstruct results map from saved data
+        # Reconstruct results map from saved data (now includes content and rendered_html)
         results = {}
         for title, info in saved.get("pages", {}).items():
             results[title] = {
@@ -876,7 +1135,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         }
         final_state = {
             "completed_pages": list(all_completed),
-            "phase": "extract" if "assemble" not in phases else "extract_done",
+            "phase": "convert_done" if "assemble" not in phases else "convert_done",
             "total_pages": len(manifest.get("pages", [])),
         }
         save_state(args.output, final_state)
@@ -911,7 +1170,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         })
 
     # --- Auto Link Fix ---
-    did_extraction = "extract" in phases or "all" in phases or "assemble" in phases
+    did_extraction = "fetch" in phases or "convert" in phases or "all" in phases or "assemble" in phases
     if did_extraction and not getattr(args, "no_auto_fix_links", False):
         manifest_pages = manifest.get("pages", [])
         try:

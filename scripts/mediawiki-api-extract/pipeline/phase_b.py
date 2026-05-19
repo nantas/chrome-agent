@@ -1,6 +1,12 @@
 from __future__ import annotations
 
-"""Phase B: Content Extraction."""
+"""Phase B: Content Extraction.
+
+Split into:
+- fetch_single_page(): API-only content acquisition, returns raw dict
+- convert_single_page(): HTML/wikitext → Markdown conversion, returns result dict
+- process_single_page(): backwards-compatible wrapper (fetch + convert)
+"""
 
 import logging
 import time
@@ -14,38 +20,72 @@ from ..strategies import convert_wikitext_to_markdown
 log = logging.getLogger("mediawiki-api-extract")
 
 
-def process_single_page(client: ApiClient, page_info: dict, manifest_pages: list[dict],
+# ---------------------------------------------------------------------------
+# fetch_single_page — API content acquisition only
+# ---------------------------------------------------------------------------
+
+def fetch_single_page(client: ApiClient, page_info: dict,
+                      content_strategy: ContentAcquisitionStrategy) -> dict:
+    """Fetch raw content for a single page via API.
+
+    Returns a raw dict with fields: html, wikitext, rendered_html, images, title.
+    Raises PageNotFoundError if the page does not exist.
+    """
+    title = page_info["title"]
+    raw = content_strategy.fetch_page_content(client, title, {})
+    raw["title"] = title
+    return raw
+
+
+# ---------------------------------------------------------------------------
+# convert_single_page — pure local conversion from raw dict
+# ---------------------------------------------------------------------------
+
+def convert_single_page(raw: dict, page_info: dict, manifest_pages: list[dict],
                         domain: str, frontmatter_fields: list[str],
                         template_map: dict[str, str],
-                        content_strategy: ContentAcquisitionStrategy,
                         link_resolver: LinkResolver,
                         template_processor: TemplateProcessor,
-                        extraction_config: dict | None = None) -> dict:
-    """Process a single page: fetch content and convert to Markdown."""
+                        extraction_config: Optional[dict] = None) -> dict:
+    """Convert a raw content dict to Markdown.
+
+    Args:
+        raw: Dict from fetch_single_page / cache with html/wikitext/images.
+        page_info: Page manifest entry with title, target_directory, etc.
+        manifest_pages: Full manifest page list (for link resolution).
+        domain: Wiki domain.
+        frontmatter_fields: Fields to extract into frontmatter.
+        template_map: Template name mapping.
+        link_resolver: Link resolver instance.
+        template_processor: Template processor instance.
+        extraction_config: Extraction rules from strategy.
+
+    Returns:
+        Result dict with title, status, content, warnings, frontmatter, rendered_html.
+    """
     title = page_info["title"]
     source_dir = page_info["target_directory"]
     source_url = f"https://{domain}/wiki/{title.replace(' ', '_')}"
 
-    try:
-        raw = content_strategy.fetch_page_content(client, title, {})
-    except PageNotFoundError:
-        log.info("Page not found, skipping: %s", title)
-        return {"title": title, "status": "skipped", "error": None, "reason": "page_not_found"}
+    # Determine conversion path:
+    # 1. If cached content has a content_acquisition field, use it as primary heuristic
+    # 2. Fall back to field presence detection for backward compat
+    acq = raw.get("content_acquisition")
+    html = raw.get("html")
+    wikitext = raw.get("wikitext")
 
-    try:
+    is_html_rendered = acq == "html_rendered" or (html and not wikitext and not acq)
+    is_wikitext = acq in ("wikitext_only", "hybrid_wikitext_plus_rendered") or (wikitext and not acq and not is_html_rendered)
 
-        # HTML-rendered path
-        if isinstance(content_strategy, HtmlRenderedAcquisitionStrategy):
-            return _process_html_page(
-                raw, title, source_dir, source_url, domain,
-                manifest_pages, frontmatter_fields, extraction_config
-            )
+    # HTML-rendered path
+    if is_html_rendered:
+        return _process_html_page(
+            raw, title, source_dir, source_url, domain,
+            manifest_pages, frontmatter_fields, extraction_config
+        )
 
-        # Wikitext path (default)
-        wikitext = raw.get("wikitext", "")
-        if not wikitext:
-            return {"title": title, "status": "empty", "error": "Empty wikitext"}
-
+    # Wikitext path
+    if is_wikitext and wikitext:
         md_content, warnings, frontmatter = convert_wikitext_to_markdown(
             wikitext, title, source_url, manifest_pages, source_dir,
             frontmatter_fields, template_map, link_resolver, template_processor, domain
@@ -76,9 +116,53 @@ def process_single_page(client: ApiClient, page_info: dict, manifest_pages: list
                     result["content"] = md_content[:insert_pos] + img_md + md_content[insert_pos:]
 
         return result
+
+    # Both html and wikitext present or hybrid strategy — use HTML path
+    if html and not is_wikitext:
+        return _process_html_page(
+            raw, title, source_dir, source_url, domain,
+            manifest_pages, frontmatter_fields, extraction_config
+        )
+
+    return {"title": title, "status": "empty", "error": "No content available (html and wikitext both empty)"}
+
+
+# ---------------------------------------------------------------------------
+# process_single_page — backwards-compatible wrapper
+# ---------------------------------------------------------------------------
+
+def process_single_page(client: ApiClient, page_info: dict, manifest_pages: list[dict],
+                        domain: str, frontmatter_fields: list[str],
+                        template_map: dict[str, str],
+                        content_strategy: ContentAcquisitionStrategy,
+                        link_resolver: LinkResolver,
+                        template_processor: TemplateProcessor,
+                        extraction_config: dict | None = None) -> dict:
+    """Process a single page: fetch content and convert to Markdown.
+
+    Backwards-compatible wrapper that calls fetch_single_page + convert_single_page.
+    """
+    title = page_info["title"]
+
+    try:
+        raw = fetch_single_page(client, page_info, content_strategy)
+    except PageNotFoundError:
+        log.info("Page not found, skipping: %s", title)
+        return {"title": title, "status": "skipped", "error": None, "reason": "page_not_found"}
+
+    try:
+        return convert_single_page(
+            raw, page_info, manifest_pages, domain,
+            frontmatter_fields, template_map,
+            link_resolver, template_processor, extraction_config
+        )
     except Exception as e:
         return {"title": title, "status": "error", "error": str(e)}
 
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
 def _process_html_page(raw: dict, title: str, source_dir: str, source_url: str,
                        domain: str, manifest_pages: list[dict],
@@ -160,6 +244,10 @@ def _process_html_page(raw: dict, title: str, source_dir: str, source_url: str,
         "rendered_html": html,
     }
 
+
+# ---------------------------------------------------------------------------
+# run_phase_b — full Phase B execution (fetch + convert)
+# ---------------------------------------------------------------------------
 
 def run_phase_b(client: ApiClient, manifest: dict, strategy: dict,
                 rate_limit_config, domain: str,
