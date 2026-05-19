@@ -468,15 +468,24 @@ stat -f '%z' "$BIN/obscura" "$BIN/obscura-worker"
 ### 运行测试
 
 ```bash
-# 运行唯一的测试文件（Node.js 内置测试框架）
+# Node.js 测试（内置测试框架，9 个用例）
 node --test tests/chrome-agent-runtime.test.mjs
+
+# Python 测试（unittest，12 个用例）
+python3 scripts/mediawiki-api-extract/tests/test_discovery_summary.py
 ```
 
-- 测试使用 `node:test` + `node:assert/strict`，无第三方依赖
-- 测试通过 `spawnSync` 调用 runtime/cli 脚本，需要从仓库根目录执行
-- 测试创建临时 mock repo 验证 repo 解析优先级（`CHROME_AGENT_REPO` → `repo://` override → registry fallback）
+**Node.js 测试**：
+- 使用 `node:test` + `node:assert/strict`，无第三方依赖
+- 通过 `spawnSync` 调用 runtime/cli 脚本，需要从仓库根目录执行
+- 创建临时 mock repo 验证 repo 解析优先级（`CHROME_AGENT_REPO` → `repo://` override → registry fallback）
 
-**注意**：当前无 Python 测试。修改 `scripts/mediawiki-api-extract/` 或 `scripts/explore/` 时需手动验证。
+**Python 测试**：
+- 使用 `unittest` 框架，无第三方测试依赖
+- 测试 `scripts/mediawiki-api-extract/pipeline/orchestrate.py` 中的纯函数（`_build_homepage_categories` 等）
+- 直接执行测试文件即可，不需要 `-m` 方式调用
+
+**注意**：`scripts/explore/` 当前无测试，修改时需手动验证。
 
 ### Node.js 脚本约定
 
@@ -493,7 +502,7 @@ node --test tests/chrome-agent-runtime.test.mjs
   - `scripts/explore/sample_converter.py` 当前有此问题（`dict | None` 在 3.9 上报 TypeError）
 - **调用方式**：`python3 -m scripts.mediawiki-api-extract <subcommand>`（非直接执行目录）
   - `__main__.py` 会自动 re-invoke 通过 `-m` 解决包名含连字符的问题
-- **依赖**：各子模块有独立 `requirements.txt`（如 `scripts/explore/requirements.txt`），无全局 pyproject.toml
+- **依赖**：仅 `scripts/explore/requirements.txt`（beautifulsoup4, pyyaml, selectolax）；`scripts/mediawiki-api-extract/` 无独立 requirements.txt，无全局 pyproject.toml
 - **Explore 模块**：通过 `sys.path.insert(0, os.path.dirname(...))` 做本地导入
 
 ### Shell 脚本约定
