@@ -3,13 +3,19 @@
 import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 
-from bs4 import BeautifulSoup, NavigableString
 import re
 import urllib.request
 import urllib.parse
+
+# Ensure project root is importable when run as a script
+if __name__ == "__main__":
+    _project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    if _project_root not in sys.path:
+        sys.path.insert(0, _project_root)
 
 
 def _fetch_sample(
@@ -117,337 +123,48 @@ def _fetch_via_mediawiki_api(
         return {"ok": False, "error": str(e)}
 
 
-def _apply_field_handler(
-    handler_name: str,
-    val_parts: list[str],
-    value_el,
-    skip_patterns: list[str],
-    base_url: str,
-) -> str:
-    """Apply a named field handler to infobox value content.
-
-    Handlers are defined in strategy infobox_field_handlers config.
-    """
-    if handler_name == "extract_cur_id":
-        # Keep only the current ID (nav-prev/next already stripped)
-        text = value_el.get_text(strip=True)
-        # If there's a nav-cur element, use its text only
-        cur_el = value_el.select_one(".infobox-nav-cur")
-        if cur_el:
-            return cur_el.get_text(strip=True)
-        return text
-
-    elif handler_name == "count_images":
-        # Count distinct images in the value
-        imgs = value_el.find_all("img")
-        count = 0
-        for img in imgs:
-            src = img.get("src", "")
-            if skip_patterns and any(re.search(p, src) for p in skip_patterns):
-                continue
-            count += 1
-        return str(count) if count else " ".join(val_parts).strip()
-
-    elif handler_name == "dedup_pools":
-        # Deduplicate links, skip icon-only entries
-        seen = set()
-        parts = []
-        for a in value_el.find_all("a"):
-            text = a.get_text(strip=True)
-            href = a.get("href", "")
-            if not text or text in seen:
-                continue
-            seen.add(text)
-            if href.startswith("/") and base_url:
-                href = base_url + href
-            parts.append(f"[{text}]({href})")
-        return " ".join(parts) if parts else " ".join(val_parts).strip()
-
-    elif handler_name == "simplify_collection":
-        # Take the first link as representative
-        first_a = value_el.find("a")
-        if first_a:
-            text = first_a.get_text(strip=True)
-            href = first_a.get("href", "")
-            if href.startswith("/") and base_url:
-                href = base_url + href
-            return f"[{text}]({href})"
-        return " ".join(val_parts).strip()
-
-    # Default: concatenate val_parts as-is
-    return " ".join(val_parts).strip()
-
-
-def _extract_infobox(
-    soup: BeautifulSoup,
-    infobox_cfg: dict,
-    base_url: str,
-    skip_patterns: list[str],
-    field_handlers: dict | None = None,
-) -> str:
-    """Generic infobox extraction — reads selectors from config.
-
-    Uses descendants with deduplication to handle arbitrary nesting depth
-    without double-counting elements inside wrappers like <a><img></a>.
-
-    Args:
-        field_handlers: Optional map of {field_label: {handler, description}} from
-            strategy infobox_field_handlers. Supported handlers:
-            - extract_cur_id: Strip nav elements, keep only current ID
-            - count_images: Count distinct images, return count string
-            - dedup_pools: Deduplicate links, skip icon-only entries
-            - simplify_collection: Simplify collection grid to single page link
-            - strip_nav: Generic nav stripping (default for unregistered handlers)
-    """
-    container = soup.select_one(infobox_cfg["selector"])
-    if not container:
-        return ""
-
-    field_sel = infobox_cfg.get("field_selector", "tr")
-    label_sel = infobox_cfg.get("label_selector", "th")
-    value_sel = infobox_cfg.get("value_selector", "td")
-
-    # Config-driven nav strip selectors (replaces hardcoded .infobox-nav-prev/.infobox-nav-next)
-    nav_strip_selectors = infobox_cfg.get("nav_strip_selectors", [".infobox-nav-prev", ".infobox-nav-next"])
-
-    lines = ["## Infobox", "", "| Field | Value |", "| --- | --- |"]
-
-    for field in container.select(field_sel):
-        label_el = field.select_one(label_sel)
-        value_el = field.select_one(value_sel)
-        if not label_el:
-            continue
-        key = label_el.get_text(strip=True)
-        # Also build a data-source alias for handler lookup
-        # (strategy may use "datasource(label)" pattern as handler key)
-        ds = field.get("data-source", "")
-        ds_key = f"{ds}({key})" if ds else ""
-        if not value_el:
-            lines.append(f"| {key} | |")
-            continue
-
-        # Walk descendants with deduplication to avoid double-counting
-        # img inside <a><img></a> must not be counted twice
-        # Config-driven nav stripping (KI-6 pattern, now from infobox.nav_strip_selectors)
-        for nav_sel in nav_strip_selectors:
-            for nav_el in value_el.select(nav_sel):
-                nav_el.decompose()
-        processed = set()
-        val_parts = []
-
-        for child in value_el.descendants:
-            if id(child) in processed:
-                continue
-            if isinstance(child, NavigableString):
-                text = str(child).strip()
-                if text:
-                    val_parts.append(text)
-            elif child.name == "img":
-                src = child.get("src", "")
-                alt = child.get("alt", "")
-                if not src:
-                    processed.update(id(c) for c in child.descendants)
-                    continue
-                if skip_patterns and any(re.search(p, src) for p in skip_patterns):
-                    processed.update(id(c) for c in child.descendants)
-                    continue
-                if base_url and src.startswith("/"):
-                    src = base_url + src
-                val_parts.append(f"![{alt}]({src})")
-                processed.update(id(c) for c in child.descendants)
-            elif child.name == "a":
-                # Config-driven: skip infobox nav links (prev/next navigation within infobox)
-                nav_classes = set()
-                for nav_sel in nav_strip_selectors:
-                    for cls in re.findall(r'\.([a-zA-Z_-][a-zA-Z0-9_-]*)', nav_sel):
-                        nav_classes.add(cls)
-                if child.get("class") and any(c in nav_classes for c in child.get("class", [])):
-                    processed.update(id(c) for c in child.descendants)
-                    continue
-                imgs = child.find_all("img")
-                if imgs and not child.get_text(strip=True):
-                    # Image-only link: extract images, mark all descendants processed
-                    for img in imgs:
-                        s = img.get("src", "")
-                        a = img.get("alt", "")
-                        if not s:
-                            continue
-                        if skip_patterns and any(re.search(p, s) for p in skip_patterns):
-                            continue
-                        if base_url and s.startswith("/"):
-                            s = base_url + s
-                        val_parts.append(f"![{a}]({s})")
-                    processed.update(id(c) for c in child.descendants)
-                else:
-                    text = child.get_text(strip=True)
-                    href = child.get("href", "")
-                    if href.startswith("/") and base_url:
-                        href = base_url + href
-                    if text:
-                        val_parts.append(f"[{text}]({href})")
-                    processed.update(id(c) for c in child.descendants)
-
-        # Apply field handler from config if defined
-        # Lookup order: label text → data-source(label) alias
-        handler_cfg = None
-        if field_handlers:
-            if key in field_handlers:
-                handler_cfg = field_handlers[key]
-            elif ds_key and ds_key in field_handlers:
-                handler_cfg = field_handlers[ds_key]
-        if handler_cfg:
-            handler_name = handler_cfg.get("handler", "") if isinstance(handler_cfg, dict) else ""
-            val = _apply_field_handler(handler_name, val_parts, value_el, skip_patterns, base_url)
-        else:
-            val = " ".join(val_parts).strip()
-        if key and val:
-            lines.append(f"| {key} | {val} |")
-
-    if len(lines) <= 4:
-        return ""
-    return "\n".join(lines)
-
 def _apply_extraction(
     html: str,
     extraction_rules: dict,
     known_pages: set[str],
 ) -> str:
-    """Apply extraction rules from config to HTML — pure config interpreter.
+    """Apply extraction rules from config to HTML — 4-step sequential pipeline.
 
-    No site-specific class names or HTML structure assumptions.
-    All behavior is driven by extraction_rules (from strategy frontmatter).
+    Steps:
+      1. extract_infobox(full_html, config) → infobox Markdown
+      2. preprocess_html(full_html, config, context="explore") → cleaned HTML
+      3. convert_html_to_markdown(cleaned_html, ...) → body Markdown
+      4. Prepend infobox + body → final Markdown
+
+    Spec: sample-converter / apply-extraction-uses-shared-lib
     """
-    soup = BeautifulSoup(html, "html.parser")
-    base_url = extraction_rules.get("image_handling", {}).get("base_url", "")
-    skip_patterns = extraction_rules.get("image_filtering", {}).get("skip_patterns", [])
-
-    # --- Phase 1: Extract structured infobox (config-driven) ---
-    infobox_cfg = extraction_rules.get("infobox", {})
-    infobox_md = ""
-    if infobox_cfg.get("enabled") and infobox_cfg.get("selector"):
-        infobox_md = _extract_infobox(soup, infobox_cfg, base_url, skip_patterns,
-                                      field_handlers=extraction_rules.get("infobox_field_handlers"))
-        for el in soup.select(infobox_cfg["selector"]):
-            el.decompose()
-
-    # --- Phase 2: Strip elements matching configured selectors ---
-    for sel in extraction_rules.get("cleanup_selectors", []):
-        for el in soup.select(sel):
-            el.decompose()
-
-    # --- Phase 3: Lazyload fix (config-driven) ---
-    lazyload_cfg = extraction_rules.get("lazyload", {})
-    if lazyload_cfg.get("enabled"):
-        placeholder = lazyload_cfg.get("placeholder_pattern", "")
-        src_attr = lazyload_cfg.get("real_src_attr", "")
-        if placeholder and src_attr:
-            for img in soup.find_all("img"):
-                src = img.get("src", "")
-                data_src = img.get(src_attr, "")
-                if placeholder in src and data_src:
-                    img["src"] = data_src
-
-    # --- Phase 4: Cleanup operations (read from config) ---
-    cleanup = extraction_rules.get("cleanup", [])
-
-    if "strip_fandom_infobox_tables" in cleanup:
-        for cls in ["item-table-header", "item-table-body", "item-table-description",
-                    "item-table-appearance", "infobox-table", "portable-infobox"]:
-            for el in soup.find_all("table", class_=lambda x: x and cls in x):
-                el.decompose()
-
-    if "convert_ambox_to_text" in cleanup:
-        for el in soup.find_all("table", class_=lambda x: x and "ambox" in x):
-            text = el.get_text(strip=True)
-            new_p = soup.new_tag("p")
-            new_p.string = f"\u26a0\ufe0f {text}" if text else ""
-            el.replace_with(new_p)
-
-    if "unwrap_image_wrappers" in cleanup:
-        for a in soup.find_all("a"):
-            children = list(a.children)
-            non_empty = [c for c in children if not (isinstance(c, str) and c.strip() == "")]
-            if len(non_empty) == 1 and getattr(non_empty[0], "name", None) == "img":
-                a.unwrap()
-            elif a.get("class") and "image" in a.get("class", []):
-                imgs = a.find_all("img")
-                if imgs and not a.get_text(strip=True):
-                    a.unwrap()
-
-    if "strip_footer" in cleanup:
-        # Remove wiki footer elements: category links, print footer, hidden categories
-        for sel in ("#catlinks", "#mw-hidden-catlinks", ".printfooter", ".mw-footer", "#footer"):
-            for el in soup.select(sel):
-                el.decompose()
-
-    if "strip_edit_links" in cleanup:
-        # Remove MediaWiki edit-section links [edit]
-        for el in soup.select(".mw-editsection"):
-            el.decompose()
-
-    if "strip_skip_links" in cleanup:
-        # Remove accessibility skip-to-content navigation links
-        for a in soup.find_all("a", href=True):
-            if a["href"].startswith("#mw-") and not a.get_text(strip=True):
-                continue  # skip empty anchors
-            if a["href"].startswith("#mw-"):
-                a.decompose()
-        # Also remove skip-link containers
-        for el in soup.select(".skip-link, [class*=skip-to], #jump-to-nav"):
-            el.decompose()
-
-    if "strip_category_links" in cleanup:
-        # Remove category link containers and "Categories:" sections
-        for sel in ("#catlinks", ".mw-normal-catlinks", "#mw-hidden-catlinks",
-                    ".catlinks", "[class*=category]", "[id*=catlinks]"):
-            for el in soup.select(sel):
-                el.decompose()
-
-    if "convert_nested_images" in cleanup:
-        # Convert <figure> and <picture> wrappers to simple <img> tags
-        for fig in soup.find_all("figure"):
-            img = fig.find("img")
-            if img:
-                fig.replace_with(img)
-            else:
-                fig.decompose()
-        for pic in soup.find_all("picture"):
-            img = pic.find("img")
-            if img:
-                pic.replace_with(img)
-            else:
-                pic.decompose()
-
-    if "normalize_infobox" in cleanup:
-        # Infobox is already handled by Phase 1 config-driven extraction.
-        # This operation is a no-op for pipeline — kept for strategy completeness.
-        pass
-
-    # Remove decorative images (config-driven skip patterns)
-    for img in soup.find_all("img"):
-        src = img.get("src", "")
-        if any(re.search(p, src) for p in skip_patterns):
-            img.decompose()
-
-    # --- Phase 5: Content selection ---
-    selector = extraction_rules.get("selectors", {}).get("content", "body")
-    content = soup.select_one(selector) or soup.select_one("body") or soup
-
-    # Convert to Markdown using HtmlToMarkdownConverter (unified conversion)
+    from scripts.lib.extraction.infobox import extract_infobox
+    from scripts.lib.extraction.preprocessor import preprocess_html
     import importlib
     _mod = importlib.import_module('scripts.mediawiki-api-extract.converters.html_to_markdown')
     _convert_html_to_markdown = _mod.convert_html_to_markdown
+
+    base_url = extraction_rules.get("image_handling", {}).get("base_url", "")
+    wiki_domain = base_url.replace("https://", "").replace("http://", "") if base_url else ""
+
+    # Step 1: Extract infobox (read-only — returns Markdown, does not modify HTML)
+    infobox_md = extract_infobox(html, extraction_rules, wiki_domain)
+
+    # Step 2: Preprocess HTML (removes infobox container, applies cleanup)
+    cleaned_html = preprocess_html(html, extraction_rules, context="explore")
+
+    # Step 3: Convert cleaned HTML to Markdown
     md = _convert_html_to_markdown(
-        str(content),
-        wiki_domain=base_url.replace("https://", "").replace("http://", "") if base_url else "",
+        cleaned_html,
+        wiki_domain=wiki_domain,
         extraction_config=extraction_rules,
     )
 
-    # Prepend infobox if extracted
+    # Step 4: Prepend infobox if extracted
     if infobox_md:
         md = infobox_md + "\n\n" + md
 
-    # --- Phase 6: Post-conversion normalization (config-driven) ---
+    # Post-conversion normalization (config-driven)
     normalization = extraction_rules.get("text_normalization", [])
     if "fix_spaces" in normalization:
         md = re.sub(r"([a-zA-Z])(\d+(?:\.\d+)*)([a-zA-Z])", r"\1 \2 \3", md)
@@ -486,19 +203,16 @@ def _apply_extraction(
     md = re.sub(r"\\(\*+)", r"\1", md)
 
     # Post-conversion cleanup ops (gated by cleanup list, not text_normalization)
+    cleanup = extraction_rules.get("cleanup", [])
     if "strip_empty_parens" in cleanup:
         md = re.sub(r"\(\s*\)", "", md)
 
     if "fix_separators" in cleanup:
-        # KI-5: ensure space between image and following link
         md = re.sub(r"(\!\[[^\]]*\]\([^)]+\))\s*(?=\[)", r"\1 ", md)
-        # Ensure space between consecutive markdown links
         md = re.sub(r"(\[[^\]]+\]\([^)]+\))\s*(?=\[)", r"\1 ", md)
-        # Fix double-spaces
         md = re.sub(r"  +", " ", md)
 
     if "normalize_internal" in cleanup:
-        # Ensure all /wiki/ links are absolute (redundant with url_conversion, acts as safety net)
         if base_url:
             md = re.sub(
                 r"\[([^\]]*)\]\(/wiki/([^)]+)\)",
@@ -506,7 +220,6 @@ def _apply_extraction(
             )
 
     return md.strip()
-
 
 
 def convert(
@@ -569,26 +282,6 @@ def convert(
     return results
 
 
-def _load_extraction_rules(strategy_path: str) -> tuple[dict, dict]:
-    """Load extraction rules from a strategy file's YAML frontmatter.
-
-    Returns:
-        Tuple of (extraction_rules dict, full_yaml dict)
-    """
-    import yaml as _yaml
-
-    with open(strategy_path, "r", encoding="utf-8") as f:
-        raw = f.read()
-
-    match = re.search(r"^---\n(.*?)\n---", raw, re.S | re.M)
-    if not match:
-        raise ValueError(f"Strategy file has no YAML frontmatter: {strategy_path}")
-
-    full = _yaml.safe_load(match.group(1))
-    extraction_rules = full.get("extraction", {})
-    return extraction_rules, full
-
-
 def main():
     """CLI entry point for standalone strategy-driven sample conversion.
 
@@ -597,6 +290,8 @@ def main():
         fetch-and-apply: Fetch a page via MediaWiki API then convert.
     """
     import argparse
+    import sys
+    from scripts.lib.strategy_loader import parse_strategy
 
     parser = argparse.ArgumentParser(
         description="Strategy-driven sample conversion for chrome-agent explore",
@@ -621,8 +316,9 @@ def main():
 
     args = parser.parse_args()
 
-    # Load extraction rules from strategy
-    extraction_rules, full_strategy = _load_extraction_rules(args.strategy)
+    # Load extraction rules from strategy using shared strategy_loader
+    full_strategy = parse_strategy(args.strategy)
+    extraction_rules = full_strategy.get("extraction", {})
 
     if args.command == "apply":
         # Read HTML from file

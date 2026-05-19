@@ -452,11 +452,11 @@ class HtmlToMarkdownConverter:
     def _render_infobox_table(self, node, source_dir: str = "") -> str:
         """Render an infobox container as a complete Markdown table.
 
-        Delegates to the shared infox_renderer module for rendering logic.
+        Delegates to the shared lib.extraction.infobox module.
         """
-        from .infox_renderer import render_infobox_table
+        from scripts.lib.extraction.infobox import extract_infobox
 
-        return render_infobox_table(
+        return extract_infobox(
             node,
             self.config,
             self.wiki_domain,
