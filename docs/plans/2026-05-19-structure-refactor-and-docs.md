@@ -536,7 +536,7 @@ html_to_markdown.py (pipeline 路径):
 
 ---
 
-### Change 3: 拆分 orchestrator + 重命名包
+### Change 3: 拆分 orchestrator + 重命名包 ✅ 已完成
 
 | 属性 | 内容 |
 |------|------|
@@ -836,7 +836,7 @@ Week 1-2: Phase 1 (基础层)
   └── Change 2: 统一提取引擎              ✅ 完成
   
 Week 3-4: Phase 2 (管线层)
-  ├── Change 3: 拆分 orchestrator + 重命名包 [3-4天]
+  ├── Change 3: 拆分 orchestrator + 重命名包  ✅ 完成
   └── Change 4: 重命名 Phase 文件          [1-2天]
 
 Week 5: Phase 3 (CLI 层)

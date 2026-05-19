@@ -120,7 +120,7 @@ When `explore` returns `partial_success` with a strategy gap (no existing strate
 > `scrapling-stealthy-fetch` 已被 `cloakbrowser-fetch` 替代（superseded），保留在 registry 中供历史引用。
 
 **API 路径：MediaWiki API 提取管线**（仅 `crawl` 命令）
-- 策略含 `api.platform: mediawiki` → `scripts/mediawiki-api-extract`（Phase A: Discovery → Phase Fetch → Phase Convert → Phase C: Assembly）
+- 策略含 `api.platform: mediawiki` → `scripts/pipeline`（Phase A: Discovery → Phase Fetch → Phase Convert → Phase C: Assembly）
 - Phase Fetch 从 API 获取原始内容并写入 `.cache/` 持久化缓存，支持跨 session 复用和 `--re-fetch` 强制刷新
 - Phase Convert 从缓存读取原始内容并执行 HTML→Markdown 转换，纯本地执行无网络请求
 - `--phase fetch` / `--phase convert` 可独立执行；`--phase all` 保持全流程默认行为
@@ -240,7 +240,7 @@ Handoff 文档包含完整的上下文（命令、URL、时间戳、策略路径
 ├── skills/             # 全局 skill 源码（含官方 `skills/chrome-agent/` workflow skill）
 ├── sites/              # 站点经验 + 反爬策略（YAML frontmatter + 正文）
 ├── configs/            # 工具与运行配置
-├── scripts/            # 辅助脚本（含 `mediawiki-api-extract` 提取管线）
+├── scripts/            # 辅助脚本（含 `pipeline` 提取管线）
 ```
 
 ## 5. Decision Record Governance（决策记录治理）
@@ -311,7 +311,7 @@ sites/
 
 #### 权威来源
 
-`scripts/mediawiki-api-extract/pipeline/orchestrate.py` 中的 `_STRATEGY_REGISTRY` 是策略 ID 的唯一权威来源。
+`scripts/pipeline/pipeline/registry.py` 中的 `_STRATEGY_REGISTRY` 是策略 ID 的唯一权威来源。
 
 每个 `content_profile` 维度的合法值由 `_STRATEGY_REGISTRY` 中对应维度的 key 定义。
 
@@ -457,7 +457,7 @@ stat -f '%z' "$BIN/obscura" "$BIN/obscura-worker"
 |------|------|------|
 | `scripts/chrome-agent-cli.mjs` | Node.js ESM | CLI 主入口（所有命令逻辑） |
 | `scripts/chrome-agent-runtime.mjs` | Node.js ESM | 全局 launcher runtime（repo 解析 + 分发） |
-| `scripts/mediawiki-api-extract/` | Python | MediaWiki API 提取管线（多子模块包） |
+| `scripts/pipeline/` | Python | MediaWiki API 提取管线（多子模块包） |
 | `scripts/explore/` | Python | Deep discovery 管线（explore 命令后端） |
 | `scripts/*.sh` | Bash | Preflight、版本检测、安装脚本 |
 | `configs/` | JSON | 引擎注册、版本清单、后端签名 |
@@ -472,7 +472,7 @@ stat -f '%z' "$BIN/obscura" "$BIN/obscura-worker"
 node --test tests/chrome-agent-runtime.test.mjs
 
 # Python 测试（unittest，12 个用例）
-python3 scripts/mediawiki-api-extract/tests/test_discovery_summary.py
+python3 scripts/pipeline/tests/test_discovery_summary.py
 ```
 
 **Node.js 测试**：
@@ -482,7 +482,7 @@ python3 scripts/mediawiki-api-extract/tests/test_discovery_summary.py
 
 **Python 测试**：
 - 使用 `unittest` 框架，无第三方测试依赖
-- 测试 `scripts/mediawiki-api-extract/pipeline/orchestrate.py` 中的纯函数（`_build_homepage_categories` 等）
+- 测试 `scripts/pipeline/pipeline/orchestrate.py` 中的纯函数（`_build_homepage_categories` 等）
 - 直接执行测试文件即可，不需要 `-m` 方式调用
 
 **注意**：`scripts/explore/` 当前无测试，修改时需手动验证。
@@ -500,9 +500,9 @@ python3 scripts/mediawiki-api-extract/tests/test_discovery_summary.py
 
 - **Python 3.9 兼容**：避免 `X | Y` 类型注解（3.10+ 语法），用 `Optional[X]` 代替
   - `scripts/explore/sample_converter.py` 当前有此问题（`dict | None` 在 3.9 上报 TypeError）
-- **调用方式**：`python3 -m scripts.mediawiki-api-extract <subcommand>`（非直接执行目录）
-  - `__main__.py` 会自动 re-invoke 通过 `-m` 解决包名含连字符的问题
-- **依赖**：仅 `scripts/explore/requirements.txt`（beautifulsoup4, pyyaml, selectolax）；`scripts/mediawiki-api-extract/` 无独立 requirements.txt，无全局 pyproject.toml
+- **调用方式**：`python3 -m scripts.pipeline <subcommand>`（非直接执行目录）
+  - `__main__.py` 直接 `from .cli import main`，无连字符 workaround
+- **依赖**：仅 `scripts/explore/requirements.txt`（beautifulsoup4, pyyaml, selectolax）；`scripts/pipeline/` 无独立 requirements.txt，无全局 pyproject.toml
 - **Explore 模块**：通过 `sys.path.insert(0, os.path.dirname(...))` 做本地导入
 
 ### Shell 脚本约定
@@ -531,7 +531,7 @@ chrome-agent doctor --format json
 ### 常见陷阱
 
 - **`scripts/explore/` 需要 Python 3.10+**：使用了 `dict | None` 联合类型语法。macOS 自带 3.9.6 会报 TypeError。修复时改用 `Optional[dict]`
-- **MediaWiki 提取管线的 `__main__.py` 陷阱**：不能直接 `python3 scripts/mediawiki-api-extract/`，必须用 `-m` 方式调用
+- **MediaWiki 提取管线的 `__main__.py`**：包名已改为 `pipeline`（无连字符），直接 `python3 -m scripts.pipeline` 即可调用
 - **引擎版本升级必须同步 `configs/engine-versions.json`**：不同步哈希值会导致 preflight 持续报告 `hash_mismatch`（详见 §8 引擎版本治理）
 - **`SCRAPLING_CLI_PATH` 是唯一识别变量**：CLI 不会猜测路径，未设置时走受管安装 `$HOME/.cache/chrome-agent-scrapling/bin/scrapling`
 - **修改策略文件后必须更新 `registry.json`**：手动创建策略时需手动更新索引；`bootstrap-strategy` 命令会自动更新
@@ -555,7 +555,7 @@ chrome-agent doctor --format json
 | 证据收集方法 | `docs/playbooks/evidence-collection.md` | 截图/DOM/网络等收集步骤 |
 | 认证会话规则 | `docs/playbooks/authenticated-sessions.md` | 已登录页面的只读操作安全规则 |
 | 站点经验库 | `sites/` | 站点结构与反爬策略 |
-| MediaWiki API 提取管线 | `scripts/mediawiki-api-extract` | 策略驱动的 MediaWiki API 内容提取 CLI |
+| MediaWiki API 提取管线 | `scripts/pipeline` | 策略驱动的 MediaWiki API 内容提取 CLI |
 | 能力规范 | `openspec/specs/` | 已冻结的行为规范 |
 | 治理 Spec | `openspec/specs/agents-governance/spec.md` | 本文件的规范真源 |
 | 契约元模型 | `openspec/specs/capability-contracts/spec.md` | 引擎契约通用 schema |

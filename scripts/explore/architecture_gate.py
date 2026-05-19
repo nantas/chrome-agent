@@ -13,7 +13,7 @@ _ALWAYS_CONSUMED = {"selectors"}
 
 # Pipeline source files relative to repo root
 _PIPELINE_FILES = [
-    os.path.join("scripts", "mediawiki-api-extract", "converters", "html_to_markdown.py"),
+    os.path.join("scripts", "pipeline", "converters", "html_to_markdown.py"),
 ]
 
 

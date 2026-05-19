@@ -2070,11 +2070,11 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
   // --- MediaWiki API route ---
   const apiConfig = doc?.api;
   if (apiConfig && apiConfig.platform === "mediawiki") {
-    const extractionScript = path.join(repoRoot, "scripts", "mediawiki-api-extract");
+    const extractionScript = path.join(repoRoot, "scripts", "pipeline");
     if (fs.existsSync(extractionScript)) {
       console.log("Strategy has api.platform=mediawiki — routing to MediaWiki API extraction pipeline");
       const apiArgs = [
-        "-m", "scripts.mediawiki-api-extract",
+        "-m", "scripts.pipeline",
         targetUrl,
         "--strategy", strategy.path,
         "--output", runDir,
@@ -2198,7 +2198,7 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
       events = [`MediaWiki API pipeline failed with exit code ${exitCode}. Falling back to Scrapling.`];
       fallbackReason = `api_pipeline_exit_${exitCode}`;
     } else {
-      console.warn("mediawiki-api-extract script not found, falling back to Scrapling");
+      console.warn("pipeline script not found, falling back to Scrapling");
       events = ["MediaWiki API extraction script not found. Falling back to Scrapling."];
       fallbackReason = "api_script_missing";
     }

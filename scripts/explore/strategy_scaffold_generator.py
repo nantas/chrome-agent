@@ -171,11 +171,11 @@ def generate(
     if content_profile:
         import importlib.util
         _orchestrate_path = os.path.join(
-            repo_root, "scripts", "mediawiki-api-extract", "pipeline", "orchestrate.py"
+            repo_root, "scripts", "pipeline", "pipeline", "orchestrate.py"
         )
         if os.path.exists(_orchestrate_path):
             _spec = importlib.util.spec_from_file_location(
-                "mediawiki_api_extract.pipeline.orchestrate", _orchestrate_path
+                "pipeline.pipeline.orchestrate", _orchestrate_path
             )
             _mod = importlib.util.module_from_spec(_spec)
             _spec.loader.exec_module(_mod)

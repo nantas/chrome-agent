@@ -141,7 +141,7 @@ def _apply_extraction(
     from scripts.lib.extraction.infobox import extract_infobox
     from scripts.lib.extraction.preprocessor import preprocess_html
     import importlib
-    _mod = importlib.import_module('scripts.mediawiki-api-extract.converters.html_to_markdown')
+    _mod = importlib.import_module('scripts.pipeline.converters.html_to_markdown')
     _convert_html_to_markdown = _mod.convert_html_to_markdown
 
     base_url = extraction_rules.get("image_handling", {}).get("base_url", "")
