@@ -253,6 +253,8 @@ extraction:
     enabled: true
     placeholder_pattern: "data:image/gif;base64"
     real_src_attr: "data-src"
+  table_options:
+    transpose_wider_than: 10
   cleanup:
     - strip_footer
     - strip_edit_links

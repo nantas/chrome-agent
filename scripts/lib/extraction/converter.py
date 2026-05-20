@@ -35,8 +35,8 @@ class HtmlToMarkdownConverter:
     )
 
     _BLOCK_TAGS = {
-        "blockquote", "div", "h1", "h2", "h3", "h4", "h5", "h6",
-        "hr", "ol", "p", "pre", "table", "ul",
+        "article", "blockquote", "div", "h1", "h2", "h3", "h4", "h5", "h6",
+        "hr", "ol", "p", "pre", "section", "table", "ul",
     }
 
     def __init__(self, wiki_domain: str, extraction_config: dict | None = None):
@@ -587,24 +587,264 @@ class HtmlToMarkdownConverter:
     # Table rendering
     # ------------------------------------------------------------------
 
-    def _render_table(self, node, source_dir: str = "") -> str:
-        rows = [self._extract_row(row, source_dir=source_dir) for row in node.css("tr")]
-        rows = [row for row in rows if row]
-        if not rows:
+    def _render_cell_content(self, cell, source_dir: str = "") -> str:
+        """Render a <th> or <td> cell's inline content, skipping nested <table> elements.
+
+        Returns the rendered Markdown for non-table children, or empty string if
+        the cell contains only nested table(s).  A warning is logged when a nested
+        table is detected and skipped.
+        """
+        has_nested_table = any(
+            child.tag == "table" for child in self._child_nodes(cell)
+        )
+        if not has_nested_table:
+            return self._render_inline_children(cell, source_dir=source_dir) or ""
+
+        # Found nested table(s) — log warning and render non-table children only
+        log.warning(
+            "Nested <table> found inside cell — skipping recursive rendering "
+            "to prevent grid corruption. Cell text content will be preserved."
+        )
+        parts = []
+        for child in self._child_nodes(cell):
+            if child.tag == "table":
+                continue
+            rendered = self._render_inline(child, source_dir=source_dir)
+            if rendered:
+                parts.append(rendered)
+        return self._join_inline_parts(parts) or ""
+
+    def _build_table_grid(self, node, source_dir: str = "") -> list[list[str]]:
+        """Parse a <table> node into a normalized 2D grid, expanding colspan/rowspan."""
+        MAX_COLS = 200
+        grid: list[list[str]] = []
+        col_spans: dict[int, tuple[int, str]] = {}  # col_idx -> (remaining_rows, content)
+
+        # Only collect direct child <tr> elements (via <tbody> if present)
+        # to avoid mixing rows from nested tables into the parent grid
+        tr_nodes: list = []
+        for child in self._child_nodes(node):
+            if child.tag == "tr":
+                tr_nodes.append(child)
+            elif child.tag == "tbody":
+                tr_nodes.extend(c for c in self._child_nodes(child) if c.tag == "tr")
+        if not tr_nodes:
+            return []
+
+        for tr in tr_nodes:
+            row: list[str] = []
+            cells = [child for child in self._child_nodes(tr) if child.tag in {"th", "td"}]
+            cell_iter = iter(cells)
+            col_idx = 0
+
+            # First: consume rowspan entries from previous rows
+            while col_spans:
+                # Find the lowest col_idx in col_spans
+                min_col = min(col_spans.keys())
+                if min_col != col_idx:
+                    # No rowspan at this col, proceed to consume a real cell
+                    break
+                remaining, content = col_spans[col_idx]
+                if len(row) < MAX_COLS:
+                    row.append(content)
+                del col_spans[col_idx]
+                if remaining > 1:
+                    col_spans[col_idx] = (remaining - 1, content)
+                col_idx += 1
+                if col_idx >= MAX_COLS:
+                    break
+
+            # Consume actual cells
+            for cell in cell_iter:
+                if col_idx >= MAX_COLS:
+                    break
+                # Skip over col_spans that occupy columns before this cell
+                while col_idx in col_spans:
+                    remaining, content = col_spans[col_idx]
+                    if len(row) < MAX_COLS:
+                        row.append(content)
+                    del col_spans[col_idx]
+                    if remaining > 1:
+                        col_spans[col_idx] = (remaining - 1, content)
+                    col_idx += 1
+                    if col_idx >= MAX_COLS:
+                        break
+
+                if col_idx >= MAX_COLS:
+                    break
+
+                content = self._render_cell_content(cell, source_dir=source_dir) or ""
+                colspan = int(cell.attributes.get("colspan", 1) or 1)
+                rowspan = int(cell.attributes.get("rowspan", 1) or 1)
+
+                # Cap colspan to not exceed MAX_COLS
+                colspan = min(colspan, MAX_COLS - col_idx)
+
+                # Expand colspan into current row
+                for _ in range(colspan):
+                    if len(row) < MAX_COLS:
+                        row.append(content)
+
+                # Register rowspan for future rows
+                if rowspan > 1:
+                    for c in range(colspan):
+                        span_col = col_idx + c
+                        if span_col < MAX_COLS:
+                            col_spans[span_col] = (rowspan - 1, content)
+
+                col_idx += colspan
+
+            # After consuming all cells, drain remaining col_spans for this row
+            while True:
+                # Find next occupied col
+                occupied = [c for c in col_spans if c >= col_idx]
+                if not occupied or col_idx >= MAX_COLS:
+                    break
+                next_col = min(occupied)
+                # Fill gaps with empty strings
+                while col_idx < next_col and len(row) < MAX_COLS:
+                    row.append("")
+                    col_idx += 1
+                if col_idx >= MAX_COLS:
+                    break
+                remaining, content = col_spans[col_idx]
+                if len(row) < MAX_COLS:
+                    row.append(content)
+                del col_spans[col_idx]
+                if remaining > 1:
+                    col_spans[col_idx] = (remaining - 1, content)
+                col_idx += 1
+
+                # Skip completely empty rows
+            if row:
+                grid.append(row)
+
+        if not grid:
+            return []
+
+        # Determine max_cols and pad rows
+        max_cols = max(len(r) for r in grid)
+        if max_cols > MAX_COLS:
+            log.warning("Table grid exceeds %d columns (%d), truncating", MAX_COLS, max_cols)
+            max_cols = MAX_COLS
+
+        for r in grid:
+            while len(r) < max_cols:
+                r.append("")
+            if len(r) > max_cols:
+                del r[max_cols:]
+
+        return grid
+
+    @staticmethod
+    def _transpose_grid(grid: list[list[str]], header_row_count: int = 1) -> list[list[str]]:
+        """Transpose a 2D grid, merging multi-row headers with ' \u2192 ' separator."""
+        if not grid:
+            return []
+
+        num_cols = len(grid[0])
+        num_rows = len(grid)
+
+        if header_row_count <= 0:
+            # Simple transpose: result[j][i] = grid[i][j]
+            return [
+                [grid[i][j] for i in range(num_rows)]
+                for j in range(num_cols)
+            ]
+
+        # Merge multi-row headers per column
+        merged_headers: list[str] = []
+        for col in range(num_cols):
+            parts = []
+            for row_idx in range(header_row_count):
+                val = grid[row_idx][col].strip()
+                if val:
+                    parts.append(val)
+            merged_headers.append(" \u2192 ".join(parts))
+
+        # Data rows start after header_row_count
+        data_rows = grid[header_row_count:]
+
+        # Build transposed grid:
+        # Row 0: merged header (label) | data values from each original data row
+        # Column headers are original column-0 values of data rows
+        result: list[list[str]] = []
+        for col in range(num_cols):
+            transposed_row = [merged_headers[col]]
+            for data_row in data_rows:
+                transposed_row.append(data_row[col] if col < len(data_row) else "")
+            result.append(transposed_row)
+
+        return result
+
+    def _render_grid_as_table(self, grid: list[list[str]], header_row_count: int = 1) -> str:
+        """Render a normalized 2D grid as a Markdown table."""
+        if not grid:
             return ""
-        if self._is_simple_markdown_table(node, rows):
-            header = rows[0]
-            separator = ["---"] * len(header)
-            table_lines = [self._markdown_table_line(header), self._markdown_table_line(separator)]
-            table_lines.extend(self._markdown_table_line(row) for row in rows[1:])
-            return "\n".join(table_lines)
-        fallback_lines = []
-        for row in rows:
-            if len(row) == 2:
-                fallback_lines.append(f"- **{row[0]}:** {row[1]}")
+
+        max_cols = len(grid[0])
+
+        def normalize_cell(cell: str) -> str:
+            # Replace newlines (from <br>) with space to keep table rows atomic
+            return cell.replace("\n", " ").replace("|", "\\|")
+
+        lines: list[str] = []
+
+        if header_row_count > 0:
+            # Render header rows
+            for i in range(header_row_count):
+                row = grid[i]
+                escaped = [normalize_cell(c) for c in row]
+                while len(escaped) < max_cols:
+                    escaped.append("")
+                lines.append("| " + " | ".join(escaped) + " |")
+            # Separator
+            lines.append("| " + " | ".join(["---"] * max_cols) + " |")
+            # Body rows
+            for row in grid[header_row_count:]:
+                escaped = [normalize_cell(c) for c in row]
+                while len(escaped) < max_cols:
+                    escaped.append("")
+                lines.append("| " + " | ".join(escaped) + " |")
+        else:
+            # No header — treat all rows as body, add empty header
+            lines.append("| " + " | ".join([""] * max_cols) + " |")
+            lines.append("| " + " | ".join(["---"] * max_cols) + " |")
+            for row in grid:
+                escaped = [normalize_cell(c) for c in row]
+                while len(escaped) < max_cols:
+                    escaped.append("")
+                lines.append("| " + " | ".join(escaped) + " |")
+
+        return "\n".join(lines)
+
+    def _render_table(self, node, source_dir: str = "") -> str:
+        """Render an HTML table as a Markdown table using grid-based parsing."""
+        # Build normalized grid
+        grid = self._build_table_grid(node, source_dir=source_dir)
+        if not grid:
+            return ""
+
+        # Detect header_row_count: count consecutive all-<th> rows
+        header_row_count = 0
+        for row_node in node.css("tr"):
+            children = list(self._child_nodes(row_node))
+            th_cells = [c for c in children if c.tag == "th"]
+            td_cells = [c for c in children if c.tag == "td"]
+            if th_cells and not td_cells:
+                header_row_count += 1
             else:
-                fallback_lines.append(f"- {' | '.join(row)}")
-        return "\n".join(fallback_lines)
+                break
+
+        # Check transpose threshold
+        table_options = self.config.get("table_options", {})
+        transpose_threshold = table_options.get("transpose_wider_than")
+        if transpose_threshold is not None and len(grid[0]) > transpose_threshold:
+            grid = self._transpose_grid(grid, header_row_count)
+            # After transpose, first row becomes the new header
+            header_row_count = 1
+
+        return self._render_grid_as_table(grid, header_row_count)
 
     def _extract_row(self, row, source_dir: str = "") -> list[str]:
         cells = []
@@ -614,27 +854,9 @@ class HtmlToMarkdownConverter:
             cells.append(self._render_inline_children(child, source_dir=source_dir) or "")
         return cells
 
-    def _is_simple_markdown_table(self, node, rows: list[list[str]]) -> bool:
-        if len(rows) < 2:
-            return False
-        width = len(rows[0])
-        if width == 0:
-            return False
-        if any(len(row) != width for row in rows):
-            return False
-        first_row = node.css_first("tr")
-        if first_row is None:
-            return False
-        if not any(child.tag == "th" for child in self._child_nodes(first_row)):
-            return False
-        for cell in node.css("th, td"):
-            if cell.attributes.get("colspan") not in {None, "1"} or cell.attributes.get("rowspan") not in {None, "1"}:
-                return False
-        return True
-
     def _markdown_table_line(self, cells: list[str]) -> str:
         escaped = [cell.replace("|", "\\|") for cell in cells]
-        return f"| {' | '.join(escaped)} |"
+        return "| " + " | ".join(escaped) + " |"
 
     # ------------------------------------------------------------------
     # Inline rendering

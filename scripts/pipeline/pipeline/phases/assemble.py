@@ -213,6 +213,12 @@ def run_assemble(output_dir: str, manifest: dict, results: dict,
         body_content = None
         if list_result and list_result.get("status") == "ok":
             body_content = list_result.get("content")
+            # Resume mode: content is None but file exists on disk — read it back
+            if body_content is None and list_result.get("skipped"):
+                resume_path = os.path.join(output_dir, actual_dir, list_page_filename or "index.md")
+                if os.path.exists(resume_path):
+                    with open(resume_path, "r", encoding="utf-8") as _f:
+                        body_content = _f.read()
 
         if body_content and ("DPL_TABLE_PLACEHOLDER" in body_content or list_result.get("rendered_html")):
             list_input = {

@@ -94,7 +94,8 @@ def title_to_filepath(title: str, ns: int) -> tuple[str, str]:
 def validate_links(output_dir: str) -> list[dict]:
     from urllib.parse import unquote as _unquote
     broken = []
-    link_pattern = re.compile(r'(?<!\!)\[([^\]]+)\]\(([^)]+)\)')
+    # Handles nested parens in paths like [Text](Isaac_(Boss).md)
+    link_pattern = re.compile(r'(?<!\!)\[([^\]]+)\]\(((?:[^()\s]|\([^()\s]*\))+)\)')
     for root, _dirs, files in os.walk(output_dir):
         for fname in files:
             if not fname.endswith(".md"):

@@ -211,6 +211,41 @@ Strategy frontmatter (YAML)
 3. **Separation of extraction and conversion**: `lib/extraction/` extracts structured data; `pipeline/converters/` transforms format. One-way dependency: converters → extraction library.
 4. **Context-aware preprocessing**: Explore gets full 6-step cleanup; pipeline gets lightweight selector-based cleanup. No unnecessary processing.
 5. **Balanced element removal**: `converter.py` uses depth-counting balanced tag removal (not regex) for nested HTML elements, avoiding malformed markup issues.
+6. **Block-tag completeness**: `_BLOCK_TAGS` MUST include all HTML5 semantic block-level elements. Missing tags cause `_has_block_children()` to return `False`, routing block containers through `_render_inline_children()` and causing adjacent block content to be concatenated via `_join_inline_parts`. See [Decision 2026-05-20-block-tags-completeness](../decisions/2026-05-20-block-tags-completeness.md).
+7. **Direct child traversal for structured elements**: When iterating table rows or other nested structures, prefer `_child_nodes()` traversal over selectolax CSS selectors (e.g., `node.css("tr")`). CSS selectors match ALL descendants, including elements from nested child structures, causing structural corruption.
+
+## 8. Nested Table Handling
+
+### Problem
+
+MediaWiki server-rendered HTML can contain nested `<table>` elements inside `<td>` cells (e.g., wiki.gg tabber widgets). Three independent bugs caused structural corruption when these were encountered:
+
+1. **`_BLOCK_TAGS` missing `article`/`section`**: The `<section>` wrapper containing tab pages was rendered inline, concatenating two independent tables' Markdown output.
+2. **`_build_table_grid` using `node.css("tr")`**: Collected ALL descendant `<tr>` rows including those from nested tables, contaminating the parent grid.
+3. **Recursive `_render_table` for nested tables in cell content**: Nested `<table>` elements inside `<td>` cells were rendered as full Markdown tables and embedded as cell content, with unescaped pipe characters creating malformed rows.
+
+### Fix (3 changes in `converter.py`)
+
+| # | Change | Location | Effect |
+|---|--------|---------|--------|
+| 1 | Add `"article"`, `"section"` to `_BLOCK_TAGS` | Class constant | Tabber sections render as separated blocks |
+| 2 | Replace `node.css("tr")` with `_child_nodes` traversal | `_build_table_grid()` | Only direct child rows collected |
+| 3 | New `_render_cell_content()` method | Before `_build_table_grid()` | Skips nested `<table>` rendering, preserves inline text |
+
+### Debugging Methodology
+
+When table corruption occurs, trace the rendering path:
+```
+_convert() → _render_blocks(root_children)
+  → _render_block(<element>)     # Check: is element in _BLOCK_TAGS?
+    → _has_block_children() <True?>  # Check: are DIRECT children in _BLOCK_TAGS?
+      → _render_blocks(children)     # ✅ Correct: blocks separated by \n\n
+      → _render_inline_children()    # ❌ Bug: blocks concatenated with spaces
+        → _render_inline(<table>)    # Each table rendered as inline string
+          → _join_inline_parts()     # Concatenates with " " separator
+```
+
+Key diagnostic: render individual blocks independently and compare to combined output. If individual renders are clean but combined is corrupted, the issue is in the block boundary logic (`_BLOCK_TAGS` / `_has_block_children`).
 
 ## 关联文档
 
