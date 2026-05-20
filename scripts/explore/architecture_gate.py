@@ -13,7 +13,7 @@ _ALWAYS_CONSUMED = {"selectors"}
 
 # Pipeline source files relative to repo root
 _PIPELINE_FILES = [
-    os.path.join("scripts", "pipeline", "converters", "html_to_markdown.py"),
+    os.path.join("scripts", "lib", "extraction", "converter.py"),
 ]
 
 
@@ -28,7 +28,7 @@ def validate(
     """Architecture Gate entry point.
 
     Validates alignment between strategy extraction config and ALL pipeline
-    converter files (sample_converter.py AND html_to_markdown.py).
+    converter files (sample_converter.py AND converter.py).
 
     Args:
         samples: List of sample dicts with 'title', 'url', 'type' keys.

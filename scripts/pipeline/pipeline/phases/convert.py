@@ -190,7 +190,7 @@ def _process_html_page(raw: dict, title: str, source_dir: str, source_url: str,
 
 # ---------------------------------------------------------------------------
 
-def run_phase_convert(output_dir: str, manifest: dict, strategy: dict,
+def run_convert(output_dir: str, manifest: dict, strategy: dict,
                       domain: str, repo_root: str) -> tuple[dict, dict]:
     """Execute Phase Convert: read from cache and convert to Markdown.
 

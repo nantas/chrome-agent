@@ -3,7 +3,7 @@ from __future__ import annotations
 """HTML to Markdown converter — independent of pipeline internals.
 
 Can be imported and used standalone:
-    from scripts.pipeline.converters.html_to_markdown import HtmlToMarkdownConverter
+    from scripts.lib.extraction.converter import HtmlToMarkdownConverter
 """
 
 import json

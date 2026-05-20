@@ -224,7 +224,7 @@ from .template import SimpleSubstitutionTemplateProcessor, StructuredTemplatePro
 from .list_assembler import FrontmatterDrivenListPageAssembler, HybridListPageAssembler
 
 # Re-export converters for backward compatibility
-from ..converters.html_to_markdown import HtmlToMarkdownConverter
+from scripts.lib.extraction.converter import HtmlToMarkdownConverter
 from ..converters.wikitext_to_md import (
     convert_wikitext_to_markdown,
     convert_wikitable_to_markdown,

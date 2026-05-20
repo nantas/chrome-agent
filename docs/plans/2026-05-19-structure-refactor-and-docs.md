@@ -631,9 +631,12 @@ node scripts/chrome-agent-cli.mjs crawl <url>  # CLI 端到端正常
 node --test tests/  # 测试通过
 ```
 
+**Change 3 遗留完成 (finish-refactor-cleanup, 2026-05-20):**
+- ✅ `html_to_markdown.py` 已移动到 `lib/extraction/converter.py`，4 个 import 方 + architecture_gate 已更新
+- ⚠️ `orchestrator.py` 行数 456（目标 ≤400）：提取 helper 会增加行数，保持现状
 ---
 
-### Change 4: 重命名 Phase 文件
+### Change 4: 重命名 Phase 文件 ✅ 已完成
 
 | 属性 | 内容 |
 |------|------|
@@ -666,6 +669,9 @@ node --test tests/  # 测试通过
 - grep 无 `from.*phase_0\|from.*phase_a\|from.*phase_b\|from.*phase_c` 匹配
 - 完整 crawl 运行正常
 
+**Change 4 遗留完成 (finish-refactor-cleanup, 2026-05-20):**
+- ✅ 5 个 phase 函数已重命名（run_phase_0→run_homepage_discovery 等），orchestrator import/call 全部更新
+- ✅ 全局零残留旧函数名
 ---
 
 ### Change 5: 拆分 CLI 大函数 ✅ 完成
@@ -843,7 +849,7 @@ Week 1-2: Phase 1 (基础层)
   
 Week 3-4: Phase 2 (管线层)
   ├── Change 3: 拆分 orchestrator + 重命名包  ✅ 完成
-  └── Change 4: 重命名 Phase 文件          [1-2天]
+  └── Change 4: 重命名 Phase 文件          ✅ 完成
 
 Week 5: Phase 3 (CLI 层)
   └── Change 5: 拆分 CLI 大函数            ✅ 完成

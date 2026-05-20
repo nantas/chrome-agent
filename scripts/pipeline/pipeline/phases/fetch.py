@@ -25,7 +25,7 @@ def fetch_single_page(client: ApiClient, page_info: dict,
     raw["title"] = title
     return raw
 
-def run_phase_fetch(client: ApiClient, manifest: dict, strategy: dict,
+def run_fetch(client: ApiClient, manifest: dict, strategy: dict,
                     rate_limit_config, domain: str,
                     content_strategy: ContentAcquisitionStrategy,
                     repo_root: str,

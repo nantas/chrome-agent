@@ -9,7 +9,7 @@ from ...strategies import DiscoveryStrategy, title_to_filepath
 log = logging.getLogger("pipeline")
 
 
-def run_phase_a(client: ApiClient, strategy: dict, origin: str,
+def run_allpages_discovery(client: ApiClient, strategy: dict, origin: str,
                 discovery_strategy: DiscoveryStrategy,
                 *,
                 platform_variant: str = "standard",

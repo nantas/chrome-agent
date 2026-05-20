@@ -3,7 +3,7 @@
 All converters can be imported without pulling in ApiClient or pipeline internals.
 """
 
-from .html_to_markdown import HtmlToMarkdownConverter
+from scripts.lib.extraction.converter import HtmlToMarkdownConverter
 from .wikitext_to_md import (
     convert_wikitext_to_markdown,
     convert_wikitable_to_markdown,

@@ -14,7 +14,7 @@ from ..page_assigner import assign_pages
 log = logging.getLogger("pipeline")
 
 
-def run_phase_0(client, strategy: dict, origin: str,
+def run_homepage_discovery(client, strategy: dict, origin: str,
                 platform_variant: str = "standard",
                 exclude_categories: Optional[list[str]] = None) -> dict:
     """Execute Phase 0: homepage-driven discovery + page assignment.

@@ -10,7 +10,7 @@ from typing import Optional
 from urllib.parse import unquote, urlparse
 
 from .client import ApiClient, probe_api_endpoint
-from .converters.html_to_markdown import HtmlToMarkdownConverter
+from scripts.lib.extraction.converter import HtmlToMarkdownConverter
 from .converters.wikitext_to_md import convert_wikitext_to_markdown
 from .converters.card_stats import extract_card_stats
 from .strategies import (

@@ -3,8 +3,7 @@
 ## 0. Critical Rule
 
 优先使用 `lsp` 工具（symbols / definition / references）而非 `grep` + `read`。
-
-→ 决策表 & 模式详见 `docs/architecture/08-tech-stack.md`
+** 使用方法详见 `lsp-code-intelligence` skill**（自动注入）。
 
 ## 1. Service Identity
 

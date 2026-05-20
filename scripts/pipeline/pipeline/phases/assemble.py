@@ -11,7 +11,7 @@ from ...strategies import split_card_list_pages
 log = logging.getLogger("pipeline")
 
 
-def run_phase_c(output_dir: str, manifest: dict, results: dict,
+def run_assemble(output_dir: str, manifest: dict, results: dict,
                 strategy: dict, domain: str,
                 list_page_assembler: ListPageAssembler,
                 link_resolver: LinkResolver,

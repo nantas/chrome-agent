@@ -16,17 +16,17 @@ from ...lib.config_resolver import (
 )
 
 from ..client import ApiClient, probe_api_endpoint
-from .phases.discovery_allpages import run_phase_a
-from .phases.assemble import run_phase_c
-from .phases.discovery_homepage import run_phase_0
+from .phases.discovery_allpages import run_allpages_discovery
+from .phases.assemble import run_assemble
+from .phases.discovery_homepage import run_homepage_discovery
 
 from .registry import (
     PipelineStrategies,
     build_pipeline,
 )
 from .discovery_summary import build_discovery_summary
-from .phases.fetch import run_phase_fetch
-from .phases.convert import run_phase_convert
+from .phases.fetch import run_fetch
+from .phases.convert import run_convert
 
 log = logging.getLogger("pipeline")
 
@@ -179,7 +179,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         if _dispatch_discovery == "homepage":
             try:
                 log.info("Running homepage discovery...")
-                manifest = run_phase_0(client, strategy, origin,
+                manifest = run_homepage_discovery(client, strategy, origin,
                                        platform_variant=platform_variant,
                                        exclude_categories=merged_excludes)
                 manifest_path = os.path.join(args.output, "page_manifest.json")
@@ -193,7 +193,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         elif _dispatch_discovery == "allpages":
             try:
                 log.info("Running allpages discovery...")
-                manifest = run_phase_a(client, strategy, origin, strategies.discovery,
+                manifest = run_allpages_discovery(client, strategy, origin, strategies.discovery,
                                        platform_variant=platform_variant,
                                        exclude_categories=merged_excludes)
                 manifest_path = os.path.join(args.output, "page_manifest.json")
@@ -306,7 +306,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
     fetch_stats = None
     if "fetch" in phases or "all" in phases:
         try:
-            fetch_stats = run_phase_fetch(
+            fetch_stats = run_fetch(
                 client, manifest, strategy, rate_limit_config, domain,
                 strategies.content_acquisition, repo_root,
                 re_fetch=re_fetch,
@@ -329,7 +329,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
     stats = None
     if "convert" in phases or "all" in phases:
         try:
-            results, stats = run_phase_convert(
+            results, stats = run_convert(
                 args.output, manifest, strategy, domain, repo_root
             )
 
@@ -392,7 +392,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
     # --- Assembly Phase (C) ---
     if "assemble" in phases or "all" in phases:
         try:
-            phase_c_stats = run_phase_c(
+            phase_c_stats = run_assemble(
                 args.output, manifest, results, strategy, domain,
                 strategies.list_page_assembler, strategies.link_resolver,
                 client=client
