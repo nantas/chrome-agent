@@ -47,6 +47,7 @@ Command options:
   --no-report            Disable durable report emission for this run.
   --discovery-only       Stop after discovery phase, output discovery_summary.json.
   --from-manifest <path> Resume crawl from existing page manifest.
+  --output <dir>        Specify output directory for crawl results.
   --yes                  Bypass confirmation gate (passthrough signal for SKILL layer).
   --exclude-category <n> Exclude category from extraction (repeatable).
   --scope <scope>        Clean scope: disposable (default) or all.
@@ -104,6 +105,7 @@ function parseArgs(argv) {
   let reFetch = false;
   let yes = false;
   let excludeCategory = [];
+  let outputDir = null;
   const positionals = [];
 
   for (let i = 0; i < passthrough.length; i += 1) {
@@ -276,6 +278,15 @@ function parseArgs(argv) {
       reFetch = true;
       continue;
     }
+    if (value === "--output" && i + 1 < passthrough.length) {
+      outputDir = passthrough[i + 1];
+      i += 1;
+      continue;
+    }
+    if (value.startsWith("--output=")) {
+      outputDir = value.slice("--output=".length);
+      continue;
+    }
     if (!value.startsWith("-")) {
       positionals.push(value);
     }
@@ -305,6 +316,7 @@ function parseArgs(argv) {
     reFetch,
     yes,
     excludeCategory,
+    outputDir,
     command: positionals[0] ?? null,
     target: positionals[1] ?? null,
     positionals,
@@ -1979,9 +1991,13 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
     excludeCategory = [],
     phase = null,
     reFetch = false,
+    outputDir = null,
   } = opts;
 
-  const { runDir, reportPath } = buildRunPaths(repoRoot, "crawl", targetUrl);
+  let { runDir, reportPath } = buildRunPaths(repoRoot, "crawl", targetUrl);
+  if (outputDir) {
+    runDir = path.resolve(outputDir);
+  }
   ensureDir(runDir);
   const manifestPath = path.join(runDir, "manifest.json");
   const emitReport = shouldEmitReport("crawl", reportOverride);
@@ -3713,6 +3729,7 @@ async function main() {
           reFetch: parsed.reFetch,
           yes: parsed.yes,
           excludeCategory: parsed.excludeCategory,
+          outputDir: parsed.outputDir,
         });
         break;
       case "scrape":

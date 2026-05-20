@@ -45,7 +45,8 @@ def run_assemble(output_dir: str, manifest: dict, results: dict,
 
         content = result.get("content")
         if content is None:
-            # Result loaded from saved state — file already written
+            # Result loaded from saved state or incremental convert write — file already on disk
+            log.debug("Page '%s' already written to disk (content=None), skipping assemble write", title)
             written += 1
             continue
         content = content.replace("<!-- DPL_TABLE_PLACEHOLDER -->", "")

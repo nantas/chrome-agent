@@ -1,7 +1,8 @@
 """Page assignment — assigns discovered pages to output directories.
 
-Uses a priority chain: manual overrides > category_page members > MW category tags
-> default (misc). Queries MediaWiki category tags in batches for efficiency.
+Uses a priority chain: manual overrides > source category match > MW category tags
+(with aliases & page_categories fallback) > default (misc).
+Queries MediaWiki category tags in batches for efficiency.
 """
 
 import logging
@@ -24,8 +25,8 @@ def assign_pages(pages: list[dict], categories: list[dict],
 
     Priority chain (highest to lowest):
     1. Manual overrides (``api.homepage.manual_assignments``)
-    2. Category page special members (pages under a category_page)
-    3. MediaWiki category tag matching (query ``prop=categories``)
+    2. Source category match (``source_categories`` against ``assignment_priority``)
+    3. MediaWiki category tag matching (with ``mw_category_aliases`` & ``page_categories`` fallback)
     4. Default (``"misc"`` directory)
 
     Args:
@@ -59,25 +60,21 @@ def assign_pages(pages: list[dict], categories: list[dict],
 
     # Build lookup maps
     cat_name_to_dir = {c["name"]: c["dir"] for c in categories_cfg}
-    cat_page_names = {
-        c["name"] for c in categories
-        if c.get("type") == "category_page"
-        or category_page_types.get(c["name"]) == "category_page"
-    }
 
     # Step 1: Apply manual overrides
     result = _apply_manual_overrides(pages, manual_assignments)
 
-    # Step 2: Apply category_page member assignments for remaining unassigned pages
+    # Step 2: Apply source category assignments for remaining unassigned pages
     unassigned = [p for p in result if p.get("assignment_method") is None]
-    result = _apply_category_page_member_assignments(
-        result, unassigned, cat_page_names, cat_name_to_dir, categories_cfg
+    result = _apply_source_category_assignments(
+        result, unassigned, assignment_priority, cat_name_to_dir
     )
 
     # Step 3: Batch query MW categories and apply tag matching
     unassigned = [p for p in result if p.get("assignment_method") is None]
     result = _apply_mw_category_matching(
-        result, unassigned, assignment_priority, cat_name_to_dir, client, strategy
+        result, unassigned, assignment_priority, cat_name_to_dir,
+        client, strategy, categories_cfg
     )
 
     # Step 4: Default assignment for remaining
@@ -131,53 +128,45 @@ def _apply_manual_overrides(pages: list[dict],
     return result
 
 
-def _apply_category_page_member_assignments(
+def _apply_source_category_assignments(
     pages: list[dict], unassigned: list[dict],
-    cat_page_names: set[str],
+    assignment_priority: list[str],
     cat_name_to_dir: dict[str, str],
-    categories_cfg: list[dict],
 ) -> list[dict]:
-    """Assign pages that are members of category_page categories.
+    """Assign pages by matching source_categories against assignment_priority.
 
-    For each unassigned page that appears under a category_page category,
-    assign it to that category's directory.
+    For each unassigned page, iterate assignment_priority in order and
+    assign to the first category whose name appears in the page's
+    source_categories. Works for both list_page and category_page types.
 
     Args:
         pages: All pages (with existing assignments preserved).
         unassigned: Subset of pages with no assignment yet.
-        cat_page_names: Set of category names that have category_page type.
+        assignment_priority: Ordered list of category names (highest first).
         cat_name_to_dir: Map of category name → output directory.
-        categories_cfg: Full category config list.
 
     Returns:
         Updated pages list.
     """
-    # Build a set of page titles that are members of category_page categories
-    # This is determined from the page's source_categories
+    # Build a title → index map for O(1) updates
+    page_index = {p["title"]: i for i, p in enumerate(pages)}
+
     for page in unassigned:
-        source_cats = page.get("source_categories", [])
-        for cat_name in source_cats:
-            if cat_name in cat_page_names:
+        source_cats = set(page.get("source_categories", []))
+        # Find first matching category in priority order
+        for cat_name in assignment_priority:
+            if cat_name in source_cats:
                 target_dir = cat_name_to_dir.get(cat_name)
-                if target_dir is None:
-                    # Try to find dir from categories_cfg by name
-                    for c in categories_cfg:
-                        if c.get("name") == cat_name:
-                            target_dir = c.get("dir")
-                            break
                 if target_dir:
-                    # Find index in main list and update
-                    for i, p in enumerate(pages):
-                        if p["title"] == page["title"]:
-                            target_file = title_to_filepath(page["title"], 0)[1]
-                            pages[i]["target_directory"] = target_dir
-                            pages[i]["target_filename"] = target_file
-                            pages[i]["assigned_category"] = cat_name
-                            pages[i]["assignment_method"] = "category_page_member"
-                            log.info("Page '%s' assigned to '%s' (category_page member of '%s')",
-                                     page["title"], target_dir, cat_name)
-                            break
-                break  # First matching category_page wins
+                    idx = page_index[page["title"]]
+                    target_file = title_to_filepath(page["title"], 0)[1]
+                    pages[idx]["target_directory"] = target_dir
+                    pages[idx]["target_filename"] = target_file
+                    pages[idx]["assigned_category"] = cat_name
+                    pages[idx]["assignment_method"] = "source_category_match"
+                    log.info("Page '%s' assigned to '%s' (source category match: '%s')",
+                             page["title"], target_dir, cat_name)
+                break  # First matching priority wins
     return pages
 
 
@@ -186,6 +175,7 @@ def _apply_mw_category_matching(
     assignment_priority: list[str],
     cat_name_to_dir: dict[str, str],
     client, strategy: dict,
+    categories_cfg: list[dict],
 ) -> list[dict]:
     """Query MW category tags and assign by priority chain.
 
@@ -225,6 +215,25 @@ def _apply_mw_category_matching(
             log.debug("Waiting %dms before next category batch", batch_delay_ms)
             time.sleep(batch_delay_ms / 1000.0)
 
+    # Build alias lookup table from mw_category_aliases
+    alias_map: dict[str, tuple[str, str]] = {}  # mw_cat_name -> (homepage_cat_name, target_dir)
+    cat_aliases: dict[str, list[str]] = {}      # homepage_cat_name -> [aliases]
+    for c in categories_cfg:
+        aliases = c.get("mw_category_aliases", [])
+        if aliases:
+            cat_aliases[c["name"]] = aliases
+            for alias_name in aliases:
+                alias_map[alias_name] = (c["name"], cat_name_to_dir.get(c["name"]))
+
+    # Build page_categories fallback mapping from taxonomy
+    page_cat_dir_map: dict[str, str] = {}  # mw_cat_name -> target_dir
+    taxonomy = strategy.get("api", {}).get("taxonomy", {})
+    page_categories = taxonomy.get("page_categories", {})
+    for mw_cat_name, cat_path in page_categories.items():
+        top_segment = cat_path.split("/")[0]
+        if top_segment in cat_name_to_dir:
+            page_cat_dir_map[mw_cat_name] = cat_name_to_dir[top_segment]
+
     # Now apply priority-based assignment for pages with MW categories
     for page_title, idx in page_index.items():
         page = pages[idx]
@@ -233,9 +242,10 @@ def _apply_mw_category_matching(
 
         mw_cats = page.get("mw_categories", [])
 
-        # Find first match in priority order
+        # Find first match in priority order (name or alias)
         assigned = False
         for priority_name in assignment_priority:
+            # Direct name match
             if priority_name in mw_cats:
                 target_dir = cat_name_to_dir.get(priority_name)
                 if target_dir:
@@ -246,6 +256,38 @@ def _apply_mw_category_matching(
                     pages[idx]["assignment_method"] = "mw_category_match"
                     log.info("Page '%s' assigned to '%s' (MW category match: '%s')",
                              page["title"], target_dir, priority_name)
+                    assigned = True
+                    break
+            # Alias match
+            if not assigned:
+                for alias_name in cat_aliases.get(priority_name, []):
+                    if alias_name in mw_cats:
+                        target_dir = cat_name_to_dir.get(priority_name)
+                        if target_dir:
+                            target_file = title_to_filepath(page["title"], 0)[1]
+                            pages[idx]["target_directory"] = target_dir
+                            pages[idx]["target_filename"] = target_file
+                            pages[idx]["assigned_category"] = priority_name
+                            pages[idx]["assignment_method"] = "mw_category_match"
+                            log.info("Page '%s' assigned to '%s' (MW alias match: '%s' → '%s')",
+                                     page["title"], target_dir, alias_name, priority_name)
+                            assigned = True
+                            break
+                if assigned:
+                    break
+
+        # Fallback: page_categories mapping
+        if not assigned and page.get("assignment_method") is None:
+            for mw_cat in mw_cats:
+                if mw_cat in page_cat_dir_map:
+                    target_dir = page_cat_dir_map[mw_cat]
+                    target_file = title_to_filepath(page["title"], 0)[1]
+                    pages[idx]["target_directory"] = target_dir
+                    pages[idx]["target_filename"] = target_file
+                    pages[idx]["assigned_category"] = mw_cat
+                    pages[idx]["assignment_method"] = "mw_category_match"
+                    log.info("Page '%s' assigned to '%s' (MW page_categories fallback: '%s')",
+                             page["title"], target_dir, mw_cat)
                     assigned = True
                     break
 

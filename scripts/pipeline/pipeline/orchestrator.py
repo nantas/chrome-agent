@@ -330,7 +330,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
     if "convert" in phases or "all" in phases:
         try:
             results, stats = run_convert(
-                args.output, manifest, strategy, domain, repo_root
+                args.output, manifest, strategy, domain, repo_root,
+                resume_enabled=resume_enabled
             )
 
             # Save extraction results WITH content and rendered_html

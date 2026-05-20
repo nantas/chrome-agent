@@ -70,18 +70,18 @@ api:
       - selector: ".gallerytext a"
         type: list_page
     categories:
-      - {name: "Items", dir: "items"}
-      - {name: "Trinkets", dir: "trinkets"}
-      - {name: "Bosses", dir: "bosses"}
-      - {name: "Monsters", dir: "monsters"}
+      - {name: "Items", dir: "items", mw_category_aliases: ["Collectibles", "Activated Collectibles", "Passive Collectibles"]}
+      - {name: "Trinkets", dir: "trinkets", mw_category_aliases: ["Trinkets"]}
+      - {name: "Bosses", dir: "bosses", mw_category_aliases: ["Bosses"]}
+      - {name: "Monsters", dir: "monsters", mw_category_aliases: ["Monsters"]}
       - {name: "Characters", dir: "characters"}
       - {name: "Cards", dir: "cards"}
       - {name: "Challenges", dir: "challenges"}
       - {name: "Transformations", dir: "transformations"}
-      - {name: "Chapters", dir: "chapters"}
+      - {name: "Chapters", dir: "chapters", mw_category_aliases: ["Stages"]}
       - {name: "Rooms", dir: "rooms"}
       - {name: "Mechanics", dir: "mechanics"}
-      - {name: "Achievements", dir: "achievements"}
+      - {name: "Achievements", dir: "achievements", mw_category_aliases: ["Achievements"]}
       - {name: "Pickups", dir: "pickups"}
       - {name: "Effects", dir: "effects"}
       - {name: "Curses", dir: "curses"}

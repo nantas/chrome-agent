@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import Optional
 
 from ..registry import build_pipeline
@@ -15,6 +16,8 @@ from ...strategies import LinkResolver, TemplateProcessor
 from ...strategies import HtmlToMarkdownConverter
 from ...strategies import convert_wikitext_to_markdown
 from ...client import PageNotFoundError
+
+from ..state import load_state, save_state, is_page_completed
 
 log = logging.getLogger("pipeline")
 
@@ -191,7 +194,8 @@ def _process_html_page(raw: dict, title: str, source_dir: str, source_url: str,
 # ---------------------------------------------------------------------------
 
 def run_convert(output_dir: str, manifest: dict, strategy: dict,
-                      domain: str, repo_root: str) -> tuple[dict, dict]:
+                      domain: str, repo_root: str,
+                      resume_enabled: bool = False) -> tuple[dict, dict]:
     """Execute Phase Convert: read from cache and convert to Markdown.
 
     No network requests are made. All input comes from local cache files.
@@ -232,12 +236,34 @@ def run_convert(output_dir: str, manifest: dict, strategy: dict,
     success_count = 0
     cache_miss_count = 0
     failed_count = 0
+    flush_counter = 0
+    flush_interval = 50
 
-    log.info("Phase Convert: converting %d pages from cache (platform=%s)...",
-             len(pages), platform)
+    # Load resume state if enabled
+    state = load_state(output_dir) if resume_enabled else None
+    completed_pages_set = set(state.get("completed_pages", [])) if state else set()
+
+    log.info("Phase Convert: converting %d pages from cache (platform=%s, resume=%s)...",
+             len(pages), platform, resume_enabled)
 
     for page in pages:
         title = page["title"]
+        target_dir = page.get("target_directory", "")
+        target_filename = page.get("target_filename", "")
+
+        # Resume: skip already converted pages
+        if resume_enabled and completed_pages_set and title in completed_pages_set:
+            filepath = os.path.join(output_dir, target_dir, target_filename)
+            if os.path.exists(filepath):
+                results[title] = {
+                    "title": title,
+                    "status": "ok",
+                    "content": None,
+                    "skipped": True,
+                }
+                success_count += 1
+                log.debug("Page '%s' skipped (already converted)", title)
+                continue
 
         # Load from cache
         raw = cache_mod.load_page_cache(repo_root, platform, domain, title)
@@ -267,6 +293,22 @@ def run_convert(output_dir: str, manifest: dict, strategy: dict,
             results[title] = result
             if result["status"] == "ok":
                 success_count += 1
+
+                # Incremental write: write .md file immediately
+                if result.get("content"):
+                    filepath = os.path.join(output_dir, target_dir, target_filename)
+                    os.makedirs(os.path.dirname(filepath), exist_ok=True)
+                    with open(filepath, "w", encoding="utf-8") as f:
+                        f.write(result["content"])
+
+                # Track completed and flush state periodically
+                completed_pages_set.add(title)
+                flush_counter += 1
+                if flush_counter >= flush_interval:
+                    if state is not None:
+                        state["completed_pages"] = list(completed_pages_set)
+                        save_state(output_dir, state)
+                    flush_counter = 0
             else:
                 failed_count += 1
                 log.warning("Convert failed for '%s': %s", title, result.get("error", "unknown"))
@@ -274,6 +316,11 @@ def run_convert(output_dir: str, manifest: dict, strategy: dict,
             failed_count += 1
             results[title] = {"title": title, "status": "error", "error": str(e)}
             log.warning("Convert failed for '%s': %s", title, e)
+
+    # Final state flush
+    if state is not None and completed_pages_set:
+        state["completed_pages"] = list(completed_pages_set)
+        save_state(output_dir, state)
 
     stats = {
         "total": len(pages),
