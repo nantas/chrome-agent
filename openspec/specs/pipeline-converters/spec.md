@@ -132,6 +132,12 @@ Additionally, `_build_table_grid()` SHALL only collect direct child `<tr>` eleme
 - **WHEN** all images in the `images` list match a skip pattern
 - **THEN** the frontmatter SHALL omit the `image` field entirely
 
+### Requirement: redirect-detection-and-skip
+
+Convert phase SHALL detect wiki redirect pages via `redirectMsg` HTML marker in the page's rendered HTML. When detected, the page SHALL be skipped (no .md output), marked `status: "redirect"` in pipeline state, and a redirect map (source_title → target_title) SHALL be built. The redirect map SHALL be injected into link resolution so that links pointing to redirect sources are resolved to redirect targets.
+
+Added by the `link-fallback-redirect-skip` change; authoritative spec delta resides in the change directory.
+
 ## REMOVED Requirements
 
 ### Requirement: is-simple-markdown-table-check

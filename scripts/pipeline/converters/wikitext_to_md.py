@@ -96,7 +96,7 @@ def _split_template_args(inner: str) -> list[str]:
 # ===========================================================================
 
 def convert_wikitable_to_markdown(text: str, manifest_pages: list[dict], source_dir: str,
-                                  link_resolver=None) -> str:
+                                  link_resolver=None, redirect_map: dict[str, str] | None = None) -> str:
     """Convert MediaWiki table syntax ({| ... |}) to Markdown tables."""
     text = re.sub(r'(==+\s*[^=]+?\s*==+)\s*\n\{\|', r'\1\n\n{|', text)
 
@@ -134,7 +134,7 @@ def convert_wikitable_to_markdown(text: str, manifest_pages: list[dict], source_
         result_parts.append(before)
 
         table_block = text[table_start:j]
-        md_table = _parse_wikitable_block(table_block, manifest_pages, source_dir, link_resolver)
+        md_table = _parse_wikitable_block(table_block, manifest_pages, source_dir, link_resolver, redirect_map)
         if md_table:
             md_table = '\n' + md_table + '\n'
         result_parts.append(md_table)
@@ -145,7 +145,7 @@ def convert_wikitable_to_markdown(text: str, manifest_pages: list[dict], source_
 
 
 def _parse_wikitable_block(block: str, manifest_pages: list[dict], source_dir: str,
-                           link_resolver=None) -> str:
+                           link_resolver=None, redirect_map: dict[str, str] | None = None) -> str:
     """Parse a single {| ... |} block into a Markdown table."""
     lines = block.split('\n')
     rows = []
@@ -202,7 +202,7 @@ def _parse_wikitable_block(block: str, manifest_pages: list[dict], source_dir: s
 
     cleaned_rows = []
     for is_header, row in normalized:
-        cleaned = [_clean_table_cell(cell, manifest_pages, source_dir, link_resolver) for cell in row]
+        cleaned = [_clean_table_cell(cell, manifest_pages, source_dir, link_resolver, redirect_map) for cell in row]
         cleaned_rows.append((is_header, cleaned))
 
     md_lines = []
@@ -225,12 +225,12 @@ def _split_table_cells(content: str, separator: str) -> list[str]:
 
 
 def _clean_table_cell(cell: str, manifest_pages: list[dict], source_dir: str,
-                      link_resolver=None) -> str:
+                      link_resolver=None, redirect_map: dict[str, str] | None = None) -> str:
     for _ in range(3):
         cell = re.sub(r'\{\{([^|{}]*?)\|([^{}]*?)\}\}', r'\2', cell)
         cell = re.sub(r'\{\{([^{}]*?)\}\}', r'\1', cell)
     if link_resolver is not None:
-        cell = link_resolver.convert_links(cell, manifest_pages, source_dir)
+        cell = link_resolver.convert_links(cell, manifest_pages, source_dir, redirect_map)
     cell = re.sub(r"'''([^']+)'''", r'**\1**', cell)
     cell = re.sub(r"''([^']+)''", r'*\1*', cell)
     cell = re.sub(r'<[^>]+>', '', cell)
@@ -249,7 +249,8 @@ def convert_wikitext_to_markdown(wikitext: str, title: str, source_url: str,
                                   template_map: dict[str, str],
                                   link_resolver,
                                   template_processor,
-                                  domain: str) -> tuple[str, list[str], dict]:
+                                  domain: str,
+                                  redirect_map: dict[str, str] | None = None) -> tuple[str, list[str], dict]:
     """Convert wikitext to Markdown.
 
     Args:
@@ -276,8 +277,8 @@ def convert_wikitext_to_markdown(wikitext: str, title: str, source_url: str,
     text = _replace_dpl_template(text)
     text = template_processor.clean_remaining_templates(text)
     text = re.sub(r'^\s*\[\[Category:[^\]]*\]\]\s*$', '', text, flags=re.MULTILINE)
-    text = convert_wikitable_to_markdown(text, manifest_pages, source_dir, link_resolver)
-    text = link_resolver.convert_links(text, manifest_pages, source_dir)
+    text = convert_wikitable_to_markdown(text, manifest_pages, source_dir, link_resolver, redirect_map)
+    text = link_resolver.convert_links(text, manifest_pages, source_dir, redirect_map)
     text = re.sub(r"'''([^']+)'''", r"**\1**", text)
     text = re.sub(r"''([^']+)''", r"*\1*", text)
     text = re.sub(r'^====\s*(.+?)\s*====$', r'#### \1', text, flags=re.MULTILINE)

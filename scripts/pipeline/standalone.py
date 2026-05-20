@@ -61,7 +61,7 @@ def fetch_and_convert(url: str, domain: str, output: str,
 
         converter = HtmlToMarkdownConverter(wiki_domain=domain, extraction_config=extraction_config)
         if manifest_pages:
-            converter.build_link_index(manifest_pages)
+            converter.build_link_index(manifest_pages, redirect_map=None)
         md_content = converter.convert_body(html, source_dir="")
 
         # Build frontmatter
@@ -106,7 +106,8 @@ def fetch_and_convert(url: str, domain: str, output: str,
         template_processor = SimpleSubstitutionTemplateProcessor()
         full_content, _, _ = convert_wikitext_to_markdown(
             wikitext, title, url, manifest_pages or [], "",
-            [], {}, link_resolver, template_processor, domain
+            [], {}, link_resolver, template_processor, domain,
+            redirect_map=None
         )
     else:
         raise ValueError(f"Unknown mode: {mode}")
@@ -157,7 +158,7 @@ def reconvert_file(filepath: str, domain: str,
     # If no source_url, just re-convert the existing HTML-like content
     converter = HtmlToMarkdownConverter(wiki_domain=domain, extraction_config=extraction_config)
     if manifest_pages:
-        converter.build_link_index(manifest_pages)
+        converter.build_link_index(manifest_pages, redirect_map=None)
 
     cleaned = converter.clean_html(body)
     md_content = converter.convert(cleaned, source_dir="")

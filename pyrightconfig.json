@@ -2,10 +2,5 @@
   "include": [
     "scripts"
   ],
-  "executionEnvironments": [
-    {
-      "root": "scripts"
-    }
-  ],
-  "pythonVersion": "3.9"
+  "pythonVersion": "3.11"
 }

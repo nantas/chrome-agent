@@ -48,6 +48,7 @@ class HtmlToMarkdownConverter:
         config_cleanup = self.config.get("cleanup_selectors", [])
         self._REMOVAL_SELECTORS = tuple(config_cleanup) if config_cleanup else self._REMOVAL_SELECTORS
         self.title_to_path: dict[str, tuple[str, str]] = {}
+        self._redirect_map: dict[str, str] = {}
         # Image skip patterns from config
         self._skip_patterns: list[str] = self.config.get("image_filtering", {}).get("skip_patterns", [])
         # Infobox config: read extraction.infox settings
@@ -64,12 +65,14 @@ class HtmlToMarkdownConverter:
         # Infobox field handlers from config
         self._infobox_handlers: dict = self.config.get("infobox_field_handlers", {})
 
-    def build_link_index(self, manifest_pages: list[dict]):
+    def build_link_index(self, manifest_pages: list[dict],
+                          redirect_map: dict[str, str] | None = None):
         """Build title -> (target_directory, target_filename) index."""
         self.title_to_path = {
             p["title"]: (p["target_directory"], p["target_filename"])
             for p in manifest_pages
         }
+        self._redirect_map = redirect_map or {}
 
     # ------------------------------------------------------------------
     # Balanced element removal
@@ -272,11 +275,11 @@ class HtmlToMarkdownConverter:
 
         body = parser.body
         if body is not None:
-            return body.html
+            return body.html or ""
         root = parser.css_first(".mw-parser-output")
         if root is not None:
-            return root.html
-        return parser.html
+            return root.html or ""
+        return parser.html or ""
 
     # ------------------------------------------------------------------
     # Conversion
@@ -963,6 +966,9 @@ class HtmlToMarkdownConverter:
         title = title.replace("_", " ")
         if title.startswith(("File:", "Category:", "Template:", "Talk:", "Special:", "Help:")):
             return None
+        # Follow redirect if applicable
+        if title in self._redirect_map:
+            title = self._redirect_map[title]
         target = self.title_to_path.get(title)
         if target is None:
             target = self.title_to_path.get(title.replace(" ", "_"))

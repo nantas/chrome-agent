@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import Optional
 
 from ..registry import build_pipeline
@@ -13,7 +14,7 @@ from ...strategies import (
     SimpleSubstitutionTemplateProcessor,
 )
 from ...strategies import LinkResolver, TemplateProcessor
-from ...strategies import HtmlToMarkdownConverter
+from scripts.lib.extraction.converter import HtmlToMarkdownConverter
 from ...strategies import convert_wikitext_to_markdown
 from ...client import PageNotFoundError
 
@@ -22,12 +23,38 @@ from ..state import load_state, save_state, is_page_completed
 log = logging.getLogger("pipeline")
 
 
+# ---------------------------------------------------------------------------
+# Redirect detection helpers
+# ---------------------------------------------------------------------------
+
+_REDIRECT_MSG_RE = re.compile(
+    r'class="redirectMsg"|>Redirect to:<', re.IGNORECASE
+)
+_REDIRECT_TARGET_RE = re.compile(
+    r'class="redirectMsg".*?<a\s+href="/wiki/([^""]+)"',
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _detect_redirect(html: str) -> Optional[str]:
+    """Detect if HTML is a redirect page. Returns target title or None."""
+    if not html or not _REDIRECT_MSG_RE.search(html):
+        return None
+    m = _REDIRECT_TARGET_RE.search(html)
+    if m:
+        # URL-decode and underscore-to-space normalization
+        from urllib.parse import unquote
+        return unquote(m.group(1)).replace("_", " ")
+    return ""  # redirect detected but target not extractable
+
+
 def convert_single_page(raw: dict, page_info: dict, manifest_pages: list[dict],
                         domain: str, frontmatter_fields: list[str],
                         template_map: dict[str, str],
                         link_resolver: LinkResolver,
                         template_processor: TemplateProcessor,
-                        extraction_config: Optional[dict] = None) -> dict:
+                        extraction_config: Optional[dict] = None,
+                        redirect_map: dict[str, str] | None = None) -> dict:
     """Convert a raw content dict to Markdown.
 
     Args:
@@ -62,14 +89,16 @@ def convert_single_page(raw: dict, page_info: dict, manifest_pages: list[dict],
     if is_html_rendered:
         return _process_html_page(
             raw, title, source_dir, source_url, domain,
-            manifest_pages, frontmatter_fields, extraction_config
+            manifest_pages, frontmatter_fields, extraction_config,
+            redirect_map
         )
 
     # Wikitext path
     if is_wikitext and wikitext:
         md_content, warnings, frontmatter = convert_wikitext_to_markdown(
             wikitext, title, source_url, manifest_pages, source_dir,
-            frontmatter_fields, template_map, link_resolver, template_processor, domain
+            frontmatter_fields, template_map, link_resolver, template_processor, domain,
+            redirect_map
         )
 
         result = {
@@ -97,13 +126,13 @@ def convert_single_page(raw: dict, page_info: dict, manifest_pages: list[dict],
                 first_img = filtered_images[0]
                 img_name = first_img.replace(" ", "_")
                 frontmatter["image"] = img_name
-            img_url = f"https://{domain}/Special:Redirect/file/{url_quote(img_name, safe='')}"
-            if "---" in md_content:
-                end_fm = md_content.find("\n---", 3)
-                if end_fm >= 0:
-                    insert_pos = end_fm + 4
-                    img_md = f"\n\n![{img_name}]({img_url})\n"
-                    result["content"] = md_content[:insert_pos] + img_md + md_content[insert_pos:]
+                img_url = f"https://{domain}/Special:Redirect/file/{url_quote(img_name, safe='')}"
+                if "---" in md_content:
+                    end_fm = md_content.find("\n---", 3)
+                    if end_fm >= 0:
+                        insert_pos = end_fm + 4
+                        img_md = f"\n\n![{img_name}]({img_url})\n"
+                        result["content"] = md_content[:insert_pos] + img_md + md_content[insert_pos:]
 
         return result
 
@@ -111,7 +140,8 @@ def convert_single_page(raw: dict, page_info: dict, manifest_pages: list[dict],
     if html and not is_wikitext:
         return _process_html_page(
             raw, title, source_dir, source_url, domain,
-            manifest_pages, frontmatter_fields, extraction_config
+            manifest_pages, frontmatter_fields, extraction_config,
+            redirect_map
         )
 
     return {"title": title, "status": "empty", "error": "No content available (html and wikitext both empty)"}
@@ -122,14 +152,15 @@ def convert_single_page(raw: dict, page_info: dict, manifest_pages: list[dict],
 def _process_html_page(raw: dict, title: str, source_dir: str, source_url: str,
                        domain: str, manifest_pages: list[dict],
                        frontmatter_fields: list[str],
-                       extraction_config: dict | None = None) -> dict:
+                       extraction_config: dict | None = None,
+                       redirect_map: dict[str, str] | None = None) -> dict:
     """Process a page using HTML-rendered content."""
     html = raw.get("html") or ""
     if not html:
         return {"title": title, "status": "empty", "error": "Empty HTML"}
 
     converter = HtmlToMarkdownConverter(wiki_domain=domain, extraction_config=extraction_config)
-    converter.build_link_index(manifest_pages)
+    converter.build_link_index(manifest_pages, redirect_map)
 
     md_content = converter.convert_body(html, source_dir=source_dir)
 
@@ -265,6 +296,26 @@ def run_convert(output_dir: str, manifest: dict, strategy: dict,
     log.info("Phase Convert: converting %d pages from cache (platform=%s, resume=%s)...",
              len(pages), platform, resume_enabled)
 
+    redirect_map: dict[str, str] = {}  # source_title -> target_title
+    redirect_titles: set[str] = set()
+
+    # Pre-scan: detect redirect pages and build full redirect_map
+    for page in pages:
+        title = page["title"]
+        raw = cache_mod.load_page_cache(repo_root, platform, domain, title)
+        if raw is None:
+            continue
+        rendered_html = raw.get("rendered_html") or raw.get("html") or ""
+        redirect_target = _detect_redirect(rendered_html)
+        if redirect_target is not None:
+            redirect_titles.add(title)
+            if redirect_target:
+                redirect_map[title] = redirect_target
+
+    if redirect_titles:
+        log.info("Pre-scan: detected %d redirect pages", len(redirect_titles))
+
+    redirect_count = 0
     for page in pages:
         title = page["title"]
         target_dir = page.get("target_directory", "")
@@ -304,10 +355,25 @@ def run_convert(output_dir: str, manifest: dict, strategy: dict,
                         title, cached_acq, current_acq)
 
         try:
+            # Skip redirect pages (detected in pre-scan)
+            if title in redirect_titles:
+                redirect_count += 1
+                results[title] = {
+                    "title": title,
+                    "status": "redirect",
+                    "redirect_target": redirect_map.get(title),
+                }
+                if title in redirect_map:
+                    log.info("Redirect detected: '%s' → '%s'", title, redirect_map[title])
+                else:
+                    log.info("Redirect detected: '%s' (target not extractable)", title)
+                continue
+
             result = convert_single_page(
                 raw, page, pages, domain,
                 frontmatter_fields, template_map,
-                link_resolver, template_processor, extraction_config
+                link_resolver, template_processor, extraction_config,
+                redirect_map
             )
             results[title] = result
             if result["status"] == "ok":
@@ -347,8 +413,9 @@ def run_convert(output_dir: str, manifest: dict, strategy: dict,
         "failure": failed_count,
         "cache_miss": cache_miss_count,
         "failed": failed_count,
+        "redirect": redirect_count,
     }
-    log.info("Convert phase complete: %d total, %d converted, %d cache_miss, %d failed",
-             stats["total"], success_count, cache_miss_count, failed_count)
+    log.info("Convert phase complete: %d total, %d converted, %d redirect, %d cache_miss, %d failed",
+             stats["total"], success_count, redirect_count, cache_miss_count, failed_count)
 
     return results, stats

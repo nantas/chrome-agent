@@ -131,6 +131,11 @@ def _fix_links_in_content(content: str, domain: str, source_dir: str,
         target_dir, target_file = target
         rel_path = _compute_relative_path(source_dir, target_dir, target_file)
 
+        # Check if target file actually exists (redirect pages are in manifest but have no file)
+        target_norm = os.path.normpath(os.path.join(output_dir, target_dir, target_file))
+        if not os.path.exists(target_norm):
+            return full_match
+
         if fragment:
             rel_path = f"{rel_path}#{fragment}"
 

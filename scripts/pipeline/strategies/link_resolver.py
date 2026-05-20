@@ -15,17 +15,27 @@ class ExactTitleLinkResolver:
     def __init__(self, domain: str = ""):
         self._domain = domain
 
-    def convert_links(self, text: str, manifest_pages: list[dict], source_dir: str) -> str:
+    def convert_links(self, text: str, manifest_pages: list[dict], source_dir: str,
+                       redirect_map: dict[str, str] | None = None) -> str:
+        rmap = redirect_map or {}
+
         def replace_link(match):
             target = match.group(1)
             display = match.group(2) if match.group(2) else target
-            return self.resolve(target, display, source_dir, manifest_pages)
+            return self.resolve(target, display, source_dir, manifest_pages, rmap)
 
         text = re.sub(r'\[\[([^|\]]+)\|([^\]]+)\]\]', replace_link, text)
-        text = re.sub(r'\[\[([^\]]+)\]\]', lambda m: self.resolve(m.group(1), m.group(1), source_dir, manifest_pages), text)
+        text = re.sub(r'\[\[([^\]]+)\]\]', lambda m: self.resolve(m.group(1), m.group(1), source_dir, manifest_pages, rmap), text)
         return text
 
-    def resolve(self, target: str, display: str, source_dir: str, manifest_pages: list[dict]) -> str:
+    def resolve(self, target: str, display: str, source_dir: str,
+               manifest_pages: list[dict], redirect_map: dict[str, str] | None = None) -> str:
+        redirect_map = redirect_map or {}
+
+        # Redirect resolution: if target is a redirect source, follow it
+        if target in redirect_map:
+            target = redirect_map[target]
+
         pages_by_title = {p["title"]: p for p in manifest_pages}
 
         ns_prefixes = ["File:", "Category:", "Template:", "Special:", "Help:", "MediaWiki:"]
@@ -59,7 +69,7 @@ class ExactTitleLinkResolver:
                     return f"[{display}](../Misc/{target_file})"
                 return f"[{display}]({target_file})"
 
-        return f"[{display}]({target.replace(' ', '_')}.md)"
+        return f"[{display}](https://{self._domain}/wiki/{target.replace(' ', '_')})"
 
 
 class ShortNameLinkResolver:
@@ -78,22 +88,32 @@ class ShortNameLinkResolver:
             short = p["title"].split(":")[-1]
             self._short_title_index.setdefault(short, []).append(p)
 
-    def convert_links(self, text: str, manifest_pages: list[dict], source_dir: str) -> str:
+    def convert_links(self, text: str, manifest_pages: list[dict], source_dir: str,
+                       redirect_map: dict[str, str] | None = None) -> str:
         if manifest_pages and not self._pages_by_title:
             self._build_index(manifest_pages)
+
+        rmap = redirect_map or {}
 
         def replace_pipe_link(match):
             target = match.group(1)
             display = match.group(2)
-            return self.resolve(target, display, source_dir, manifest_pages)
+            return self.resolve(target, display, source_dir, manifest_pages, rmap)
 
         text = re.sub(r'\[\[([^|\]]+)\|([^\]]+)\]\]', replace_pipe_link, text)
-        text = re.sub(r'\[\[([^\]]+)\]\]', lambda m: self.resolve(m.group(1), m.group(1), source_dir, manifest_pages), text)
+        text = re.sub(r'\[\[([^\]]+)\]\]', lambda m: self.resolve(m.group(1), m.group(1), source_dir, manifest_pages, rmap), text)
         return text
 
-    def resolve(self, target: str, display: str, source_dir: str, manifest_pages: list[dict]) -> str:
+    def resolve(self, target: str, display: str, source_dir: str,
+               manifest_pages: list[dict], redirect_map: dict[str, str] | None = None) -> str:
         if not self._pages_by_title and manifest_pages:
             self._build_index(manifest_pages)
+
+        redirect_map = redirect_map or {}
+
+        # Redirect resolution: if target is a redirect source, follow it
+        if target in redirect_map:
+            target = redirect_map[target]
 
         pages_by_title = self._pages_by_title
 
@@ -125,7 +145,7 @@ class ShortNameLinkResolver:
             if full_title.endswith(f":{target}") or full_title.endswith(f":{short}"):
                 return self._make_link(pages_by_title[full_title], display, source_dir)
 
-        return f"[{display}]({target.replace(' ', '_')}.md)"
+        return f"[{display}](https://{self._domain}/wiki/{target.replace(' ', '_')})"
 
     def _guess_namespace(self, target_dir: str) -> str:
         if target_dir.startswith("StS2") or target_dir.startswith("Slay the Spire 2"):

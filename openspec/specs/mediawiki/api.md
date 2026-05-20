@@ -246,6 +246,26 @@ Phase B SHALL support concurrent execution with **configurable concurrency** (re
 - **AND** if the target page's directory differs from the source page's directory (per Phase A manifest), the link SHALL include the cross-directory relative path
 - **AND** links to non-content namespaces (`File:`, `Category:`, `Template:`, `Special:`) SHALL be excluded
 
+#### Scenario: Unresolved link fallback to wiki URL
+
+- **WHEN** wikitext contains `[[Page Title]]` and Page Title is not in the manifest
+- **THEN** the system SHALL convert it to `[Page Title](https://{domain}/wiki/Page_Title)` (original wiki URL)
+- **AND** SHALL NOT produce a bare `.md` relative path that points to a non-existent file
+- **AND** the domain SHALL come from the LinkResolver's constructor parameter
+
+#### Scenario: Redirect source link resolution
+
+- **WHEN** a page links to a redirect source page (e.g., `[[Item]]` where Item redirects to Items)
+- **THEN** the system SHALL resolve the link to the redirect target
+- **AND** if the target is in the manifest, produce a relative `.md` path
+- **AND** if the target is not in the manifest, produce the wiki URL
+
+#### Scenario: Redirect page detection and skip
+
+- **WHEN** a page's HTML contains `<div class="redirectMsg">` indicating a redirect
+- **THEN** the system SHALL NOT generate a .md output file for the redirect page
+- **AND** SHALL record the redirect mapping (source title → target title) for link resolution
+
 #### Scenario: Template expansion to inline Markdown
 
 - **WHEN** wikitext contains template calls like `{{Mult|+4}}` or `{{Chips|+5}}`
@@ -362,7 +382,8 @@ Each output `.md` file SHALL contain:
 - YAML frontmatter with at minimum `title`, `source_url`
 - Body content as standard Markdown
 - Inline images using absolute URLs in `![](url)` format
-- Internal links as relative paths in `[text](path.md)` format
+- Internal links as relative paths in `[text](path.md)` format (for manifest-resolved targets)
+- Internal links as wiki URLs in `[text](https://domain/wiki/Title)` format (for unresolved targets and redirect sources)
 - No wikitext artifacts, no HTML, no navigation noise
 
 #### Scenario: Output equivalence with Scrapling crawl
