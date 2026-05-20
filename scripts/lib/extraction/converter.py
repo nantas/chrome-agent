@@ -256,6 +256,15 @@ class HtmlToMarkdownConverter:
             for node in parser.css(f'img[src*="{pattern}"]'):
                 node.decompose()
 
+        # Remove YouTube oEmbed fallback text containers
+        # wiki.gg generates divs with "Load video", "YouTube might collect...",
+        # "Privacy Policy", "Continue Dismiss" after the iframe is extracted
+        for node in parser.css("div"):
+            text_content = node.text(deep=True, separator=" ", strip=True)
+            if text_content and "Load video" in text_content:
+                node.decompose()
+                continue
+
         for node in parser.css("[style]"):
             style = node.attributes.get("style", "") or ""
             if "display:none" in style.replace(" ", ""):
@@ -738,12 +747,20 @@ class HtmlToMarkdownConverter:
         if target is None:
             return None
         target_dir, target_file = target
+        # Encode parentheses in file path to prevent Markdown link parsing issues
+        def _encode_parens(s: str) -> str:
+            """Encode ( and ) but avoid double-encoding %28/%29."""
+            s = s.replace("%28", "\x00LEFT\x00").replace("%29", "\x00RIGHT\x00")
+            s = s.replace("(", "%28").replace(")", "%29")
+            s = s.replace("\x00LEFT\x00", "%28").replace("\x00RIGHT\x00", "%29")
+            return s
+
         if target_dir == source_dir:
-            return f"[{text}]({target_file})"
+            return f"[{text}]({_encode_parens(target_file)})"
         source_path = source_dir.replace("/", os.sep) if source_dir else "."
         target_path = os.path.join(target_dir.replace("/", os.sep), target_file) if target_dir else target_file
         rel = os.path.relpath(target_path, source_path).replace(os.sep, "/")
-        return f"[{text}]({rel})"
+        return f"[{text}]({_encode_parens(rel)})"
 
     # ------------------------------------------------------------------
     # Utility helpers

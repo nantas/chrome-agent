@@ -92,6 +92,7 @@ def title_to_filepath(title: str, ns: int) -> tuple[str, str]:
 # ===========================================================================
 
 def validate_links(output_dir: str) -> list[dict]:
+    from urllib.parse import unquote as _unquote
     broken = []
     link_pattern = re.compile(r'(?<!\!)\[([^\]]+)\]\(([^)]+)\)')
     for root, _dirs, files in os.walk(output_dir):
@@ -106,8 +107,14 @@ def validate_links(output_dir: str) -> list[dict]:
                 path_val = match.group(2)
                 if path_val.startswith("http") or path_val.startswith("#"):
                     continue
-                target = os.path.normpath(os.path.join(os.path.dirname(filepath), path_val))
+                # URL-decode path for filesystem lookup (handles %28/%29 etc.)
+                decoded_path = _unquote(path_val)
+                target = os.path.normpath(os.path.join(os.path.dirname(filepath), decoded_path))
+                # Try both decoded and original path
                 if not os.path.exists(target):
+                    target_orig = os.path.normpath(os.path.join(os.path.dirname(filepath), path_val))
+                    if os.path.exists(target_orig):
+                        continue
                     broken.append({
                         "file": os.path.relpath(filepath, output_dir),
                         "display": display,

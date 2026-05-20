@@ -3,9 +3,9 @@
 ## Capability 对齐（已确认）
 
 - Capability: `pipeline-cli-entry`
-- 来源: `proposal.md` — Modified Capability
+- 来源: `proposal.md` / 已确认 capabilities
 - 变更类型: `modified`
-- 用户确认摘要: handoff P-1 修复——CLI crawl 命令添加 `--output` 参数
+- 用户确认摘要: `--phase` 参数重构，新增 `--discovery` 参数，废弃 `homepage` 和单字母 phase 值
 
 ## 规范真源声明
 
@@ -15,46 +15,85 @@
 
 ## MODIFIED Requirements
 
-### Requirement: crawl-output-directory
-The `chrome-agent crawl` command SHALL accept an optional `--output <dir>` argument. When specified, the crawl output SHALL be written to the specified directory instead of the auto-generated `outputs/<timestamp>-crawl-<slug>/` path.
+### Requirement: cli-subcommand-routing
 
-#### Scenario: custom-output-directory
-- **WHEN** user runs `chrome-agent crawl <url> --output /path/to/dir`
-- **THEN** all crawl artifacts (manifest, extracted pages, reports) SHALL be written to `/path/to/dir`
-- **AND** `buildRunPaths` auto-generation SHALL be bypassed for `runDir`
+CLI 入口 SHALL 支持子命令路由：`pipeline`（默认）、`fetch`、`reprocess`、`fix-links`、`reconvert`。
 
-#### Scenario: no-output-flag-default-behavior
-- **WHEN** user runs `chrome-agent crawl <url>` without `--output`
-- **THEN** output SHALL be written to `outputs/<timestamp>-crawl-<slug>/` as before (no behavior change)
+The `pipeline` subcommand SHALL accept the new `--discovery` parameter.
 
-#### Scenario: output-path-for-mediawiki-api-pipeline
-- **WHEN** `--output <dir>` is specified AND the strategy routes to MediaWiki API pipeline
-- **THEN** the CLI SHALL pass `--output <dir>` to the internal Python pipeline
-- **AND** the Python pipeline SHALL use `<dir>` as its output root
+### Requirement: pipeline-discovery-parameter
 
-### Requirement: output-flag-parsing
-The `parseArgs()` function SHALL parse `--output <dir>` and `--output=<dir>` as a string argument, stored as `parsed.outputDir`.
+The `pipeline` subcommand SHALL accept `--discovery` with choices `auto`, `allpages`, `homepage`. The default value SHALL be `auto`.
 
-#### Scenario: output-flag-separated
-- **WHEN** CLI args contain `--output /some/path`
-- **THEN** `parsed.outputDir` SHALL be `"/some/path"`
+#### Scenario: discovery-parameter-default
 
-#### Scenario: output-flag-equals
-- **WHEN** CLI args contain `--output=/some/path`
-- **THEN** `parsed.outputDir` SHALL be `"/some/path"`
+- **WHEN** `python3 -m scripts.mediawiki-api-extract <url> --strategy <path> --output <dir>` is called without `--discovery`
+- **THEN** `--discovery` SHALL default to `auto`
+- **AND** the orchestrator SHALL resolve the actual strategy based on strategy config
 
-#### Scenario: output-flag-absent
-- **WHEN** CLI args do not contain `--output`
-- **THEN** `parsed.outputDir` SHALL be `null`
+#### Scenario: discovery-parameter-explicit
 
-## ADDED Requirements
+- **WHEN** `python3 -m scripts.mediawiki-api-extract <url> --strategy <path> --output <dir> --discovery homepage` is called
+- **THEN** the orchestrator SHALL use homepage discovery regardless of strategy config
 
-_None_
+### Requirement: phase-parameter-deprecation
 
-## REMOVED Requirements
+The `--phase` parameter SHALL support legacy values with deprecation warnings.
 
-_None_
+Accepted values SHALL be:
+- `all` (default): run discovery + extract + assemble
+- `extract`: run extract only
+- `assemble`: run assemble only
+- `homepage` (deprecated): mapped to `--discovery homepage --phase all` with warning
+- `A` (deprecated): mapped to skip discovery, equivalent to extract
+- `B` (deprecated): mapped to `extract`
+- `C` (deprecated): mapped to `assemble`
 
-## RENAMED Requirements
+#### Scenario: deprecated-homepage-warning
 
-_None_
+- **WHEN** `--phase homepage` is specified
+- **THEN** the CLI SHALL emit: `"DEPRECATED: --phase homepage is deprecated. Use --discovery homepage instead."`
+- **AND** continue with homepage discovery + full pipeline
+
+#### Scenario: deprecated-A-warning
+
+- **WHEN** `--phase A` is specified
+- **THEN** the CLI SHALL emit: `"DEPRECATED: --phase A is deprecated. Use --phase extract with --discovery <strategy>."`
+- **AND** continue with mapped behavior
+
+#### Scenario: deprecated-B-warning
+
+- **WHEN** `--phase B` is specified
+- **THEN** the CLI SHALL emit: `"DEPRECATED: --phase B is deprecated. Use --phase extract instead."`
+- **AND** continue with mapped behavior
+
+#### Scenario: deprecated-C-warning
+
+- **WHEN** `--phase C` is specified
+- **THEN** the CLI SHALL emit: `"DEPRECATED: --phase C is deprecated. Use --phase assemble instead."`
+- **AND** continue with mapped behavior
+
+#### Scenario: phase-all-with-discovery
+
+- **WHEN** `--phase all --discovery homepage` is specified
+- **THEN** the pipeline SHALL run homepage discovery + extract + assemble
+- **AND** no deprecation warning SHALL be emitted
+
+### Requirement: chrome-agent-cli-integration
+
+The `chrome-agent crawl` command (in `scripts/chrome-agent-cli.mjs`) SHALL pass `--discovery` to the MediaWiki pipeline based on the strategy configuration.
+
+When the strategy has `api.homepage`, the CLI SHALL pass `--discovery homepage`. Otherwise, it SHALL pass `--discovery allpages` (or omit for auto default).
+
+#### Scenario: crawl-with-homepage-strategy
+
+- **WHEN** `chrome-agent crawl https://bindingofisaacrebirth.wiki.gg/` is called
+- **AND** the strategy has `api.homepage` defined
+- **THEN** the CLI SHALL spawn the pipeline with `--discovery homepage`
+- **AND** the pipeline SHALL use homepage discovery
+
+#### Scenario: crawl-without-homepage-strategy
+
+- **WHEN** `chrome-agent crawl <url>` is called
+- **AND** the strategy does NOT have `api.homepage` defined
+- **THEN** the CLI SHALL spawn the pipeline with `--discovery allpages` or omit the flag (auto default)

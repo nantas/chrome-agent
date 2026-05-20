@@ -114,7 +114,7 @@ def run_homepage_discovery(client, strategy: dict, origin: str,
         assigned_pages = []
 
     # Step 4: Build manifest (includes category pages + list_page_content)
-    manifest = _build_homepage_manifest(assigned_pages, categories, client)
+    manifest = _build_homepage_manifest(assigned_pages, categories, client, strategy)
 
     log.info("Homepage discovery complete: %d pages from %d categories",
              len(manifest["pages"]), len(categories))
@@ -219,7 +219,8 @@ def _discover_list_page_pages(client, page_title: str, origin: str) -> list[str]
 
 def _build_homepage_manifest(assigned_pages: list[dict],
                               categories: list[dict],
-                              client) -> dict:
+                              client,
+                              strategy: dict = None) -> dict:
     """Build the final manifest, including category pages and list_page_content.
 
     Steps:
@@ -240,6 +241,12 @@ def _build_homepage_manifest(assigned_pages: list[dict],
     for i, p in enumerate(assigned_pages):
         existing_titles[p["title"]] = i
 
+    # Build strategy-backed category→dir map (parse_homepage doesn't include dir)
+    strategy_cat_dir: dict[str, str] = {}
+    if strategy:
+        for sc in strategy.get("api", {}).get("homepage", {}).get("categories", []):
+            strategy_cat_dir[sc["name"]] = sc.get("dir", "")
+
     cat_dir_map: dict[str, dict] = {}
     for c in categories:
         cat_dir_map[c["name"]] = c
@@ -247,7 +254,8 @@ def _build_homepage_manifest(assigned_pages: list[dict],
     # Step 1: Add category pages (with is_list_page=true) if not already present
     for cat in categories:
         page_title = cat.get("page_title", cat["name"])
-        cat_dir = cat.get("dir", "")
+        # Use strategy-backed dir mapping, fall back to category dict (empty for parse_homepage)
+        cat_dir = strategy_cat_dir.get(cat["name"], cat.get("dir", ""))
         cat_name = cat["name"]
 
         if page_title in existing_titles:

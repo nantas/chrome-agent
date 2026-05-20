@@ -23,14 +23,15 @@ def run_assemble(output_dir: str, manifest: dict, results: dict,
 
     log.info("Phase C: Assembling output in %s...", output_dir)
 
-    # Create directories
+    # Create directories (only for directories that have at least one manifest page)
     dirs_created = set()
+    dirs_with_pages: set[str] = set()
     for page in manifest["pages"]:
-        target_dir = page["target_directory"]
+        dirs_with_pages.add(page["target_directory"])
+    for target_dir in sorted(dirs_with_pages):
         dir_path = os.path.join(output_dir, target_dir)
-        if target_dir not in dirs_created:
-            os.makedirs(dir_path, exist_ok=True)
-            dirs_created.add(target_dir)
+        os.makedirs(dir_path, exist_ok=True)
+        dirs_created.add(target_dir)
 
     # Write individual page files
     written = 0
@@ -166,7 +167,17 @@ def run_assemble(output_dir: str, manifest: dict, results: dict,
     list_page_content = manifest.get("list_page_content", {})
     frontmatter_fields = api.get("output", {}).get("frontmatter_fields", [])
 
+    # Build manifest page lookup for existence checks
+    manifest_pages_by_title: dict[str, dict] = {
+        p["title"]: p for p in manifest.get("pages", [])
+    }
+
     for page_title, directory in list_pages.items():
+        # Check if this list page exists in the manifest
+        if page_title not in manifest_pages_by_title:
+            log.warning("Skipping list page '%s': not found in manifest", page_title)
+            continue
+
         # Resolve actual target directory from manifest (accounts for namespace prefixing)
         actual_dir = directory
         for page in manifest["pages"]:
@@ -175,6 +186,13 @@ def run_assemble(output_dir: str, manifest: dict, results: dict,
                 break
 
         dir_path = os.path.join(output_dir, actual_dir)
+
+        # Verify this page is marked as list_page in manifest (prevents excluded pages from overwriting)
+        manifest_page = manifest_pages_by_title.get(page_title, {})
+        if not manifest_page.get("is_list_page", False):
+            log.warning("Skipping list page '%s': not marked is_list_page in manifest (possibly excluded)", page_title)
+            continue
+
         if actual_dir not in dirs_created:
             os.makedirs(dir_path, exist_ok=True)
             dirs_created.add(actual_dir)
@@ -276,12 +294,24 @@ def run_assemble(output_dir: str, manifest: dict, results: dict,
                 written -= 1
 
     # Generate index.md for directories that don't have one yet
+    # (skip empty directories — no entity pages = no content = don't create stub)
     for dir_name in sorted(dirs_created):
         index_path = os.path.join(output_dir, dir_name, "index.md")
         if os.path.exists(index_path):
             continue
         dir_pages = [p for p in manifest["pages"]
                      if p["target_directory"] == dir_name and p["title"] not in list_pages]
+        if not dir_pages:
+            # No entity pages in this directory — skip stub creation
+            # Also remove the empty directory
+            empty_dir = os.path.join(output_dir, dir_name)
+            try:
+                os.rmdir(empty_dir)
+                dirs_created.discard(dir_name)
+                log.debug("Removed empty directory: %s", dir_name)
+            except OSError:
+                pass
+            continue
         lines = ["---"]
         lines.append(f'title: "{dir_name}"')
         lines.append("source_url: null")

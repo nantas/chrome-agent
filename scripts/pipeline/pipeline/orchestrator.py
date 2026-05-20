@@ -247,7 +247,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
         manifest["pages"] = [
             p for p in all_pages
             if not (set(p.get("source_categories", [])) & exclude_set
-                    or p.get("assigned_category", "") in exclude_set)
+                    or p.get("assigned_category", "") in exclude_set
+                    or p.get("title", "") in exclude_set)
         ]
         filtered = before - len(manifest["pages"])
         if filtered > 0:

@@ -396,6 +396,12 @@ Sample validation completed with 20 pages across all content categories.
 | KI-5 | Infobox field value concatenation | resolved | P1 | pipeline | `![]()[text](url)` without space between image and link | Pipeline: post-processing regex ensures space between image and following link |
 | KI-6 | Collectible ID 'None' prefix | resolved | P0 | pipeline | Shows 'None1' instead of '1' | Pipeline: decompose `.infobox-nav-prev` + `.infobox-nav-next` before extraction |
 | KI-7 | Link index construction & injection verification | open | P2 | pipeline | Homepage-driven crawl produces pages with absolute URLs after initial conversion | Pipeline auto-calls `fix_links_in_dir()` after extraction to convert to relative links |
+| KI-8 | List page directory assignment bug | resolved | P0 | pipeline | All list pages assigned to `items/` directory | `_build_homepage_manifest()` uses strategy-backed `dir` mapping from `api.homepage.categories` |
+| KI-9 | Exclude filter misses title-based matches | resolved | P1 | pipeline | Version History leaks through via `source_categories` | Orchestrator checks `p["title"] in exclude_set` in addition to category checks |
+| KI-10 | Assembly creates orphan index.md for non-manifest list_pages | resolved | P2 | pipeline | Mechanics/Cards index.md created without content | Assembly checks `manifest_pages_by_title` + `is_list_page` guard + removes empty dirs |
+| KI-11 | Parenthesis filenames break Markdown links | resolved | P3 | pipeline | 116 broken links from `(` `)` in filenames | `_to_markdown_link()` encodes `(` → `%28`, `)` → `%29`; `link_fixer` repairs existing links |
+| KI-12 | YouTube "Load video" fallback text persists | resolved | P4 | pipeline | "Load video" / "YouTube might collect" text in output | `clean_html()` removes `<div>` elements containing "Load video" |
+| KI-13 | Frontmatter image selects decorative icons | resolved | P5 | pipeline | Font_TeamMeat icons selected as page image | `_process_html_page()` applies `skip_patterns` before selecting frontmatter image |
 ## Evidence
 
 - Siteinfo: `api.php?action=query&meta=siteinfo&siprop=general|statistics|namespaces` — validated 2026-05-16

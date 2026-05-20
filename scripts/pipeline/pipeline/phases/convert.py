@@ -81,13 +81,22 @@ def convert_single_page(raw: dict, page_info: dict, manifest_pages: list[dict],
             "rendered_html": raw.get("rendered_html"),
         }
 
-        # Inject images into frontmatter if available
+        # Inject images into frontmatter if available (applying skip_patterns)
         images = raw.get("images")
         if images and isinstance(images, list) and len(images) > 0:
             from urllib.parse import quote as url_quote
-            first_img = images[0]
-            img_name = first_img.replace(" ", "_")
-            frontmatter["image"] = img_name
+            import re as _re
+            skip_patterns = (extraction_config or {}).get("image_filtering", {}).get("skip_patterns", [])
+            filtered_images = images
+            if skip_patterns:
+                filtered_images = [
+                    img for img in images
+                    if not any(_re.search(pat, img) for pat in skip_patterns)
+                ]
+            if filtered_images:
+                first_img = filtered_images[0]
+                img_name = first_img.replace(" ", "_")
+                frontmatter["image"] = img_name
             img_url = f"https://{domain}/Special:Redirect/file/{url_quote(img_name, safe='')}"
             if "---" in md_content:
                 end_fm = md_content.find("\n---", 3)
@@ -136,12 +145,22 @@ def _process_html_page(raw: dict, title: str, source_dir: str, source_url: str,
         fm = tp.extract_frontmatter(wikitext, frontmatter_fields)
         frontmatter.update(fm)
 
-    # Inject first image into frontmatter if available
+    # Inject first image into frontmatter if available (applying skip_patterns)
     images = raw.get("images")
     if images and isinstance(images, list) and len(images) > 0:
         from urllib.parse import quote as url_quote
-        img_name = images[0].replace(" ", "_")
-        frontmatter["image"] = img_name
+        import re as _re
+        skip_patterns = (extraction_config or {}).get("image_filtering", {}).get("skip_patterns", [])
+        # Filter out images matching skip patterns
+        filtered_images = images
+        if skip_patterns:
+            filtered_images = [
+                img for img in images
+                if not any(_re.search(pat, img) for pat in skip_patterns)
+            ]
+        if filtered_images:
+            img_name = filtered_images[0].replace(" ", "_")
+            frontmatter["image"] = img_name
 
     # Assemble final content with YAML frontmatter
     fm_lines = ["---"]

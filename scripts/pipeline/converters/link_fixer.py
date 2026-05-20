@@ -70,7 +70,28 @@ def _fix_links_in_content(content: str, domain: str, source_dir: str,
     # 1. Fix .md.md double suffix
     content = re.sub(r'\.md\.md\b', '.md', content)
 
-    # 2. Fix wiki path links: [text](https://domain/wiki/Title) or [text](/wiki/Title)
+    # 2. Encode unencoded parentheses in markdown link URL paths (.md files)
+    #    Pattern: [text](something_with_(parens).md) — the inner ) breaks standard regex
+    #    Strategy: use regex to match non-image links [text](url.md) and encode parens.
+    #    Negative lookbehind (?<!!) skips ![alt](url) image patterns.
+    def _fix_paren_url(match):
+        text = match.group(1)
+        url = match.group(2)
+        if '(' in url or ')' in url:
+            if '%28' not in url:
+                url = url.replace('(', '%28').replace(')', '%29')
+        return f'[{text}]({url})'
+
+    # Match [text](url.md) or [text](url.md#fragment) — skip if preceded by !
+    content = re.sub(
+        r'(?<!\!)\[([^\]]+)\]\(([^)]+\.md(?:#[^)]*)?)\)',
+        _fix_paren_url,
+        content
+    )
+
+    # Apply paren encoding via regex (replaces old line-by-line _fix_paren_links)
+
+    # 3. Fix wiki path links: [text](https://domain/wiki/Title) or [text](/wiki/Title)
     def fix_wiki_link(match):
         full_match = match.group(0)
         text = match.group(1)
@@ -116,9 +137,10 @@ def _fix_links_in_content(content: str, domain: str, source_dir: str,
         return f"[{text}]({rel_path})"
 
     # Match markdown links: [text](url)
-    content = re.sub(r'\[([^\]]+)\]\(([^)]+)\)', fix_wiki_link, content)
+    # Use negative lookbehind for ! to skip ![alt](url) image patterns
+    content = re.sub(r'(?<!\!)\[([^\]]+)\]\(([^)]+)\)', fix_wiki_link, content)
 
-    # 3. Fix unresolved .md links (Title.md where file doesn't exist but manifest knows it)
+    # 4. Fix unresolved .md links (Title.md where file doesn't exist but manifest knows it)
     def fix_unresolved_md_link(match):
         text = match.group(1)
         path = match.group(2)
