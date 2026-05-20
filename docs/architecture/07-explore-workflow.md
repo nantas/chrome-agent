@@ -360,3 +360,9 @@ External dependencies (from `scripts/explore/requirements.txt`):
 - `beautifulsoup4>=4.12`
 - `pyyaml>=6.0`
 - `selectolax>=0.3`
+
+## 关联文档
+
+- [01 — 系统总览](01-overview.md) — 多后端架构全景
+- [03 — 策略 Schema 参考](03-strategy-schema.md) — 策略 scaffold 的输出格式
+- [05 — 转换器架构](05-converter-architecture.md) — sample_converter 的提取引擎

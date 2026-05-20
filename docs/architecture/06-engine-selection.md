@@ -217,3 +217,9 @@ stat -f '%z' "$BIN/obscura" "$BIN/obscura-worker"
 ```
 
 Output includes per-engine `status` (`ok` / `version_mismatch` / `hash_mismatch` / `not_found`) and an aggregate `all_ok` flag.
+
+## 关联文档
+
+- [01 — 系统总览](01-overview.md) — 多后端架构中的引擎定位
+- [04 — CLI 参考](04-cli-reference.md) — 命令路由如何触发引擎选择
+- [08 — 技术栈](08-tech-stack.md) — 引擎版本治理与依赖管理

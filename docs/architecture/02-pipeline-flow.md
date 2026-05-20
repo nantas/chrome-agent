@@ -23,7 +23,7 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
           ┌────────────────┼───────────────────┐
           │                │                   │
     ┌─────▼─────┐   ┌─────▼──────┐     ┌──────▼──────┐
-    │ Phase 0   │   │ Phase A    │     │ --from-     │
+    │ Homepage   │   │ Allpages   │     │ --from-     │
     │ Homepage  │   │ Allpages   │     │ manifest    │
     │ Discovery │   │ Discovery  │     │ (跳过发现)  │
     └─────┬─────┘   └─────┬──────┘     └──────┬──────┘
@@ -43,7 +43,7 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
             ┌─────────────┼──────────────┐
             │                            │
      ┌──────▼──────┐              ┌──────▼──────┐
-     │ Phase Fetch │              │ --max-pages │
+     │ Fetch       │              │ --max-pages │
      │ API 获取    │              │ 分类过滤     │
      │ → .cache/   │              │              │
      └──────┬──────┘              └──────┬──────┘
@@ -58,7 +58,7 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
                    └──────┬──────┘
                           │
                    ┌──────▼──────┐
-                   │ Phase       │
+                   │ Convert     │
                    │ Convert     │
                    │ 缓存→MD     │
                    └──────┬──────┘
@@ -70,7 +70,7 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
                    └──────┬──────┘
                           │
                    ┌──────▼──────┐
-                   │ Phase C     │
+                   │ Assembly   │
                    │ Assembly    │
                    │ + link-fix  │
                    │ + L6 验证   │
@@ -86,55 +86,55 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
 
 ## 五阶段详解
 
-### Phase 0: Homepage Discovery（首页发现）
+### Homepage Discovery — 首页发现
 
 | 项目 | 说明 |
 |------|------|
-| **入口** | `scripts/pipeline/pipeline/phases/discovery_homepage.py:26` — `run_phase_0()` |
+| **入口** | `scripts/pipeline/pipeline/phases/discovery_homepage.py:26` — `run_homepage_discovery()` |
 | **触发条件** | 策略含 `api.homepage` 配置，且 `--discovery auto`（默认）或 `--discovery homepage` |
 | **输入** | `ApiClient`、strategy dict、origin URL |
 | **流程** | 1. `parse_homepage()` 解析首页 HTML 提取分类链接 → 2. 每个分类发现成员页 → 3. `assign_pages()` 分配输出目录 |
-| **输出** | `page_manifest.json`（与 Phase A 格式兼容） |
+| **输出** | `page_manifest.json`（与 Allpages Discovery 格式兼容） |
 | **副作用** | 无 |
 
-### Phase A: Allpages Discovery（全页发现）
+### Allpages Discovery — 全页发现
 
 | 项目 | 说明 |
 |------|------|
-| **入口** | `scripts/pipeline/pipeline/phases/discovery_allpages.py:14` — `run_phase_a()` |
+| **入口** | `scripts/pipeline/pipeline/phases/discovery_allpages.py:14` — `run_allpages_discovery()` |
 | **触发条件** | 策略无 `api.homepage` 或 `--discovery allpages` |
 | **输入** | `ApiClient`、strategy dict、`DiscoveryStrategy` 实例 |
 | **流程** | 1. `discovery_strategy.discover_pages()` 通过 API 枚举所有页面 → 2. Fandom 翻译页过滤 → 3. 分类排除 → 4. 页面分配 |
 | **输出** | `page_manifest.json` |
 | **副作用** | 无 |
 
-### Phase Fetch（内容获取）
+### Fetch — 内容获取
 
 | 项目 | 说明 |
 |------|------|
-| **入口** | `scripts/pipeline/pipeline/phases/fetch.py:38` — `run_phase_fetch()` |
+| **入口** | `scripts/pipeline/pipeline/phases/fetch.py:38` — `run_fetch()` |
 | **触发条件** | `--phase fetch` 或 `--phase all`（默认） |
 | **输入** | manifest、strategy、`ContentAcquisitionStrategy`、`RateLimitConfig` |
 | **流程** | 1. 检查 `.cache/` 已缓存页面（除非 `--re-fetch`） → 2. 并发获取剩余页面（`ThreadPoolExecutor`，concurrency 由 rate_limit 控制） → 3. 写入 `.cache/<platform>/<domain>/<page>.json` |
 | **输出** | Stats dict（total, fetched, skipped, failed） |
 | **副作用** | 写入 `.cache/` 持久化缓存 |
 
-### Phase Convert（内容转换）
+### Convert — 内容转换
 
 | 项目 | 说明 |
 |------|------|
-| **入口** | `scripts/pipeline/pipeline/phases/convert.py:22` — `run_phase_convert()` |
+| **入口** | `scripts/pipeline/pipeline/phases/convert.py:22` — `run_convert()` |
 | **触发条件** | `--phase convert` 或 `--phase all` |
 | **输入** | output_dir、manifest、strategy、domain、repo_root |
 | **流程** | 1. 从 `.cache/` 读取原始内容 → 2. 根据 `content_acquisition` 策略选择转换路径（wikitext/html/hybrid） → 3. 模板处理 + 链接解析 → 4. 输出 Markdown |
 | **输出** | `(results dict, stats dict)`；写入 `extraction_results.json` |
 | **副作用** | 无网络请求，纯本地执行 |
 
-### Phase C: Assembly（输出装配）
+### Assembly — 输出装配
 
 | 项目 | 说明 |
 |------|------|
-| **入口** | `scripts/pipeline/pipeline/phases/assemble.py:14` — `run_phase_c()` |
+| **入口** | `scripts/pipeline/pipeline/phases/assemble.py:14` — `run_assemble()` |
 | **触发条件** | `--phase assemble` 或 `--phase all` |
 | **输入** | output_dir、manifest、results dict、`ListPageAssembler`、`LinkResolver` |
 | **流程** | 1. 创建目录结构 → 2. 写入独立页面文件 → 3. 生成分类索引页 → 4. 列表页装配 → 5. 自动 link-fix |
@@ -211,5 +211,11 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
 | 14 | `EXIT_STRATEGY_ERROR` | 策略验证失败 |
 | 20 | `EXIT_INVALID_ARGS` | 无效参数 |
 | 30 | `EXIT_VALIDATION_FAILURE` | L6 验证失败 |
+
+## 关联文档
+
+- [01 — 系统总览](01-overview.md) — 多后端架构全景
+- [03 — 策略 Schema 参考](03-strategy-schema.md) — 策略 YAML frontmatter 字段权威参考
+- [05 — 转换器架构](05-converter-architecture.md) — HTML→Markdown 两阶段转换模型
 
 ---

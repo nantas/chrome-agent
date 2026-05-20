@@ -161,4 +161,11 @@
 4. **MediaWiki 站点** → 自动路由到 API 管线（`scripts/pipeline/`）
 5. **输出** → `outputs/` 暂存 + `reports/` 持久报告
 
+## 关联文档
+
+- [02 — 管线数据流](02-pipeline-flow.md) — MediaWiki API 五阶段管线详解
+- [06 — 引擎选择](06-engine-selection.md) — 引擎选择决策树与 fallback 机制
+- [07 — Explore 工作流](07-explore-workflow.md) — 站点分析 deep discovery 管线
+- [08 — 技术栈](08-tech-stack.md) — 运行时依赖与组件关系图
+
 ---

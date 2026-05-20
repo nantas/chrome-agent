@@ -14,12 +14,12 @@ Raw HTML
   ├─→ [Phase 1: Preprocessing] ──→ Cleaned HTML
   │       │
   │       ├─ Explore path: 6-step full cleanup (lib/extraction/preprocessor.py)
-  │       └─ Pipeline path: lightweight cleanup (html_to_markdown.py:clean_html)
+  │       └─ Pipeline path: lightweight cleanup (converter.py:clean_html)
   │
   └─→ [Phase 2: Conversion] ──→ Markdown output
           │
           ├─ Infobox extraction (lib/extraction/infobox.py)
-          └─ HTML→Markdown conversion (pipeline/converters/html_to_markdown.py)
+          └─ HTML→Markdown conversion (lib/extraction/converter.py)
 ```
 
 ## 2. Module Inventory
@@ -30,28 +30,26 @@ Raw HTML
 |--------|-------------|---------|
 | `infobox.py` | `extract_infobox()` | Unified infobox extraction (BS4 + selectolax) |
 | `preprocessor.py` | `preprocess_html()` | Config-driven HTML cleanup for explore path |
+| `converter.py` | `HtmlToMarkdownConverter` | MediaWiki HTML → Markdown (selectolax-based) |
+| `converter.py` | `convert_html_to_markdown()` | Standalone convenience wrapper |
 | `__init__.py` | — | Package marker |
 
 ### 2.2 Pipeline Converters — `scripts/pipeline/converters/`
 
 | Module | Key Class/Function | Purpose |
 |--------|-------------------|---------|
-| `html_to_markdown.py` | `HtmlToMarkdownConverter` | MediaWiki HTML → Markdown (selectolax-based) |
-| `html_to_markdown.py` | `convert_html_to_markdown()` | Standalone convenience wrapper |
 | `fandom_html_to_markdown.py` | — | Fandom-specific HTML converter |
 | `card_stats.py` | — | Card/game stats table converter |
 | `link_fixer.py` | — | Post-conversion link normalization |
 | `wikitext_to_md.py` | — | Wikitext source → Markdown converter |
 
-### 2.3 Design Decision: `html_to_markdown.py` Location
+### 2.3 Design Decision: `converter.py` Location
 
-`html_to_markdown.py` resides in `scripts/pipeline/converters/` rather than `scripts/lib/extraction/` for three reasons:
+`converter.py` was moved from `scripts/pipeline/converters/` to `scripts/lib/extraction/` during the `finish-refactor-cleanup` change to enable shared access from both the pipeline and explore paths. The rationale for the current location:
 
-1. **Pipeline coupling**: It directly references pipeline-specific constructs (manifest link index, wiki domain resolution, MediaWiki URL patterns like `/wiki/` and `/images/`).
-2. **Selectolax dependency**: Unlike `lib/extraction/` (which uses BS4 for explore), the converter relies on `selectolax.parser.HTMLParser` as its primary parser — a dependency scoped to the pipeline path.
-3. **Conversion vs extraction boundary**: `lib/extraction/` handles *extraction* (pulling structured data out of HTML), while `html_to_markdown.py` handles *conversion* (transforming HTML to a different format). The separation of concerns is clear: extract first, then convert.
-
-The converter imports from `lib/extraction/` for infobox extraction (via `_render_infobox_table` delegating to `extract_infobox`), establishing a one-way dependency from pipeline converters → shared extraction library.
+1. **Shared access**: Both `sample_converter.py` (explore path) and pipeline phases import `convert_html_to_markdown()`. Co-location in `lib/extraction/` eliminates cross-package imports.
+2. **Selectolax dependency**: The converter relies on `selectolax.parser.HTMLParser` as its primary parser — now shared with other `lib/extraction/` modules.
+3. **Extraction library coherence**: `lib/extraction/` houses the full content transformation pipeline: infobox extraction, HTML preprocessing, and HTML→Markdown conversion. The one-way dependency from pipeline converters → shared extraction library is maintained via `extract_infobox()` imports.
 
 ## 3. Two-Phase Model
 
@@ -77,7 +75,7 @@ Executed by `scripts/lib/extraction/preprocessor.py`:
 
 #### Pipeline Lightweight Preprocessing (`HtmlToMarkdownConverter.clean_html`)
 
-Executed by `scripts/pipeline/converters/html_to_markdown.py`:
+Executed by `scripts/lib/extraction/converter.py`:
 
 - Removes elements matching `_REMOVAL_SELECTORS` (default: `.mw-editsection`, `.toc`, `#toc`, `.hatnote`; or strategy `cleanup_selectors`).
 - Strips `ModuleEditIcon` images and their parents.
@@ -197,12 +195,12 @@ Strategy frontmatter (YAML)
   ├─ extraction.cleanup_selectors  ──→ preprocessor.py: Step 2 element removal
   ├─ extraction.lazyload.*         ──→ preprocessor.py: Step 3 lazyload fix
   ├─ extraction.cleanup[]          ──→ preprocessor.py: Step 4 named operations
-  ├─ extraction.image_filtering.*  ──→ preprocessor.py: Step 5 + html_to_markdown.py
+  ├─ extraction.image_filtering.*  ──→ preprocessor.py: Step 5 + converter.py
   ├─ extraction.selectors.content  ──→ preprocessor.py: Step 6 content selection
   ├─ extraction.text_normalization ──→ sample_converter.py: post-conversion regex
   ├─ extraction.url_conversion     ──→ sample_converter.py: relative→absolute URL fix
   ├─ extraction.youtube_cleanup    ──→ sample_converter.py: YouTube embed removal
-  ├─ extraction.infobox_field_handlers ──→ infobox.py + html_to_markdown.py: handler dispatch
+  ├─ extraction.infobox_field_handlers ──→ infobox.py + converter.py: handler dispatch
   └─ extraction.selectors (always consumed by pipeline infrastructure)
 ```
 
@@ -212,4 +210,10 @@ Strategy frontmatter (YAML)
 2. **Parser-agnostic infobox**: `extract_infobox()` works with both BS4 and selectolax, enabling code reuse across explore and pipeline paths.
 3. **Separation of extraction and conversion**: `lib/extraction/` extracts structured data; `pipeline/converters/` transforms format. One-way dependency: converters → extraction library.
 4. **Context-aware preprocessing**: Explore gets full 6-step cleanup; pipeline gets lightweight selector-based cleanup. No unnecessary processing.
-5. **Balanced element removal**: `html_to_markdown.py` uses depth-counting balanced tag removal (not regex) for nested HTML elements, avoiding malformed markup issues.
+5. **Balanced element removal**: `converter.py` uses depth-counting balanced tag removal (not regex) for nested HTML elements, avoiding malformed markup issues.
+
+## 关联文档
+
+- [02 — 管线数据流](02-pipeline-flow.md) — MediaWiki API 五阶段管线，converter 的运行时上下文
+- [03 — 策略 Schema 参考](03-strategy-schema.md) — extraction.infox 等字段的权威定义
+- [08 — 技术栈](08-tech-stack.md) — Python 依赖与兼容性约束

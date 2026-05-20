@@ -10,6 +10,7 @@
 **chrome-agent** 是跨仓库网页抓取服务。核心原则：Scrapling-first、workflow-driven、read-only by default、证据驱动。
 
 范围：网页内容获取、前端调试、经验积累。范围外（v1）：凭据管理、自动化框架。
+→ 全景详见 [系统总览](docs/architecture/01-overview.md)
 
 ## 2. Capability Framework
 

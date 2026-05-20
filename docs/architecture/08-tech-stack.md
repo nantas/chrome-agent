@@ -4,6 +4,62 @@
 >
 > **Applicable to**: Contributors modifying `scripts/`, `configs/`, or `sites/`
 
+## System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    chrome-agent Component Dependencies              │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌──────────────────────┐                                          │
+│  │  Node.js CLI Layer   │  scripts/chrome-agent-cli.mjs            │
+│  │  (command dispatch)  │  scripts/chrome-agent-runtime.mjs        │
+│  └──────────┬───────────┘                                          │
+│             │ spawn / exec                                          │
+│             │                                                       │
+│  ┌──────────▼───────────────────────────────────┐                   │
+│  │         Python Execution Layer                │                   │
+│  │                                               │                   │
+│  │  ┌──────────────────┐  ┌────────────────────┐│                   │
+│  │  │  Pipeline        │  │  Explore           ││                   │
+│  │  │  scripts/pipeline│  │  scripts/explore   ││                   │
+│  │  │  (MediaWiki API) │  │  (deep discovery)  ││                   │
+│  │  └────────┬─────────┘  └──────────┬─────────┘│                   │
+│  │           │                       │          │                   │
+│  │           └───────────┬───────────┘          │                   │
+│  │                       │                      │                   │
+│  │           ┌───────────▼───────────┐          │                   │
+│  │           │  Shared lib/          │          │                   │
+│  │           │  scripts/lib/         │          │                   │
+│  │           │  - extraction/        │          │                   │
+│  │           │  - config_resolver.py │          │                   │
+│  │           │  - strategy_loader.py │          │                   │
+│  │           └───────────┬───────────┘          │                   │
+│  └───────────────────────┼──────────────────────┘                   │
+│                          │                                          │
+│  ┌───────────────────────▼──────────────────────┐                   │
+│  │           Engine Layer                        │                   │
+│  │                                               │                   │
+│  │  ┌──────────────┐ ┌──────────┐ ┌───────────┐│                   │
+│  │  │  Scrapling   │ │  Obscura │ │ CloakBrowser│                   │
+│  │  │  (Python venv│ │  (binary)│ │ (pip pkg)  │                   │
+│  │  │   stealthy)  │ │          │ │            │                   │
+│  │  └──────────────┘ └──────────┘ └───────────┘│                   │
+│  └──────────────────────────────────────────────┘                   │
+│             │                                                       │
+│             ▼                                                       │
+│  ┌──────────────────────┐                                          │
+│  │  Output Layer        │  outputs/<domain>/<category>/*.md        │
+│  │  + .cache/           │  configs/engine-versions.json (manifest) │
+│  │  + reports/          │  sites/strategies/registry.json          │
+│  └──────────────────────┘                                          │
+└─────────────────────────────────────────────────────────────────────┘
+
+箭头方向 = 依赖方向（上层调用下层）
+无循环依赖
+```
+<!-- Source: scripts/ directory structure, package.json, configs/engine-versions.json -->
+
 ## 1. Runtime Dependencies
 
 ### Node.js Dependencies (`package.json`)
@@ -35,6 +91,40 @@ Managed via `configs/engine-versions.json`:
 | CloakBrowser | pip module | System Python (`~/.cloakbrowser/chromium-{ver}/`) |
 
 See `docs/architecture/06-engine-selection.md` for version details and upgrade procedures.
+
+### 安装脚本链流程图
+
+```
+install-chrome-agent-cli.sh
+    │
+    ├── 注册 chrome-agent CLI 命令
+    │   管理路径: /usr/local/bin/chrome-agent (symlink)
+    │
+    └── 调度各 engine preflight 脚本
+        │
+        ├── 1. scrapling-cli.sh preflight
+        │       │   创建 Scrapling Python venv
+        │       │   安装 scrapling + 依赖
+        │       │   管理路径: $HOME/.cache/chrome-agent-scrapling/
+        │       └── ✓ Scrapling 就绪
+        │
+        ├── 2. obscura-cli-preflight.sh
+        │       │   下载 Obscura 二进制 (GitHub Release)
+        │       │   校验 MD5 + 文件大小
+        │       │   管理路径: $HOME/.cache/chrome-agent-obscura/bin/
+        │       └── ✓ Obscura 就绪
+        │
+        ├── 3. cloakbrowser-preflight.sh
+        │       │   pip install CloakBrowser
+        │       │   管理路径: ~/.cloakbrowser/chromium-{ver}/
+        │       └── ✓ CloakBrowser 就绪
+        │
+        └── 4. engine-version-check.sh --json
+                │   验证所有引擎版本与 configs/engine-versions.json 一致
+                │   校验: expected_version + expected_md5 + expected_size
+                └── ✓ 环境诊断通过
+```
+<!-- Source: scripts/*.sh, scripts/engine-version-check.sh -->
 
 ## 2. Language Conventions
 
@@ -216,7 +306,7 @@ python3 scripts/explore/main.py <repo_root> <url> --samples <json_array>
 | `scripts/chrome-agent-runtime.mjs` | Node.js ESM | Global launcher (repo resolution + dispatch) |
 | `scripts/lib/extraction/infobox.py` | Python | Unified infobox extraction |
 | `scripts/lib/extraction/preprocessor.py` | Python | Config-driven HTML preprocessing |
-| `scripts/pipeline/converters/html_to_markdown.py` | Python | MediaWiki HTML → Markdown converter |
+| `scripts/lib/extraction/converter.py` | Python | MediaWiki HTML → Markdown converter |
 | `scripts/explore/main.py` | Python | Deep discovery pipeline entry |
 | `scripts/explore/architecture_gate.py` | Python | Strategy↔pipeline alignment validation |
 | `scripts/explore/ki_lifecycle.py` | Python | Known Issue classification and tracking |
@@ -224,3 +314,9 @@ python3 scripts/explore/main.py <repo_root> <url> --samples <json_array>
 | `configs/engine-registry.json` | JSON | Engine definitions and capabilities |
 | `configs/engine-versions.json` | JSON | Version manifest (single source of truth) |
 | `sites/strategies/registry.json` | JSON | Strategy file index |
+
+## 关联文档
+
+- [01 — 系统总览](01-overview.md) — 多后端架构全景
+- [05 — 转换器架构](05-converter-architecture.md) — lib/extraction/ 统一提取引擎
+- [06 — 引擎选择](06-engine-selection.md) — Scrapling/Obscura/CloakBrowser 引擎详情

@@ -10,6 +10,48 @@ CLI 入口为 `scripts/chrome-agent-cli.mjs`，通过 `parseArgs()` 解析参数
 chrome-agent [--format json|text] [--repo <path|repo://id>] <command> [args]
 ```
 
+### 命令路由决策树
+
+```
+chrome-agent <command> <url>
+    │
+    ├── explore <url>
+    │       └── runExplore() (:1552)
+    │           └── python3 scripts/explore/main.py
+    │               └── Deep discovery or Platform analysis
+    │
+    ├── fetch <url>
+    │       └── runFetch() (:1766)
+    │           ├── findStrategy() (:512) → matched?
+    │           │   ├── Yes → selectFetcher() (:545) → Scrapling mode
+    │           │   └── No  → scrapling-get (default)
+    │           └── Single page content retrieval
+    │
+    ├── crawl <url>
+    │       └── runCrawl() (:1965)
+    │           ├── findStrategy() (:512) → api.platform=mediawiki?
+    │           │   ├── Yes → python3 -m scripts.pipeline pipeline
+    │           │   │         runCrawlMediawikiApi() (:2054)
+    │           │   └── No  → Scrapling discovery + crawl
+    │           │             runCrawlScrapling() (:2298)
+    │           └── Bounded traversal with strategy
+    │
+    ├── scrape <url>
+    │       └── runScrape() (:2736)
+    │           └── Scrapling recursive crawl (strategy-free)
+    │               selectFetcher() (:545) per page
+    │
+    ├── batch <urls...>
+    │       └── runBatch() (:3221)
+    │           └── Obscura serve pool parallel fetch
+    │
+    └── [strategy commands]
+            ├── bootstrap-strategy → runBootstrapStrategy() (:2967)
+            ├── freeze             → runFreeze() (:3100)
+            └── iterate            → runIterate() (:3164)
+```
+<!-- Source: scripts/chrome-agent-cli.mjs: runExplore/runFetch/runCrawl/runScrape -->
+
 ## 命令列表
 
 | 命令 | 说明 | 目标参数 |
@@ -225,6 +267,61 @@ python3 -m scripts.pipeline <subcommand> [args]
 | `fix-links` | 修复输出目录中的链接 |
 | `reconvert` | 重新转换单个文件 |
 
+### 管线阶段流程图
+
+```
+python3 -m scripts.pipeline pipeline --strategy <path> --output <dir> <url>
+    │
+    │  --discovery auto|allpages|homepage   --phase all|discover|fetch|convert|assemble
+    │
+    │
+    ├─── 参数解析 ─────────────────────────────────────────────────────────────────
+    │    │
+    │    ├── --from-manifest ?
+    │    │       ├── Yes → 跳过发现，直接进入 fetch/convert/assemble
+    │    │       └── No  → 执行发现阶段
+    │    │
+    │    └── --discovery + api.homepage 配置
+    │            │
+    │            ├── "auto" + api.homepage set → homepage discovery
+    │            ├── "auto" + no api.homepage   → allpages discovery
+    │            ├── "homepage"                  → homepage discovery (forced)
+    │            └── "allpages"                   → allpages discovery (forced)
+    │
+    ├─── 五阶段执行 ──────────────────────────────────────────────────────────────
+    │    │
+    │    ┌───────────────────┐
+    │    │ 1. Discovery       │  --phase discover
+    │    │    homepage or     │  (default: auto)
+    │    │    allpages        │
+    │    │    → manifest.json │
+    │    └────────┬──────────┘
+    │             │
+    │    ┌────────▼──────────┐
+    │    │ 2. Fetch           │  --phase fetch
+    │    │    API 内容获取     │  (concurrency: rate_limit)
+    │    │    → .cache/*.json │
+    │    └────────┬──────────┘
+    │             │
+    │    ┌────────▼──────────┐
+    │    │ 3. Convert         │  --phase convert
+    │    │    HTML/Wikitext→MD│  (local only, no network)
+    │    │    → results.json  │
+    │    └────────┬──────────┘
+    │             │
+    │    ┌────────▼──────────┐
+    │    │ 4. Assembly        │  --phase assemble
+    │    │    目录+索引+link-fix│ + L6 验证 (--validate)
+    │    │    → <domain>/*.md │
+    │    └────────┬──────────┘
+    │             │
+    │             ▼
+    │        输出目录完成
+    │
+    └────────────────────────────────────────────────────────────────────────
+```
+<!-- Source: scripts/pipeline/pipeline/orchestrator.py:76 run_pipeline() -->
+
 ### pipeline 子命令参数
 
 通过 `_add_pipeline_args()` 定义（`scripts/pipeline/cli.py:165`）：
@@ -293,5 +390,12 @@ python3 -m scripts.pipeline <subcommand> [args]
 ```
 
 `renderResult()` 实现于 `chrome-agent-cli.mjs:315`。
+
+## 关联文档
+
+- [01 — 系统总览](01-overview.md) — 多后端架构全景
+- [02 — 管线数据流](02-pipeline-flow.md) — MediaWiki API 五阶段管线详解
+- [03 — 策略 Schema 参考](03-strategy-schema.md) — 策略配置字段权威参考
+- [06 — 引擎选择](06-engine-selection.md) — 引擎选择决策树
 
 ---

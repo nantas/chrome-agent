@@ -6,6 +6,43 @@
 
 **文件位置**：`sites/strategies/<domain>/strategy.md`
 
+### 系统上下文图
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                     chrome-agent Strategy Context                   │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  ┌──────────────┐     ┌──────────────────┐     ┌────────────────┐  │
+│  │  Explore     │     │  Strategy Files  │     │  Pipeline      │  │
+│  │  Discovery   │────>│  (YAML+MD)       │────>│  Orchestrator  │  │
+│  │  (生成策略)   │     │  sites/          │     │  orchestrator  │  │
+│  │  explore/     │     │  strategies/     │     │  .py           │  │
+│  └──────────────┘     └────────┬─────────┘     └───────┬────────┘  │
+│                                │                        │          │
+│                                │                        v          │
+│                                │              ┌──────────────────┐ │
+│                                │              │  _STRATEGY_      │ │
+│                                └─────────────>│  REGISTRY        │ │
+│                                               │  registry.py:61  │ │
+│                                               └────────┬─────────┘ │
+│                                                        │           │
+│                                 ┌──────────────────────┤           │
+│                                 v                      v           │
+│                        ┌────────────────┐    ┌──────────────────┐  │
+│                        │  Pipeline      │    │  Extraction      │  │
+│                        │  build_        │    │  Engine          │  │
+│                        │  pipeline()    │    │  (explore path)  │  │
+│                        └────────────────┘    └──────────────────┘  │
+│                                                                     │
+│  ┌──────────────────┐                                               │
+│  │  registry.json   │<── bootstrap-strategy / freeze 自动同步      │
+│  │  (策略索引)       │    真源: frontmatter > registry.json          │
+│  └──────────────────┘                                               │
+└─────────────────────────────────────────────────────────────────────┘
+```
+<!-- Source: scripts/lib/strategy_loader.py, scripts/pipeline/pipeline/registry.py -->
+
 ## 策略文件结构
 
 ```yaml
@@ -89,7 +126,7 @@ api:
       Items: "Items"
     category_filters: []                  # 分类过滤规则
 
-  # 首页配置（存在时启用 Phase 0 首页发现）
+  # 首页配置（存在时启用 homepage discovery）
   homepage:
     url: "/wiki/Main_Page"
     categories_selector: ".categories a"
@@ -121,6 +158,62 @@ extraction:
 ```
 
 ## 字段详细说明
+
+### 字段层级树
+
+```
+strategy.md (YAML frontmatter)
+├── ✅ domain: string
+├── ✅ description: string
+├── ✅ protection_level: "low" | "medium" | "high"
+├── ❌ anti_crawl_refs: string[]
+├── ❌ backend: string
+├── ❌ structure
+│   └── ❌ pages[]
+│       ├── id
+│       ├── label
+│       ├── url_pattern
+│       ├── url_example
+│       ├── type
+│       ├── content_type
+│       ├── pagination
+│       ├── ❌ links_to[]
+│       │   ├── target
+│       │   └── selector
+│       └── requires_auth
+├── ❌ api
+│   ├── ✅ platform: "mediawiki"
+│   ├── ❌ platform_variant: "standard" | "fandom" | "wiki-gg"
+│   ├── ❌ base_url: string
+│   ├── ❌ capabilities: string[]
+│   ├── ❌ namespaces: int[]
+│   ├── ❌ content_profile
+│   │   ├── ❌ discovery_strategy: "allpages" | "category_members"
+│   │   ├── ❌ content_acquisition: "wikitext_only" | "hybrid_..." | "html_rendered"
+│   │   ├── ❌ link_resolver: "exact_title_match" | "short_name_with_cross_namespace"
+│   │   ├── ❌ template_processor: "simple_substitution" | "structured_..." | "fandom_infobox"
+│   │   └── ❌ list_page_assembler: "frontmatter_driven" | "hybrid_..."
+│   ├── ❌ rate_limit
+│   │   ├── ❌ tier
+│   │   ├── ❌ concurrency
+│   │   ├── ❌ batch_delay_ms
+│   │   └── ❌ retry { max_retries, initial_delay_sec, ... }
+│   ├── ❌ exclude_categories: string[]
+│   ├── ❌ homepage { url, categories_selector, ... }
+│   ├── ❌ taxonomy { list_pages, page_categories, category_filters }
+│   ├── ❌ image_filtering { list_pages }
+│   ├── ❌ page_type_map { summary_pages, entity_pages }
+│   ├── ❌ card_images
+│   └── ❌ card_list_splitting
+└── ❌ extraction
+    └── ❌ fields[]
+        ├── name
+        ├── selector
+        └── type
+
+✅ = Required  ❌ = Optional
+```
+<!-- Source: sites/strategies/<domain>/strategy.md frontmatter schema -->
 
 ### 顶级字段
 
@@ -165,6 +258,52 @@ extraction:
 管线在 `run_pipeline()` 中解析此字段并传递给各阶段函数。当前阶段仅接受和记录，不实现行为分支（`orchestrator.py:139-140`）。
 
 ## content_profile 合法值
+
+### content_profile 策略路由图
+
+```
+content_profile (YAML)
+    │
+    ├── discovery_strategy
+    │       │
+    │       ├── "allpages"          ──→ registry["discovery"]["allpages"]
+    │       │                        ──→ AllPagesDiscoveryStrategy
+    │       └── "category_members"   ──→ registry["discovery"]["category_members"]
+    │                                 ──→ CategoryMembersDiscoveryStrategy
+    │
+    ├── content_acquisition
+    │       │
+    │       ├── "wikitext_only"               ──→ registry["content_acquisition"]["wikitext_only"]
+    │       │                                    ──→ WikitextOnlyAcquisitionStrategy
+    │       ├── "hybrid_wikitext_plus_rendered" ──→ registry["content_acquisition"]["hybrid_..."]
+    │       │                                    ──→ HybridAcquisitionStrategy
+    │       └── "html_rendered"                 ──→ registry["content_acquisition"]["html_rendered"]
+    │                                            ──→ HtmlRenderedAcquisitionStrategy
+    │
+    ├── link_resolver
+    │       │
+    │       ├── "exact_title_match"              ──→ registry["link_resolver"]["exact_title_match"]
+    │       │                                      ──→ ExactTitleLinkResolver
+    │       └── "short_name_with_cross_namespace" ──→ registry["link_resolver"]["short_name_..."]
+    │                                              ──→ ShortNameLinkResolver
+    │
+    ├── template_processor
+    │       │
+    │       ├── "simple_substitution"         ──→ registry["template_processor"]["simple_..."]
+    │       │                                    ──→ SimpleSubstitutionTemplateProcessor
+    │       ├── "structured_with_lua_fallback" ──→ registry["template_processor"]["structured_..."]
+    │       │                                    ──→ StructuredTemplateProcessor
+    │       └── "fandom_infobox"               ──→ registry["template_processor"]["fandom_infobox"]
+    │                                            ──→ FandomInfoboxTemplateProcessor
+    │
+    └── list_page_assembler
+            │
+            ├── "frontmatter_driven"               ──→ registry["list_page_assembler"]["frontmatter_..."]
+            │                                        ──→ FrontmatterDrivenListPageAssembler
+            └── "hybrid_frontmatter_and_rendered"   ──→ registry["list_page_assembler"]["hybrid_..."]
+                                                     ──→ HybridListPageAssembler
+```
+<!-- Source: scripts/pipeline/pipeline/registry.py:_STRATEGY_REGISTRY -->
 
 以下 ID 来自 `_STRATEGY_REGISTRY`（`scripts/pipeline/pipeline/registry.py:61`）。
 
@@ -324,5 +463,12 @@ rate_limit_tiers:
       max_delay_sec: 120.0
       jitter: true
 ```
+
+## 关联文档
+
+- [01 — 系统总览](01-overview.md) — 多后端架构全景
+- [02 — 管线数据流](02-pipeline-flow.md) — 策略驱动的五阶段管线
+- [04 — CLI 参考](04-cli-reference.md) — 所有命令与管线子命令的参数说明
+- [05 — 转换器架构](05-converter-architecture.md) — extraction 规则如何被消费
 
 ---
