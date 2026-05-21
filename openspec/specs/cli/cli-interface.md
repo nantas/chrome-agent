@@ -30,6 +30,23 @@
 - `runCrawl()` SHALL NOT exceed 80 lines
 - Each dispatch function SHALL NOT exceed 400 lines
 
+### Requirement: maxPages null semantics
+
+`--max-pages` CLI parameter and `maxPages` function parameter SHALL use `null` to express "no limit":
+
+- When `--max-pages` is not provided on CLI, `parsed.maxPages` SHALL be `null`, meaning no page limit
+- When `--max-pages N` is provided, `maxPages` SHALL be `N`, limiting to N pages
+- All dispatch functions (`runCrawl`, `runCrawlMediawikiApi`, `runCrawlScrapling`, `runScrape`) SHALL default `maxPages` to `null` in destructuring
+- All conditions using `maxPages` SHALL be null-safe: `if (maxPages != null)` for spawnSync args, `(maxPages == null || ... < maxPages)` for loop/queue guards
+
+#### Scenario: crawl without max-pages
+- **WHEN** CLI user runs `crawl` without `--max-pages`
+- **THEN** crawl SHALL NOT limit number of pages
+
+#### Scenario: crawl with max-pages
+- **WHEN** CLI user runs `crawl --max-pages 50`
+- **THEN** crawl SHALL limit to 50 pages
+
 ---
 
 ## Part 2 — Source: `global-workflow-skill`

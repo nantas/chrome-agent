@@ -1977,7 +1977,7 @@ function buildCrawlReport({ targetUrl, repoRef, resolutionMode, strategy, events
 async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {}) {
   const {
     entryPoint: entryPointOverride = null,
-    maxPages = 3,
+    maxPages = null,
     report: reportOverride = null,
     markdown = true,
     merge = false,
@@ -2069,7 +2069,7 @@ function crawlInternalError({ targetUrl, repoRef, resolutionMode, strategy, runD
 
 function runCrawlMediawikiApi(repoRoot, repoRef, resolutionMode, runDir, reportPath, manifestPath, emitReport, targetUrl, strategy, doc, startPage, matchingPage, entryPoints, opts) {
   const {
-    maxPages = 3,
+    maxPages = null,
     concurrency = 5,
     discoveryOnly = false,
     fromManifest = null,
@@ -2116,7 +2116,7 @@ function runCrawlMediawikiApi(repoRoot, repoRef, resolutionMode, runDir, reportP
       apiArgs.push("--exclude-category", cat);
     }
     // Pass --max-pages
-    if (maxPages) {
+    if (maxPages != null) {
       apiArgs.push("--max-pages", String(maxPages));
     }
     const apiResult = spawnSync("python3", apiArgs, {
@@ -2313,7 +2313,7 @@ function runCrawlScraplingDiscovery(repoRoot, repoRef, resolutionMode, runDir, r
 
 async function runCrawlScrapling(repoRoot, repoRef, resolutionMode, runDir, reportPath, manifestPath, emitReport, targetUrl, strategy, doc, startPage, matchingPage, entryPoints, opts) {
   const {
-    maxPages = 3,
+    maxPages = null,
     concurrency = 5,
     fromManifest = null,
     yes: yesFlag = false,
@@ -2390,7 +2390,7 @@ const artifacts = [];
 // events already declared above (let events)
 let failures = 0;
 
-while (queue.length > 0 && visited.size < maxPages) {
+while (queue.length > 0 && (maxPages == null || visited.size < maxPages)) {
   const item = queue.shift();
   if (!item || visited.has(item.url)) {
     continue;
@@ -2442,11 +2442,11 @@ while (queue.length > 0 && visited.size < maxPages) {
     }
   }
 
-  if (item.page.pagination && item.page.pagination !== "none" && queue.length + visited.size < maxPages) {
+  if (item.page.pagination && item.page.pagination !== "none" && (maxPages == null || queue.length + visited.size < maxPages)) {
     if (item.page.pagination.mechanism === "url_parameter") {
       const nextPageNumber = item.paginationIndex + 1;
       const nextUrl = nextPaginationUrl(item.url, item.page.pagination, nextPageNumber);
-      if (nextUrl && !visited.has(nextUrl) && queue.length + visited.size < maxPages) {
+      if (nextUrl && !visited.has(nextUrl) && (maxPages == null || queue.length + visited.size < maxPages)) {
         queue.push({ url: nextUrl, page: item.page, paginationIndex: nextPageNumber });
         events.push(`Queued bounded pagination URL ${nextUrl} from ${item.page.id}.`);
       }
@@ -2751,7 +2751,7 @@ function buildScrapeReport({ targetUrl, repoRef, resolutionMode, events, result,
 
 async function runScrape(repoRoot, repoRef, resolutionMode, targetUrl, opts) {
   const {
-    maxPages = 10,
+    maxPages = null,
     sameDomain = true,
     matchPattern = null,
     markdown = true,
@@ -2810,7 +2810,7 @@ async function runScrape(repoRoot, repoRef, resolutionMode, targetUrl, opts) {
   const events = [];
   let failures = 0;
 
-  while (queue.length > 0 && visited.size < maxPages) {
+  while (queue.length > 0 && (maxPages == null || visited.size < maxPages)) {
     const url = queue.shift();
     if (!url || visited.has(url)) {
       continue;
@@ -3715,7 +3715,7 @@ async function main() {
         }
         result = await runCrawl(repoRoot, repoRef, resolutionMode, parsed.target, {
           entryPoint: parsed.entryPoint,
-          maxPages: parsed.maxPages ?? 3,
+          maxPages: parsed.maxPages,
           report: parsed.report,
           markdown: parsed.markdown,
           merge: parsed.merge,
@@ -3737,7 +3737,7 @@ async function main() {
           throw new Error("scrape requires a target URL.");
         }
         result = await runScrape(repoRoot, repoRef, resolutionMode, parsed.target, {
-          maxPages: parsed.maxPages ?? 10,
+          maxPages: parsed.maxPages,
           sameDomain: parsed.sameDomain,
           matchPattern: parsed.matchPattern,
           markdown: parsed.markdown,

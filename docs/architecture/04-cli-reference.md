@@ -119,7 +119,7 @@ chrome-agent crawl <url> [options]
 |------|------|--------|------|
 | `<url>` | positional | 必填 | 目标 URL |
 | `--entry-point <id>` | string | — | 从指定入口点开始 |
-| `--max-pages <n>` | int | 3 | 最大遍历页数 |
+| `--max-pages <n>` | int | None (null) | 最大遍历页数 |
 | `--concurrency <n>` | int | 5 | Markdown 转换并发数 |
 | `--keep-html` | flag | false | 保留中间 HTML |
 | `--merge` | flag | false | 合并为单文件 |
@@ -149,7 +149,7 @@ chrome-agent scrape <url> [options]
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `<url>` | positional | 必填 | 目标 URL |
-| `--max-pages <n>` | int | 10 | 最大爬取页数 |
+| `--max-pages <n>` | int | None (null) | 最大爬取页数 |
 | `--no-same-domain` | flag | — | 允许跨域链接 |
 | `--match <glob>` | string | — | URL 路径 glob 过滤 |
 | `--concurrency <n>` | int | 5 | Markdown 转换并发数 |
