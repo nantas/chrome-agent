@@ -198,6 +198,13 @@ def run_assemble(output_dir: str, manifest: dict, results: dict,
             dirs_created.add(actual_dir)
         index_path = os.path.join(dir_path, "index.md")
 
+        # Resolve list page filename early (needed for resume fallback)
+        list_page_filename = None
+        for page in manifest["pages"]:
+            if page["title"] == page_title:
+                list_page_filename = page["target_filename"]
+                break
+
         pages_in_dir = []
         for page in manifest["pages"]:
             if page["target_directory"] == actual_dir:
@@ -288,11 +295,6 @@ def run_assemble(output_dir: str, manifest: dict, results: dict,
                     f_nav.write("\n".join(nav_lines) + "\n")
 
         # Remove redundant list page file
-        list_page_filename = None
-        for page in manifest["pages"]:
-            if page["title"] == page_title:
-                list_page_filename = page["target_filename"]
-                break
         if list_page_filename:
             redundant_path = os.path.join(dir_path, list_page_filename)
             if os.path.exists(redundant_path) and os.path.abspath(redundant_path) != os.path.abspath(index_path):
