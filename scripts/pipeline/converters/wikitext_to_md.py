@@ -4,6 +4,8 @@ Can be imported and used standalone:
     from scripts.pipeline.converters.wikitext_to_md import convert_wikitext_to_markdown
 """
 
+from __future__ import annotations
+
 import logging
 import re
 from typing import Optional
