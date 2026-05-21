@@ -130,6 +130,28 @@ class TestCategoryIndexGeneration(unittest.TestCase):
             self.assertIn("NonExistent Page", content)
             self.assertIn("test.wiki.gg/wiki/NonExistent_Page", content)
 
+    def test_title_prefix_detection_without_ns_field(self):
+        """Homepage discovery manifest has no ns field; Category: prefix is used."""
+        manifest = self._make_manifest([
+            # No 'ns' field at all — mimics homepage discovery output
+            {"title": "Category:Modes", "target_directory": "modes",
+             "target_filename": "index.md", "is_list_page": True},
+            {"title": "Daily_Challenges", "target_directory": "modes",
+             "target_filename": "Daily_Challenges.md"},
+        ])
+        results = self._make_results({"Daily_Challenges"})
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            _run_assemble(tmpdir, manifest, results, client=None)
+
+            index_path = os.path.join(tmpdir, "modes", "index.md")
+            self.assertTrue(os.path.exists(index_path),
+                            "Category index should be written even without ns field")
+
+            content = open(index_path).read()
+            self.assertIn("# Category:Modes", content)
+            self.assertIn("[Daily Challenges](Daily_Challenges.md)", content)
+
     def test_non_category_pages_not_affected(self):
         """Non-ns=14 pages are written normally, not touched by category logic."""
         manifest = self._make_manifest([

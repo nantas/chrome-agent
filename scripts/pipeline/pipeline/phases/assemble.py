@@ -67,7 +67,9 @@ def run_assemble(output_dir: str, manifest: dict, results: dict,
         p["title"]: p for p in manifest["pages"]
     }
     for page in manifest["pages"]:
-        if page.get("ns") != 14:
+        # Detect category pages: ns==14 (API discovery) or title prefix (homepage discovery)
+        is_category = page.get("ns") == 14 or page.get("title", "").startswith("Category:")
+        if not is_category:
             continue
         title = page["title"]
         target_dir = page["target_directory"]
