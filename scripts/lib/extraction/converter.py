@@ -472,6 +472,7 @@ class HtmlToMarkdownConverter:
             node,
             self.config,
             self.wiki_domain,
+            source_dir=source_dir,
             field_selector=self._infobox_field_selector,
             label_selector=self._infobox_label_selector,
             value_selector=self._infobox_value_selector,

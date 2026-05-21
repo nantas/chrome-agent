@@ -21,6 +21,7 @@ def extract_infobox(
     wiki_domain: str = "",
     *,
     parser: str = "auto",
+    source_dir: str = "",
     field_selector: Optional[str] = None,
     label_selector: Optional[str] = None,
     value_selector: Optional[str] = None,
@@ -76,6 +77,7 @@ def extract_infobox(
         return _extract_selectolax(
             html_or_node, selector, fsel, lsel, vsel, nav_sels,
             handlers, wiki_domain, config,
+            source_dir=source_dir,
             render_inline_children_fn=render_inline_children_fn,
             apply_handler_fn=apply_handler_fn,
         )
@@ -276,6 +278,7 @@ def _extract_selectolax(
     wiki_domain: str,
     config: dict,
     *,
+    source_dir: str = "",
     render_inline_children_fn: Optional[Callable] = None,
     apply_handler_fn: Optional[Callable] = None,
 ) -> str:
@@ -287,7 +290,7 @@ def _extract_selectolax(
         label_node = field_node.css_first(label_sel)
         if label_node:
             label_text = (
-                render_inline_children_fn(label_node)
+                render_inline_children_fn(label_node, source_dir=source_dir)
                 if render_inline_children_fn
                 else _fallback_text(label_node)
             )
@@ -332,7 +335,7 @@ def _extract_selectolax(
             value_node = field_node.css_first(value_sel)
             if value_node:
                 value = (
-                    render_inline_children_fn(value_node)
+                    render_inline_children_fn(value_node, source_dir=source_dir)
                     if render_inline_children_fn
                     else _fallback_text(value_node)
                 )
