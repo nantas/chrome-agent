@@ -59,48 +59,41 @@ def run_assemble(output_dir: str, manifest: dict, results: dict,
     log.info("Written %d page files", written)
 
     # Generate category index pages (ns=14)
+    # Always generates index regardless of client availability.
+    # API-based discovery first, manifest-based fallback when unavailable.
     category_pages_written = 0
-    if client is not None:
-        for page in manifest["pages"]:
-            if page.get("ns") != 14:
-                continue
-            title = page["title"]
-            target_dir = page["target_directory"]
-            filename = page["target_filename"]
-            dir_path = os.path.join(output_dir, target_dir)
-            if target_dir not in dirs_created:
-                os.makedirs(dir_path, exist_ok=True)
-                dirs_created.add(target_dir)
-            index_path = os.path.join(dir_path, filename)
+    # Pre-build title → manifest page lookup for O(1) access
+    manifest_by_title: dict[str, dict] = {
+        p["title"]: p for p in manifest["pages"]
+    }
+    for page in manifest["pages"]:
+        if page.get("ns") != 14:
+            continue
+        title = page["title"]
+        target_dir = page["target_directory"]
+        filename = page["target_filename"]
+        dir_path = os.path.join(output_dir, target_dir)
+        if target_dir not in dirs_created:
+            os.makedirs(dir_path, exist_ok=True)
+            dirs_created.add(target_dir)
+        index_path = os.path.join(dir_path, filename)
 
-            # Get description from Phase B result if available
-            description = ""
-            result = results.get(title)
-            if result and result.get("status") == "ok":
-                content = result.get("content", "")
-                # Extract text after frontmatter
-                if content.startswith("---"):
-                    end_fm = content.find("\n---", 3)
-                    if end_fm >= 0:
-                        body = content[end_fm + 4:].lstrip("\n")
-                        # Strip heading
-                        body = re.sub(r'^#+\s.*$', '', body, flags=re.MULTILINE).strip()
-                        description = body
+        # Build index: frontmatter + title + flat member list
+        lines = ["---"]
+        lines.append(f'title: "{title}"')
+        lines.append(f"source_url: https://{domain}/wiki/{title.replace(' ', '_')}")
+        lines.append("---")
+        lines.append("")
+        lines.append(f"# {title}")
+        lines.append("")
 
-            # Fetch category members
-            lines = ["---"]
-            lines.append(f'title: "{title}"')
-            lines.append(f"source_url: https://{domain}/wiki/{title.replace(' ', '_')}")
-            lines.append("---")
-            lines.append("")
-            if description:
-                lines.append(description)
-                lines.append("")
-
+        # Discover category members
+        members = []
+        subcats = []
+        api_ok = False
+        if client is not None:
             try:
                 cmtitle = title.replace(" ", "_")
-                members = []
-                subcats = []
                 continue_token = None
                 while True:
                     params = {
@@ -120,48 +113,44 @@ def run_assemble(output_dir: str, manifest: dict, results: dict,
                         continue_token = data["continue"].get("cmcontinue")
                     else:
                         break
-
-                if members:
-                    lines.append("## Pages")
-                    lines.append("")
-                    for m in sorted(members):
-                        # Find target path in manifest
-                        target = None
-                        for p in manifest["pages"]:
-                            if p["title"] == m:
-                                target = p
-                                break
-                        if target:
-                            rel_path = target["target_filename"]
-                            if target["target_directory"] != target_dir:
-                                rel_dir = target["target_directory"]
-                                if rel_dir:
-                                    rel_path = f"{rel_dir}/{rel_path}"
-                            page_name = m.replace("_", " ")
-                            lines.append(f"- [{page_name}]({rel_path})")
-                        else:
-                            page_name = m.replace("_", " ")
-                            safe = m.replace(" ", "_").replace(":", "_") + ".md"
-                            lines.append(f"- [{page_name}]({safe})")
-                    lines.append("")
-
-                if subcats:
-                    lines.append("## Subcategories")
-                    lines.append("")
-                    for s in sorted(subcats):
-                        sub_name = s.replace("_", " ")
-                        sub_slug = s.replace("Category:", "").replace(" ", "_").replace(":", "_")
-                        lines.append(f"- [{sub_name}]({sub_slug}/index.md)")
-                    lines.append("")
+                api_ok = True
             except Exception as e:
                 log.warning("Failed to fetch category members for %s: %s", title, e)
 
-            with open(index_path, "w", encoding="utf-8") as f:
-                f.write("\n".join(lines))
-            category_pages_written += 1
+        # Manifest-based fallback: aggregate non-ns=14 pages in same directory
+        if not api_ok or (not members and not subcats):
+            for p in manifest["pages"]:
+                if p["target_directory"] == target_dir and p.get("ns") != 14:
+                    members.append(p["title"])
 
-        if category_pages_written > 0:
-            log.info("Written %d category index pages", category_pages_written)
+        # Render member links (sorted, deduplicated)
+        for m in sorted(set(members)):
+            target = manifest_by_title.get(m)
+            if target:
+                rel_path = target["target_filename"]
+                if target["target_directory"] != target_dir:
+                    rel_dir = target["target_directory"]
+                    if rel_dir:
+                        rel_path = f"{rel_dir}/{rel_path}"
+                page_name = m.replace("_", " ")
+                lines.append(f"- [{page_name}]({rel_path})")
+            else:
+                # Not in manifest — link to original wiki URL
+                page_name = m.replace("_", " ")
+                wiki_url = f"https://{domain}/wiki/{m.replace(' ', '_')}"
+                lines.append(f"- [{page_name}]({wiki_url})")
+
+        for s in sorted(set(subcats)):
+            sub_name = s.replace("_", " ")
+            sub_slug = s.replace("Category:", "").replace(" ", "_").replace(":", "_")
+            lines.append(f"- [{sub_name}]({sub_slug}/index.md)")
+
+        with open(index_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        category_pages_written += 1
+
+    if category_pages_written > 0:
+        log.info("Written %d category index pages", category_pages_written)
 
     # Generate index.md for each directory using Phase B converted content
     list_page_content = manifest.get("list_page_content", {})
