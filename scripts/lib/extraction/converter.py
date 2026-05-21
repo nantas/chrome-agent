@@ -259,14 +259,20 @@ class HtmlToMarkdownConverter:
             for node in parser.css(f'img[src*="{pattern}"]'):
                 node.decompose()
 
-        # Remove YouTube oEmbed fallback text containers
-        # wiki.gg generates divs with "Load video", "YouTube might collect...",
-        # "Privacy Policy", "Continue Dismiss" after the iframe is extracted
-        for node in parser.css("div"):
-            text_content = node.text(deep=True, separator=" ", strip=True)
-            if text_content and "Load video" in text_content:
+        # Remove YouTube oEmbed fallback UI containers
+        # wiki.gg YouTube embeds use fixed CSS classes in a nested structure:
+        # figure.embedvideo > div.embedvideo-wrapper > div.embedvideo-consent
+        #   > div.embedvideo-overlay > div.embedvideo-loader
+        # Only decompose the known leaf-level containers, never ancestor divs.
+        VIDEO_EMBED_SELECTORS = [
+            "div.embedvideo-wrapper",
+            "div.embedvideo-consent",
+            "div.embedvideo-overlay",
+            "div.embedvideo-loader",
+        ]
+        for selector in VIDEO_EMBED_SELECTORS:
+            for node in parser.css(selector):
                 node.decompose()
-                continue
 
         for node in parser.css("[style]"):
             style = node.attributes.get("style", "") or ""
