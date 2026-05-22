@@ -1,7 +1,7 @@
 """Page assignment — assigns discovered pages to output directories.
 
 Uses a priority chain: manual overrides > source category match > MW category tags
-(with aliases & page_categories fallback) > default (misc).
+(with aliases & page_categories fallback) > source category fallback > default (misc).
 Queries MediaWiki category tags in batches for efficiency.
 """
 
@@ -27,6 +27,7 @@ def assign_pages(pages: list[dict], categories: list[dict],
     1. Manual overrides (``api.homepage.manual_assignments``)
     2. Source category match (``source_categories`` against ``assignment_priority``)
     3. MediaWiki category tag matching (with ``mw_category_aliases`` & ``page_categories`` fallback)
+    3.5. Source category fallback (first-match-wins for multi-match pages without MW tags)
     4. Default (``"misc"`` directory)
 
     Args:
@@ -76,6 +77,25 @@ def assign_pages(pages: list[dict], categories: list[dict],
         result, unassigned, assignment_priority, cat_name_to_dir,
         client, strategy, categories_cfg
     )
+
+    # Step 3.5: Source-category first-match-wins fallback
+    # for pages still unassigned after MW matching
+    # (handles multi-match pages with no MW categories)
+    for page in result:
+        if page.get("assignment_method") is None:
+            source_cats = set(page.get("source_categories", []))
+            for cat_name in assignment_priority:
+                if cat_name in source_cats:
+                    target_dir = cat_name_to_dir.get(cat_name)
+                    if target_dir:
+                        target_file = title_to_filepath(page["title"], 0)[1]
+                        page["target_directory"] = target_dir
+                        page["target_filename"] = target_file
+                        page["assigned_category"] = cat_name
+                        page["assignment_method"] = "source_category_fallback"
+                        log.info("Page '%s' assigned to '%s' (source category fallback: '%s')",
+                                 page["title"], target_dir, cat_name)
+                    break
 
     # Step 4: Default assignment for remaining
     for page in result:
