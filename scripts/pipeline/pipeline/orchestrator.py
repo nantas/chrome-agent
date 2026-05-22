@@ -361,20 +361,25 @@ def run_pipeline(args: argparse.Namespace) -> int:
             return EXIT_PHASE_B_FAILURE
     elif "assemble" in phases:
         results_path = os.path.join(args.output, "extraction_results.json")
-        with open(results_path, "r", encoding="utf-8") as f:
-            saved = json.load(f)
-        # Reconstruct results map from saved data
         results = {}
-        for title, info in saved.get("pages", {}).items():
-            results[title] = {
-                "title": title,
-                "status": info.get("status"),
-                "error": info.get("error"),
-                "content": info.get("content"),
-                "rendered_html": info.get("rendered_html"),
-                "images": info.get("images"),
-            }
-        log.info("Loaded existing results: %d pages", len(results))
+        try:
+            with open(results_path, "r", encoding="utf-8") as f:
+                saved = json.load(f)
+            # Reconstruct results map from saved data
+            for title, info in saved.get("pages", {}).items():
+                results[title] = {
+                    "title": title,
+                    "status": info.get("status"),
+                    "error": info.get("error"),
+                    "content": info.get("content"),
+                    "rendered_html": info.get("rendered_html"),
+                    "images": info.get("images"),
+                }
+            log.info("Loaded existing results: %d pages", len(results))
+        except FileNotFoundError:
+            log.warning("No existing extraction_results.json found — assemble will use empty results")
+        except Exception as e:
+            log.warning("Failed to load extraction_results.json: %s — assemble will use empty results", e)
 
     # Flush state after extraction completion
     if resume_enabled and results is not None and completed_pages_set is not None:

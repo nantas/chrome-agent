@@ -90,6 +90,8 @@ api:
       - {name: "Music", dir: "music"}
       - {name: "Modes", dir: "modes"}
       - {name: "Objects", dir: "objects"}
+      - {name: "Completion Marks", dir: "completion_marks"}
+      - {name: "Attributes", dir: "attributes"}
     category_page_types:
       Modes: category_page
       Objects: category_page

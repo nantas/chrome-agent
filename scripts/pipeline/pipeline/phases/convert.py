@@ -315,6 +315,25 @@ def run_convert(output_dir: str, manifest: dict, strategy: dict,
     if redirect_titles:
         log.info("Pre-scan: detected %d redirect pages", len(redirect_titles))
 
+    # Pre-scan: detect target_path conflicts
+    conflict_titles: set[str] = set()
+    target_path_map: dict[str, list[str]] = {}  # path -> [titles]
+    for page in pages:
+        t_dir = page.get("target_directory", "")
+        t_file = page.get("target_filename", "")
+        path_key = os.path.join(t_dir, t_file) if t_dir or t_file else ""
+        if path_key:
+            if path_key not in target_path_map:
+                target_path_map[path_key] = []
+            target_path_map[path_key].append(page["title"])
+    for path_key, titles in target_path_map.items():
+        if len(titles) > 1:
+            winner = titles[0]
+            losers = titles[1:]
+            conflict_titles.update(losers)
+            log.error("Target path conflict: '%s' — winner: '%s', losers: %s",
+                      path_key, winner, losers)
+
     redirect_count = 0
     for page in pages:
         title = page["title"]
@@ -355,6 +374,13 @@ def run_convert(output_dir: str, manifest: dict, strategy: dict,
                         title, cached_acq, current_acq)
 
         try:
+            # Skip target-conflict pages (detected in pre-scan)
+            if title in conflict_titles:
+                results[title] = {"title": title, "status": "target_conflict"}
+                failed_count += 1
+                log.error("Skipping '%s': target path conflict", title)
+                continue
+
             # Skip redirect pages (detected in pre-scan)
             if title in redirect_titles:
                 redirect_count += 1

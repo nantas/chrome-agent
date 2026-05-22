@@ -258,13 +258,18 @@ def _build_homepage_manifest(assigned_pages: list[dict],
         cat_dir = strategy_cat_dir.get(cat["name"], cat.get("dir", ""))
         cat_name = cat["name"]
 
+        # Auto-fallback: if no strategy dir mapping, normalize category name as directory
+        if not cat_dir:
+            cat_dir = cat_name.lower().replace(" ", "-")
+            log.warning("Category '%s' has no dir mapping in strategy, auto-fallback to '%s'",
+                        cat_name, cat_dir)
+
         if page_title in existing_titles:
             # Update existing entry: add is_list_page and ensure assignment
             idx = existing_titles[page_title]
             assigned_pages[idx]["is_list_page"] = True
             assigned_pages[idx]["assignment_method"] = "homepage_category"
-            if cat_dir:
-                assigned_pages[idx]["target_directory"] = cat_dir
+            assigned_pages[idx]["target_directory"] = cat_dir
             assigned_pages[idx]["target_filename"] = "index.md"
             if cat_name not in assigned_pages[idx].get("source_categories", []):
                 assigned_pages[idx].setdefault("source_categories", []).append(cat_name)
