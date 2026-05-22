@@ -135,9 +135,10 @@ def _apply_source_category_assignments(
 ) -> list[dict]:
     """Assign pages by matching source_categories against assignment_priority.
 
-    For each unassigned page, iterate assignment_priority in order and
-    assign to the first category whose name appears in the page's
-    source_categories. Works for both list_page and category_page types.
+    For each unassigned page, collect ALL matching category names from
+    assignment_priority.  Only pages with exactly ONE match are assigned
+    immediately; pages with zero or multiple matches are deferred to
+    Step 3 (MW category matching) for tiebreaking.
 
     Args:
         pages: All pages (with existing assignments preserved).
@@ -153,20 +154,26 @@ def _apply_source_category_assignments(
 
     for page in unassigned:
         source_cats = set(page.get("source_categories", []))
-        # Find first matching category in priority order
-        for cat_name in assignment_priority:
-            if cat_name in source_cats:
-                target_dir = cat_name_to_dir.get(cat_name)
-                if target_dir:
-                    idx = page_index[page["title"]]
-                    target_file = title_to_filepath(page["title"], 0)[1]
-                    pages[idx]["target_directory"] = target_dir
-                    pages[idx]["target_filename"] = target_file
-                    pages[idx]["assigned_category"] = cat_name
-                    pages[idx]["assignment_method"] = "source_category_match"
-                    log.info("Page '%s' assigned to '%s' (source category match: '%s')",
-                             page["title"], target_dir, cat_name)
-                break  # First matching priority wins
+        # Collect ALL matching categories in priority order
+        matching = [cat_name for cat_name in assignment_priority
+                    if cat_name in source_cats]
+
+        if len(matching) == 1:
+            cat_name = matching[0]
+            target_dir = cat_name_to_dir.get(cat_name)
+            if target_dir:
+                idx = page_index[page["title"]]
+                target_file = title_to_filepath(page["title"], 0)[1]
+                pages[idx]["target_directory"] = target_dir
+                pages[idx]["target_filename"] = target_file
+                pages[idx]["assigned_category"] = cat_name
+                pages[idx]["assignment_method"] = "source_category_match"
+                log.info("Page '%s' assigned to '%s' (source category match: '%s')",
+                         page["title"], target_dir, cat_name)
+        elif len(matching) > 1:
+            log.debug("Page '%s' has %d source category matches %s — deferring to MW category matching",
+                      page["title"], len(matching), matching)
+        # else: zero matches — already deferred (no assignment_method set)
     return pages
 
 

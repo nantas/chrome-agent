@@ -116,6 +116,8 @@ api:
       - "Trinkets"
       - "Modes"
       - "Objects"
+      - "Attributes"
+      - "Completion Marks"
 
     exclude_categories:
       - "Music"
