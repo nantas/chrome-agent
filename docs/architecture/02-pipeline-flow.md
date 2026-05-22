@@ -115,7 +115,7 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
 | **入口** | `scripts/pipeline/pipeline/phases/fetch.py:38` — `run_fetch()` |
 | **触发条件** | `--phase fetch` 或 `--phase all`（默认） |
 | **输入** | manifest、strategy、`ContentAcquisitionStrategy`、`RateLimitConfig` |
-| **流程** | 1. 检查 `.cache/` 已缓存页面（除非 `--re-fetch`） → 2. 并发获取剩余页面（`ThreadPoolExecutor`，concurrency 由 rate_limit 控制） → 3. 写入 `.cache/<platform>/<domain>/<page>.json` |
+| **流程** | 1. 检查 `.cache/` 已缓存页面（除非 `--re-fetch`） → 2. **快速路径**：若所有页面已缓存则直接返回 `skipped=total`（<1秒） → 3. **预过滤**：分离已缓存/未缓存页面，仅未缓存页面提交线程池 → 4. 并发获取未缓存页面（`ThreadPoolExecutor`，concurrency 由 rate_limit 控制） → 5. `time.sleep(batch_delay_sec)` 仅在实际网络请求（`status=ok`）时执行 → 6. 写入 `.cache/<platform>/<domain>/<page>.json` |
 | **输出** | Stats dict（total, fetched, skipped, failed） |
 | **副作用** | 写入 `.cache/` 持久化缓存 |
 
@@ -157,7 +157,7 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
 **每个缓存文件包含**：`html`、`wikitext`、`rendered_html`、`images`、`content_acquisition`、`fetched_at` 时间戳。
 
 **关键行为**：
-- Fetch 阶段：缓存已有页面跳过（`is_cached = title in cached_pages`），除非 `--re-fetch`
+- Fetch 阶段：缓存已有页面跳过（`is_cached = title in cached_pages`），除非 `--re-fetch`；全量缓存时走快速路径直接返回（<1秒）；`batch_delay` sleep 仅在实际网络请求时执行
 - Convert 阶段：纯读缓存，无网络请求
 - 跨 session 复用：缓存持久化在仓库 `.cache/` 目录，支持跨 CLI 调用复用
 - `--re-fetch`：强制刷新所有页面，忽略已有缓存

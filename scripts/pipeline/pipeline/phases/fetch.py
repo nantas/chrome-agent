@@ -61,16 +61,30 @@ def run_fetch(client: ApiClient, manifest: dict, strategy: dict,
     if cached_pages and not re_fetch:
         log.info("Cache: %d pages already cached, will skip", len(cached_pages))
 
-    fetched_count = 0
+    # --- Fast path: all pages already cached (spec: full-cache-fastpath) ---
+    manifest_titles = {p["title"] for p in pages}
+    if not re_fetch and manifest_titles and manifest_titles <= cached_pages:
+        log.info("Cache: all %d manifest pages already cached — skipping fetch", len(manifest_titles))
+        return {"total": len(pages), "fetched": 0, "skipped": len(pages), "failed": 0}
+
+    # --- Prefilter: separate cached from to_fetch (spec: partial-cache-prefilter) ---
+    to_fetch = []
     skipped_count = 0
+    for p in pages:
+        if not re_fetch and p["title"] in cached_pages:
+            skipped_count += 1
+        else:
+            to_fetch.append(p)
+
+    if skipped_count:
+        log.info("Cache: %d pages already cached, %d to fetch", skipped_count, len(to_fetch))
+
+    fetched_count = 0
     failed_count = 0
 
     def _fetch_one(page_info: dict) -> dict:
         """Fetch a single page and write to cache. Returns status dict."""
         title = page_info["title"]
-        # Skip if cached (unless re_fetch)
-        if not re_fetch and title in cached_pages:
-            return {"title": title, "status": "skipped", "reason": "cached"}
         try:
             raw = fetch_single_page(client, page_info, content_strategy)
             # Add metadata for cache
@@ -88,16 +102,15 @@ def run_fetch(client: ApiClient, manifest: dict, strategy: dict,
             return {"title": title, "status": "error", "error": str(e)}
 
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
-        futures = {executor.submit(_fetch_one, page): page["title"] for page in pages}
+        futures = {executor.submit(_fetch_one, page): page["title"] for page in to_fetch}
         for future in as_completed(futures):
             title = futures[future]
             try:
                 result = future.result()
                 if result["status"] == "ok":
                     fetched_count += 1
-                elif result["status"] == "skipped":
-                    skipped_count += 1
-                    log.info("Skipping '%s' (already cached)", title)
+                    # Sleep only on actual network requests (spec: batch-delay-only-on-network-requests)
+                    time.sleep(batch_delay_sec)
                 elif result["status"] == "not_found":
                     skipped_count += 1
                 else:
@@ -111,8 +124,6 @@ def run_fetch(client: ApiClient, manifest: dict, strategy: dict,
             if done % 50 == 0:
                 log.info("Phase Fetch progress: %d/%d (fetched=%d, skipped=%d, failed=%d)",
                          done, len(pages), fetched_count, skipped_count, failed_count)
-
-            time.sleep(batch_delay_sec)
 
     stats = {
         "total": len(pages),
