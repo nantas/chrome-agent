@@ -49,4 +49,4 @@ For reference, the following list includes user operations that cannot be perfor
 | 5 | Deleting a Network Service Account | | It is not possible to delete just the network service account. The network service account is deleted only when the Nintendo Account to which it is linked is deleted. Info: There is currently no way for users to delete accounts for China. However, the accounts may be deleted via Nintendo actions. |
 
 
-[4 Network Service Accounts and Nintendo Accounts](../Pages/Page_106359822.html) > [4.4 Account Link Status](../Pages/Page_159219887.html)
+[4 Network Service Accounts and Nintendo Accounts](https://developer.nintendo.com/Account_Guide/contents/Pages/Page_106359822.html) > [4.4 Account Link Status](https://developer.nintendo.com/Account_Guide/contents/Pages/Page_159219887.html)

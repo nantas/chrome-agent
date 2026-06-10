@@ -20,15 +20,15 @@
 
 ### D1: 集成点选择
 
-**决策**: 在 `sample_converter.py`（site sample 转换流程）中，`html_to_markdown()` 调用之后添加 `fix_all_links()` 调用。
+**决策**: 在 `test_runner.py`（site sample 回归测试的 `_make_site_sample_test` 工厂函数）中，`html_to_markdown()` 调用之后添加 `fix_all_links()` 调用。
 
-**理由**: site sample 回归测试走 `sample_converter.py` 路径，不走 pipeline。链接解析是后处理步骤，不应侵入核心转换器。`fix_all_links()` 需要 `build_page_mapping()` 提供 mapping，而 sample converter 有输出目录信息可用。
+**理由**: 实现后发现 site sample 回归测试的失败路径是 `test_runner.py` 直接调用 `html_to_markdown()`，不经过 `sample_converter.py`。`sample_converter.py` 主要用于 explore 工作流的策略验证，不是 site sample 回归测试的执行路径。链接解析作为后处理步骤集成在 test_runner 中，不侵入核心转换器，也不影响非回归的转换流程。
 
 ### D2: Mapping 来源
 
-**决策**: 使用 `build_page_mapping(output_dir)` 扫描已有 `.md` golden files 构建 mapping。
+**决策**: 使用空 mapping（`{}`），不调用 `build_page_mapping()`。
 
-**理由**: nintendo 的 golden files 已包含 `> Source:` 元数据行，`build_page_mapping` 可直接使用。不需要额外的 mapping 文件或配置。
+**理由**: 实现后发现 golden files 不包含 `> Source:` 元数据行，`build_page_mapping()` 扫描后返回空 mapping。因此直接传空 mapping，让 `fix_all_links()` 将所有 `../Pages/Page_*.html` 链接解析为完整外部 URL。这足以通过 `assert_links_resolved` 断言——断言只要求不残留原始 `../Pages/Page_*.html` 模式，不要求解析为 `.md` 文件名。
 
 ### D3: 集成范围限定
 

@@ -197,6 +197,9 @@ def _make_site_sample_test(
     # Import converter
     from scripts.lib.extraction.html_to_markdown import html_to_markdown
 
+    # Domains that need link resolution post-processing
+    _LINK_RESOLUTION_DOMAINS = {"developer.nintendo.com"}
+
     class SiteSampleTest(unittest.TestCase):
         """Dynamically generated test for one site sample."""
 
@@ -213,6 +216,18 @@ def _make_site_sample_test(
 
             # Convert
             md_output = html_to_markdown(html)
+
+            # Link resolution post-processing for domains with
+            # ../Pages/Page_*.html relative links (e.g. Nintendo Developer Portal)
+            if domain in _LINK_RESOLUTION_DOMAINS:
+                from scripts.lib.markdown_link_resolver import fix_all_links
+                doc_base = os.path.dirname(page)
+                md_output = fix_all_links(
+                    md_output, {},
+                    "https://developer.nintendo.com",
+                    doc_base,
+                    uses_contents=True,
+                )
 
             # Collect structural assertion failures (don't abort)
             assertion_failures = _run_structural_assertions(md_output)

@@ -37,4 +37,4 @@
 | 1.0 | 2017-07-03 | - | Initial version. |
 
 
-[8 Previous Revision History](../Pages/Page_239857952.html)
+[8 Previous Revision History](https://developer.nintendo.com/Online_Play_Guide/contents/Pages/Page_239857952.html)

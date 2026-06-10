@@ -58,4 +58,4 @@ If the request fails, the following error is returned.
 | detail | Text describing the content of errorCode . | | |
 
 
-[4 Linking With Nintendo Accounts](../Pages/Page_126568335.html) > [4.7 API Reference](../Pages/Page_1222798539.html) > [4.7.4 Account API](../Pages/Page_238691342.html)
+[4 Linking With Nintendo Accounts](https://developer.nintendo.com/Independent_Server_Setup_Manual/contents/Pages/Page_126568335.html) > [4.7 API Reference](https://developer.nintendo.com/Independent_Server_Setup_Manual/contents/Pages/Page_1222798539.html) > [4.7.4 Account API](https://developer.nintendo.com/Independent_Server_Setup_Manual/contents/Pages/Page_238691342.html)

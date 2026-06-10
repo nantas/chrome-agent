@@ -268,10 +268,11 @@ python3 scripts/test_runner.py site-samples --update-golden
 
 1. **样本声明**：`strategy.md` frontmatter `samples` 字段列出测试页面（`page` + `label`）
 2. **数据来源**：从 `.cache/<platform>/<domain>/` 读取缓存的 HTML
-3. **转换**：调用 `html_to_markdown()` 转换 → 与 golden file 对比
+3. **转换**：调用 `html_to_markdown()` 转换 → 链接解析后处理（见下）→ 与 golden file 对比
 4. **I2 动态 TestCase**：为每个 `(domain, page)` 独立生成 `unittest.TestCase`，每个样本独立 pass/fail
 5. **结构断言**：转换输出先经过三内置断言（`no_raw_html_tags`、`links_resolved`、`valid_md_tables`），再与 golden diff
 6. **Golden 更新**：`--update-golden` 覆写 golden file（有意输出变更时使用）
+7. **链接解析后处理**：对特定域名（`developer.nintendo.com`）在 `html_to_markdown()` 之后调用 `markdown_link_resolver.fix_all_links()`，将 `../Pages/Page_*.html` 相对链接解析为完整 URL，确保 `assert_links_resolved` 断言通过
 
 ### 结构断言规则集
 
