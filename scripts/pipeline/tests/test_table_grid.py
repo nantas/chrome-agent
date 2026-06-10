@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
+import unittest
 from selectolax.parser import HTMLParser
 
 from scripts.lib.extraction.converter import HtmlToMarkdownConverter
@@ -26,7 +26,7 @@ def _convert_table(html: str, config: dict = None) -> str:
 # ---------------------------------------------------------------------------
 
 
-class TestBuildTableGrid:
+class TestBuildTableGrid(unittest.TestCase):
     def test_simple_table_no_spans(self):
         html = '<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>'
         result = _convert_table(html)
@@ -82,7 +82,7 @@ class TestBuildTableGrid:
 # ---------------------------------------------------------------------------
 
 
-class TestRenderGridAsTable:
+class TestRenderGridAsTable(unittest.TestCase):
     def test_pipe_escape(self):
         html = '<table><tr><th>a | b</th></tr><tr><td>val</td></tr></table>'
         result = _convert_table(html)
@@ -98,7 +98,7 @@ class TestRenderGridAsTable:
 # ---------------------------------------------------------------------------
 
 
-class TestTransposeGrid:
+class TestTransposeGrid(unittest.TestCase):
     def test_transpose_2x3(self):
         grid = [["A", "B", "C"], ["1", "2", "3"]]
         result = HtmlToMarkdownConverter._transpose_grid(grid, header_row_count=1)
@@ -132,7 +132,7 @@ class TestTransposeGrid:
 # ---------------------------------------------------------------------------
 
 
-class TestTransposeThreshold:
+class TestTransposeThreshold(unittest.TestCase):
     def test_wide_table_transposes(self):
         """22-column table with threshold 10 should transpose."""
         cols = 22
@@ -178,7 +178,7 @@ class TestTransposeThreshold:
 # ---------------------------------------------------------------------------
 
 
-class TestNoFallback:
+class TestNoFallback(unittest.TestCase):
     def test_complex_table_no_list_output(self):
         """Complex table should never produce '- cell | cell' fallback."""
         html = (

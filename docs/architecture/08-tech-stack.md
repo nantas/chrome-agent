@@ -219,6 +219,68 @@ lsp diagnostics(file="phases/convert.py", severity="error")
 
 ## 4. Test Infrastructure
 
+### 目录结构
+
+```
+tests/
+├── __init__.py
+├── lib/                      ← scripts/lib/ 模块测试
+│   ├── __init__.py
+│   ├── test_html_to_markdown.py
+│   ├── test_markdown_link_resolver.py
+│   └── test_cdp_image_downloader.py
+└── pipeline/                 ← scripts/pipeline/pipeline/ 模块测试
+    ├── __init__.py
+    ├── test_fetch_cdp.py
+    └── test_convert_html.py
+
+sites/strategies/<domain>/
+├── strategy.md               ← frontmatter 含 samples 字段
+└── samples/                  ← golden files（跟策略走）
+    └── <page>.md
+```
+
+### 统一测试入口
+
+```bash
+# 运行所有测试（单元 + 站点样本回归）
+python3 scripts/test_runner.py all
+
+# 仅单元测试（stdlib discover）
+python3 scripts/test_runner.py unit
+# 或直接:
+python3 -m unittest discover -s tests -v
+
+# 站点样本回归
+python3 scripts/test_runner.py site-samples
+python3 scripts/test_runner.py site-samples --domain developer.nintendo.com
+python3 scripts/test_runner.py site-samples --update-golden
+```
+
+### 框架约定
+
+| 语言 | 框架 | 禁止 |
+|------|------|------|
+| Python | `unittest` | `pytest`、第三方测试库 |
+| Node.js | `node:test` | Jest、Mocha |
+
+### 站点样本回归机制
+
+1. **样本声明**：`strategy.md` frontmatter `samples` 字段列出测试页面（`page` + `label`）
+2. **数据来源**：从 `.cache/<platform>/<domain>/` 读取缓存的 HTML
+3. **转换**：调用 `html_to_markdown()` 转换 → 与 golden file 对比
+4. **I2 动态 TestCase**：为每个 `(domain, page)` 独立生成 `unittest.TestCase`，每个样本独立 pass/fail
+5. **结构断言**：转换输出先经过三内置断言（`no_raw_html_tags`、`links_resolved`、`valid_md_tables`），再与 golden diff
+6. **Golden 更新**：`--update-golden` 覆写 golden file（有意输出变更时使用）
+
+### 结构断言规则集
+
+| 断言 | 检测内容 |
+|------|----------|
+| `assert_no_raw_html_tags` | 残留 HTML 标签（`<div>`、`<span>` 等） |
+| `assert_links_resolved` | 未解析的 `../Pages/Page_*.html` 链接 |
+| `assert_valid_md_tables` | Markdown 表格列数不一致 |
+
 ### Node.js Tests
 
 ```bash
@@ -226,30 +288,11 @@ node --test tests/chrome-agent-runtime.test.mjs
 ```
 
 - Framework: `node:test` + `node:assert/strict` (no third-party dependencies)
-- 9 test cases covering CLI runtime repo resolution
-- Must run from repository root (tests use `spawnSync` to invoke scripts)
-- Creates temporary mock repos to validate resolution priority:
-  1. `CHROME_AGENT_REPO` env var
-  2. `repo://` override
-  3. Registry fallback
+- Must run from repository root
 
-### Python Tests
+### 旧测试保留
 
-```bash
-python3 scripts/pipeline/tests/test_discovery_summary.py
-```
-
-- Framework: `unittest` (no third-party test dependencies)
-- 12 test cases for `pipeline/discovery_summary.py` pure functions
-- Tests `_build_homepage_categories` and related functions
-- Run directly (no `-m` required)
-
-### Explore Module Tests
-
-`scripts/explore/` currently has **no automated tests**. Changes require manual verification using:
-```bash
-python3 scripts/explore/main.py <repo_root> <url> --samples <json_array>
-```
+`scripts/pipeline/tests/` 下的旧测试保留原位（不迁移到 `tests/`），已全部迁移到 `unittest.TestCase`。新测试统一放 `tests/`。
 
 ## 5. Common Pitfalls
 

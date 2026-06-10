@@ -1,5 +1,6 @@
 # developer.nintendo.com — Nintendo Developer Portal
 
+
 ---
 domain: developer.nintendo.com
 description: Nintendo Developer Portal — authenticated documentation for Switch SDK, network services, account system, and online play
@@ -70,6 +71,14 @@ extraction:
     - Guide/Manual (multi-page): Shell HTML + JS dynamic sub-pages via Reassemble module
     - SDK API (static): Standard Doxygen HTML, directly accessible
     - Network docs (static): Independent HTML pages, directly accessible
+samples:
+  - page: "Account_Guide/4-4_Account_Link_Status.html"
+    label: "表格密集的账户链接状态页"
+  - page: "Independent_Server_Setup_Manual/4-7.4_Account_API.html"
+    label: "含表格的 API 参考页"
+  - page: "Online_Play_Guide/8_Previous_Revision_History.html"
+    label: "修订历史长列表页"
+
 ---
 
 # developer.nintendo.com Strategy

@@ -227,6 +227,7 @@ strategy.md (YAML frontmatter)
 | `structure` | object | ❌ | 站点结构描述（页面类型、链接关系） |
 | `api` | object | ❌ | API 配置（MediaWiki 站点必填） |
 | `extraction` | object | ❌ | 提取规则（供 explore 使用） |
+| `samples` | array | ❌ | 样本页面列表（供站点回归测试使用） |
 
 ### `api` 字段
 
@@ -256,6 +257,29 @@ strategy.md (YAML frontmatter)
 | `wiki-gg` | wiki.gg 托管的 MediaWiki |
 
 管线在 `run_pipeline()` 中解析此字段并传递给各阶段函数。当前阶段仅接受和记录，不实现行为分支（`orchestrator.py:139-140`）。
+
+### `samples` 字段
+
+样本页面声明，用于站点样本回归测试（`python3 scripts/test_runner.py site-samples`）。
+
+| 子字段 | 类型 | 必填 | 说明 |
+|--------|------|------|------|
+| `page` | string | ✅ | URL 路径或 cache-safe 路径，标识页面（如 `Packages/.../Pages/Page_239857945.html`） |
+| `label` | string | ✅ | 人类可读描述，说明该页面的代表性特征 |
+
+示例：
+
+```yaml
+samples:
+  - page: "Packages/Docs/Guides/Online_Play_Guide/contents/Pages/Page_239857945.html"
+    label: "复杂嵌套表格页面"
+  - page: "Packages/Network/Guides/NX-Account_Guide/contents/Pages/Page_106359813.html"
+    label: "纯文本无表格页面"
+```
+
+- 默认值：空列表（不声明 `samples` 时等同无样本）
+- test_runner 扫描 `sites/strategies/*/strategy.md` 中此字段，为每个 `(domain, page)` 动态生成 `unittest.TestCase`
+- 样本数据从 `.cache/` 读取，golden file 存放在 `sites/strategies/<domain>/samples/<page>.md`
 
 ## content_profile 合法值
 

@@ -15,10 +15,11 @@
 | C2 | **Node.js 纯 ESM**：`.mjs` 文件，无 TypeScript，无编译步骤，无 CommonJS | — |
 | C3 | **Pipeline 调用方式**：`python3 -m scripts.pipeline <subcommand>`，禁止直接执行 `cli.py` | `__main__.py` 入口不触发，相对导入失败 |
 | C4 | **引擎版本同步**：升级引擎后必须同步 `configs/engine-versions.json` 的 `expected_version` + `expected_md5` + `expected_size` | preflight 反复重下载 / hash_mismatch |
-| C5 | **测试框架**：Node.js 用 `node:test`，Python 用 `unittest`，禁止引入第三方测试依赖 | — |
+| C5 | **测试框架**：Node.js 用 `node:test`，Python 用 `unittest`，禁止引入第三方测试依赖。通用代码测试放 `tests/` 顶层目录，运行 `python3 -m unittest discover -s tests -v` | — |
 | C6 | **Shell 脚本**：`set -euo pipefail` + stderr 日志（`printf '%s\n' "$*" >&2`） | — |
 | C7 | **策略注册**：新增策略必须更新 `registry.json`；frontmatter 与 registry 冲突时以 frontmatter 为准 | 策略不生效 / bootstrap 与手动创建行为不一致 |
 | C8 | **函数声明风格**：Node.js 顶层用 `function xxx()` 声明，不用箭头函数 | — |
+| C9 | **测试义务**：修改 `scripts/lib/`、`scripts/pipeline/pipeline/phases/`、`scripts/lib/extraction/` 时必须在 `tests/` 新增或更新对应测试；修改站点策略时必须运行 `python3 scripts/test_runner.py site-samples --domain <domain>` 确认回归通过 | 新代码无测试覆盖 / 回归未捕获 |
 
 ## 1. Service Identity
 
@@ -129,6 +130,9 @@ Orbitos Spec Standard v0.3。真源：`openspec/specs/`。变更：`openspec/cha
 | P2 | `openspec/specs/` | 冻结能力规范 |
 | P2 | `openspec/changes/` | 进行中变更 |
 | P2 | `scripts/explore/ki_lifecycle.py` | Issue 分类与修复 |
+| P1 | `tests/` | 通用代码单元测试（按源码模块分组） |
+| P1 | `scripts/test_runner.py` | 统一测试入口（`all` / `site-samples` / `unit`） |
+| P2 | `scripts/lib/test_assertions.py` | 结构断言规则集（HTML 标签 / 链接解析 / 表格校验） |
 
 ## 10. Single Source of Truth (SSOT) Map
 
@@ -183,3 +187,4 @@ Orbitos Spec Standard v0.3。真源：`openspec/specs/`。变更：`openspec/cha
 | **改共享库**（`scripts/lib/`） | `05-converter-architecture.md` | 两阶段转换模型、Python 兼容 |
 | **改 Shell 脚本**（`scripts/*.sh`） | `08-tech-stack.md` §2.3 | `set -euo pipefail`、路径计算模式 |
 | **新增能力规范** | `openspec/specs/` 同类文件 + `docs/decisions/` | Orbitos Spec Standard v0.3 格式 |
+| **测试相关** | `08-tech-stack.md` §4 + testing-governance specs | 测试目录约定、runner 命令、站点样本机制、C9 测试义务 |
