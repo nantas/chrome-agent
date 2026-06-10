@@ -119,6 +119,11 @@ artifacts:
       - 每个任务都要可验证
       - 任务描述优先引用 spec 覆盖、实现路径、验证方式
       - 不要把页面回写任务混入核心实现任务；回写准备放在 verification/writeback 阶段收敛
+
+      TDD vertical slice 规则：
+      - 涉及代码修改的任务（`.py`、`.mjs`）必须拆为 vertical slice：测试子任务（RED）→ 实现子任务（GREEN）
+      - 纯文档任务（仅修改 `.md` 文件）可独立存在，不强制测试子任务
+      - 每个 vertical slice 必须可独立验证（测试通过 = slice 完成）
   - id: verification
     generates: verification.md
     description: 记录 spec-to-implementation 与 task-to-evidence 的验证映射
@@ -130,6 +135,11 @@ artifacts:
       至少覆盖两类映射：
       - spec-to-implementation coverage
       - task-to-evidence coverage
+
+      J3 测试完备检查规则：
+      - 新增代码模块（`scripts/` 下 `.py` 或 `.mjs`）无对应测试文件 → CRITICAL
+      - 修改已有代码模块但未更新对应测试 → WARNING
+      - 仅修改 `.md` 文档 → 不检查测试完备性
 
       若存在缺口，要明确列出未覆盖 requirement、未完成任务或缺失证据。
   - id: writeback
@@ -170,3 +180,8 @@ apply:
     Before considering this change ready for archive, ensure tasks covering
     verification.md generation, writeback.md generation, and writeback target
     execution evidence are all completed and checked.
+
+    TDD 执行约束：
+    - 涉及代码修改的任务（`.py`、`.mjs`）必须遵循 TDD：先写/更新测试（RED）→ 实现（GREEN）→ 必要时重构
+    - 纯文档任务（仅修改 `.md` 文件）直接执行，不需要 RED→GREEN 循环
+    - 每个 vertical slice 完成后立即运行对应测试确认 GREEN，不要累积多个 slice

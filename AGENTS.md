@@ -19,7 +19,7 @@
 | C6 | **Shell 脚本**：`set -euo pipefail` + stderr 日志（`printf '%s\n' "$*" >&2`） | — |
 | C7 | **策略注册**：新增策略必须更新 `registry.json`；frontmatter 与 registry 冲突时以 frontmatter 为准 | 策略不生效 / bootstrap 与手动创建行为不一致 |
 | C8 | **函数声明风格**：Node.js 顶层用 `function xxx()` 声明，不用箭头函数 | — |
-| C9 | **测试义务**：修改 `scripts/lib/`、`scripts/pipeline/pipeline/phases/`、`scripts/lib/extraction/` 时必须在 `tests/` 新增或更新对应测试；修改站点策略时必须运行 `python3 scripts/test_runner.py site-samples --domain <domain>` 确认回归通过 | 新代码无测试覆盖 / 回归未捕获 |
+| C9 | **测试义务**：修改 `scripts/lib/`、`scripts/pipeline/pipeline/phases/`、`scripts/lib/extraction/` 时必须在 `tests/` 新增或更新对应测试；修改站点策略时必须运行 `python3 scripts/test_runner.py site-samples --domain <domain>` 确认回归通过。代码任务遵循 vertical slice TDD（详见 `08-tech-stack.md` §4 TDD 约定） | 新代码无测试覆盖 / 回归未捕获 |
 
 ## 1. Service Identity
 

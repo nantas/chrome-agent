@@ -294,6 +294,29 @@ node --test tests/chrome-agent-runtime.test.mjs
 
 `scripts/pipeline/tests/` 下的旧测试保留原位（不迁移到 `tests/`），已全部迁移到 `unittest.TestCase`。新测试统一放 `tests/`。
 
+### TDD 约定
+
+> 本节描述 chrome-agent 项目的测试驱动开发方法论。核心原则转写自 TDD skill。
+
+**Vertical Slice 原则**：一个测试 → 一个实现 → 通过，重复。不要写完全部测试再写全部实现（horizontal slicing），这会产生测试想象中行为而非实际行为的劣质测试。
+
+**禁止 Horizontal Slicing**：不要把 RED 阶段理解为"写完所有测试"，GREEN 阶段理解为"写完所有代码"。正确做法是每次只写一个测试，立即实现使其通过。
+
+**行为优先于实现**：测试验证公共接口的行为，不验证内部实现细节。好的测试在重构后仍然通过，因为行为没有改变。
+
+**重构只在 GREEN 之后**：所有测试通过后才重构。重构时持续运行测试确认行为不变。不要在 RED 状态下重构。
+
+```text
+正确（vertical）：
+  RED→GREEN: test1 → impl1
+  RED→GREEN: test2 → impl2
+  RED→GREEN: test3 → impl3
+
+错误（horizontal）：
+  RED:   test1, test2, test3
+  GREEN: impl1, impl2, impl3
+```
+
 ## 5. Common Pitfalls
 
 ### Python 3.9 Compatibility
