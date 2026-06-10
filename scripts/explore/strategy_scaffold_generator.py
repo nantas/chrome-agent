@@ -229,6 +229,20 @@ def generate(
     os.makedirs(domain_dir, exist_ok=True)
     scaffold_path = os.path.join(domain_dir, "strategy.md")
 
+    # Guard: never overwrite a manually-edited strategy
+    if os.path.exists(scaffold_path):
+        with open(scaffold_path, "r", encoding="utf-8") as f:
+            first_line = f.readline().strip()
+        if not first_line.startswith("# Auto-generated scaffold"):
+            print(f"[scaffold] SKIP: {scaffold_path} exists and is not auto-generated (first line: {first_line[:60]})")
+            return {
+                "path": scaffold_path,
+                "content": "",
+                "template_id": template["id"],
+                "skipped": True,
+                "reason": "Manually-edited strategy exists — delete it first to regenerate.",
+            }
+
     with open(scaffold_path, "w", encoding="utf-8") as f:
         f.write(content)
 

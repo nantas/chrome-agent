@@ -1,3 +1,4 @@
+from __future__ import annotations
 """SelfCheck — S1-S12 checks for sample conversion quality + auto-remediation loop."""
 
 import re

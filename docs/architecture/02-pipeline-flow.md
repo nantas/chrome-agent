@@ -119,6 +119,30 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
 | **输出** | Stats dict（total, fetched, skipped, failed） |
 | **副作用** | 写入 `.cache/` 持久化缓存 |
 
+### Fetch CDP — Chrome CDP 获取
+
+| 项目 | 说明 |
+|------|------|
+| **入口** | `scripts/pipeline/pipeline/phases/fetch_cdp.py` — `run_fetch_cdp()` |
+| **触发条件** | 通过 CDP 会话获取非 MediaWiki 站点的页面内容 |
+| **输入** | 页面 URL 列表、domain、repo_root、CDP 提取回调函数 |
+| **流程** | 1. 对每个页面检查 `.cache/chrome-cdp/` 是否已缓存 → 2. 未命中则通过 CDP 回调提取 HTML → 3. 调用 `save_page_cache()` 写入缓存 |
+| **输出** | Stats dict（total, fetched, skipped, failed） |
+| **副作用** | 写入 `.cache/chrome-cdp/<domain>/` 持久化缓存 |
+
+与 MediaWiki Fetch 的关系：`fetch.py` 强依赖 `ApiClient` 和 `ContentAcquisitionStrategy`，CDP fetch 使用回调函数接口，两者保持独立避免耦合。
+
+### Convert HTML — HTML 转 Markdown
+
+| 项目 | 说明 |
+|------|------|
+| **入口** | `scripts/pipeline/pipeline/phases/convert_html.py` — `run_convert_html()` |
+| **触发条件** | 需要将 CDP 缓存的 HTML 转换为 Markdown 时调用 |
+| **输入** | 页面列表、domain、repo_root、output_dir |
+| **流程** | 1. 从 `.cache/chrome-cdp/` 读取缓存的 HTML → 2. 调用 `html_to_markdown()` 转换（含表格 rowspan/colspan 处理） → 3. 写入 `.md` 文件到输出目录 |
+| **输出** | Stats dict（total, converted, skipped, failed） |
+| **副作用** | 写入输出目录 `.md` 文件 |
+
 ### Convert — 内容转换
 
 | 项目 | 说明 |
@@ -147,7 +171,7 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
 
 ```
 <repo_root>/.cache/
-  └── <platform>/        # "mediawiki" 或 "scrapling"
+  └── <platform>/        # "mediawiki"、"scrapling" 或 "chrome-cdp"
       └── <domain>/
           ├── Page_Title_1.json
           ├── Page_Title_2.json
@@ -155,6 +179,8 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
 ```
 
 **每个缓存文件包含**：`html`、`wikitext`、`rendered_html`、`images`、`content_acquisition`、`fetched_at` 时间戳。
+
+**chrome-cdp 缓存**：`platform: "chrome-cdp"` 的缓存条目包含 `html`（原始 HTML）、`url`（完整源 URL）、`fetched_at` 时间戳。缓存路径为 `.cache/chrome-cdp/<domain>/<url_path_with_slashes_to_underscores>.json`。由 `fetch_cdp.py` 阶段写入，`convert_html.py` 阶段读取。
 
 **关键行为**：
 - Fetch 阶段：缓存已有页面跳过（`is_cached = title in cached_pages`），除非 `--re-fetch`；全量缓存时走快速路径直接返回（<1秒）；`batch_delay` sleep 仅在实际网络请求时执行

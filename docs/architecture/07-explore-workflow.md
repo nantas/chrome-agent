@@ -124,7 +124,9 @@ Generates a `strategy.md` file with YAML frontmatter populated from discovery re
 - `extraction` rules (selectors, cleanup, infobox, image filtering)
 - `anti_crawl` references
 
-The scaffold file is written to `sites/strategies/<domain>/strategy.md` with a `<!-- Bootstrapped -->` marker.
+The scaffold file is written to `sites/strategies/<domain>/strategy.md` with a first line `# Auto-generated scaffold — review recommended`.
+
+**Overwrite Guard**：如果 `strategy.md` 已存在且首行不是 `# Auto-generated scaffold`，scaffold 生成器将跳过写入并返回 `{"skipped": true, "reason": "Manually-edited strategy exists — delete it first to regenerate."}`。这保护了手动编辑的策略文件不被 explore 流程重置。自动生成的 scaffold（首行以 `# Auto-generated scaffold` 开头）则允许正常覆盖，支持重新生成。
 
 **Key function**: `generate(repo_root, domain, description, platform, protection, structure, api_config) → dict`
 
