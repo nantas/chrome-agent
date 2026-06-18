@@ -6,6 +6,8 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
 
 **权威来源**：`scripts/pipeline/pipeline/orchestrator.py:76` — `run_pipeline(args: argparse.Namespace) -> int`
 
+**Sitemap 发现路径**：对于无 MediaWiki API 的静态文档站点，存在独立的 sitemap 发现路径——`sitemap.xml` 解析 → URL 过滤 → 自动分组 → 输出 `page_manifest.json` → 确认闸门（confirmation gate）→ 线性 scrapling 提取。该路径由策略的 `discovery.method: sitemap` 触发，与 MediaWiki API 管线互斥（详见 [03 — 策略 Schema](03-strategy-schema.md) 与 [04 — CLI 参考](04-cli-reference.md)）。
+
 ## 端到端数据流
 
 ```

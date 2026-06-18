@@ -210,6 +210,12 @@ Build a tree diagram from `discovery_summary.json` showing:
 When `discovery_method` is `"first_level_links"` (Scrapling path):
 - Label page counts as estimates (e.g., "≈ 50+ pages")
 - Display caveats prominently
+When `discovery_method` is `"sitemap"` (static documentation site):
+- Page counts are exact (sourced from sitemap.xml) — no estimate labeling needed
+- Caveats (e.g., sitemap-specific notes) follow the standard presentation
+- Sitemap index (sitemapindex) is not yet supported — discovery will handoff if detected
+
+**Limitation**: `--exclude-category` is not yet supported for sitemap-driven crawls in Stage 3. The Adjust option will have no effect on the extraction scope.
 
 When `warnings` is non-empty:
 - Show warnings below the tree
@@ -361,6 +367,10 @@ Steps:
 
 Use the standard `chrome-agent fetch` command for content retrieval,
 then apply strategy extraction rules manually if needed.
+
+Sitemap-driven sites (`discovery.method: sitemap`) also fall into this category for
+single-page operations. For multi-page collection, use the sitemap crawl path
+via `chrome-agent crawl --discovery-only` (see Crawl Confirmation Gate above).
 
 ### Conversion flow note
 

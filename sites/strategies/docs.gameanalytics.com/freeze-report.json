@@ -1,0 +1,17 @@
+{
+  "domain": "docs.gameanalytics.com",
+  "protection_level": "low",
+  "page_types": [
+    "static_article"
+  ],
+  "entry_points": [
+    "home",
+    "doc_page"
+  ],
+  "anti_crawl_refs": [
+    "default"
+  ],
+  "strategy_path": "/Users/nantasmac/projects/agentic/chrome-agent/sites/strategies/docs.gameanalytics.com/strategy.md",
+  "registry_path": "/Users/nantasmac/projects/agentic/chrome-agent/sites/strategies/registry.json",
+  "status": "frozen"
+}

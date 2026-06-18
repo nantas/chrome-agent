@@ -205,6 +205,9 @@ strategy.md (YAML frontmatter)
 │   ├── ❌ page_type_map { summary_pages, entity_pages }
 │   ├── ❌ card_images
 │   └── ❌ card_list_splitting
+├── ❌ discovery           # 与 api 互斥：无 API 的静态文档站点
+│   ├── ✅ method: "sitemap"
+│   └── ❌ sitemap_url: string
 └── ❌ extraction
     └── ❌ fields[]
         ├── name
@@ -225,7 +228,8 @@ strategy.md (YAML frontmatter)
 | `anti_crawl_refs` | string[] | ❌ | 引用的反爬策略 ID 列表 |
 | `backend` | string | ❌ | 后端家族标记（advisory），不参与运行时匹配 |
 | `structure` | object | ❌ | 站点结构描述（页面类型、链接关系） |
-| `api` | object | ❌ | API 配置（MediaWiki 站点必填） |
+| `api` | object | ❌ | API 配置（MediaWiki 站点必填，与 `discovery` 互斥） |
+| `discovery` | object | ❌ | Sitemap 发现配置（无 API 的静态文档站点，与 `api` 互斥） |
 | `extraction` | object | ❌ | 提取规则（供 explore 使用） |
 | `samples` | array | ❌ | 样本页面列表（供站点回归测试使用） |
 
@@ -247,6 +251,25 @@ strategy.md (YAML frontmatter)
 | `page_type_map` | object | ❌ | — | 页面类型映射 |
 | `card_images` | object | ❌ | — | 卡牌图片配置 |
 | `card_list_splitting` | object | ❌ | — | 列表页拆分配置 |
+
+### `discovery` 字段
+
+用于**无 MediaWiki API 的静态文档站点**的页面发现配置。当策略不含 `api:` 块时使用此块驱动 sitemap 发现路径，**与 `api:` 块互斥**（同一策略文件中二者只能存在其一）。
+
+| 字段 | 类型 | 必填 | 默认值 | 说明 |
+|------|------|------|--------|------|
+| `method` | string | ✅ | — | 发现方法，当前唯一支持值 `"sitemap"` |
+| `sitemap_url` | string | ❌ | `"https://<domain>/sitemap.xml"` | sitemap.xml 的 URL |
+
+示例：
+
+```yaml
+discovery:
+  method: "sitemap"                                     # 必填，当前唯一支持值
+  sitemap_url: "https://docs.example.com/sitemap.xml"   # 可选，默认 "https://<domain>/sitemap.xml"
+```
+
+触发数据流（详见 [02 — 管线数据流](02-pipeline-flow.md)）：`sitemap.xml` → 解析 → URL 过滤 → 自动分组 → `page_manifest.json` → 确认闸门 → 线性 scrapling 提取。
 
 ### `platform_variant` 枚举
 

@@ -29,11 +29,15 @@ chrome-agent <command> <url>
     │
     ├── crawl <url>
     │       └── runCrawl() (:1965)
-    │           ├── findStrategy() (:512) → api.platform=mediawiki?
-    │           │   ├── Yes → python3 -m scripts.pipeline pipeline
-    │           │   │         runCrawlMediawikiApi() (:2054)
-    │           │   └── No  → Scrapling discovery + crawl
-    │           │             runCrawlScrapling() (:2298)
+    │           ├── findStrategy() (:512) → discovery.method=sitemap?
+    │           │   ├── Yes → Sitemap discovery path
+    │           │   │         ├── --discovery-only → runCrawlSitemapDiscovery()
+    │           │   │         └── full crawl         → runCrawlSitemapExtraction()
+    │           │   └── No  → api.platform=mediawiki?
+    │           │       ├── Yes → python3 -m scripts.pipeline pipeline
+    │           │       │         runCrawlMediawikiApi() (:2054)
+    │           │       └── No  → Scrapling discovery + crawl
+    │           │                 runCrawlScrapling() (:2298)
     │           └── Bounded traversal with strategy
     │
     ├── scrape <url>

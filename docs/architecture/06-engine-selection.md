@@ -57,7 +57,9 @@ REQUEST (URL + intent)
   ├── Platform Detection
   │     ├── MediaWiki (api.platform: mediawiki in strategy)
   │     │     └── mediawiki-api (rank 0)
-  │     └── Non-MediaWiki → continue
+  │     ├── Sitemap-driven site (discovery.method: sitemap in strategy)
+  │     │     └── sitemap.xml → scrapling-get (rank 1, linear extraction)
+  │     └── Other → continue
   │
   ├── Protection Level Assessment
   │     ├── High protection (Turnstile / reCAPTCHA / TLS fingerprint)
@@ -85,10 +87,11 @@ REQUEST (URL + intent)
 ### Selection Rules
 
 1. **API-first for MediaWiki**: When strategy declares `api.platform: mediawiki`, the `mediawiki-api` engine takes priority (rank 0) for crawl operations. `fetch` and `scrape` commands do not trigger the API path.
-2. **Scrapling-first default**: For non-API scenarios, start with `scrapling-get` (lightest engine). Escalate only when output is incomplete.
-3. **Obscura for dynamic content**: When JS rendering is needed but full browser overhead is unwarranted, `obscura-fetch` provides 2-3.5× the speed of Playwright.
-4. **CloakBrowser for high protection**: `cloakbrowser-fetch` handles Cloudflare Turnstile (6-8s auto-resolve), reCAPTCHA v3 (score 0.9), and TLS fingerprint detection via 57 C++ Chromium patches.
-5. **DevTools for diagnostics only**: `chrome-devtools-mcp` is never a primary extraction engine; it provides DOM, network, console, and screenshot evidence.
+2. **Sitemap discovery for static doc sites**: When strategy declares `discovery.method: sitemap` (and no `api:` block), discovery parses `sitemap.xml` and page extraction uses `scrapling-get` (rank 1) linearly. This path is mutually exclusive with the MediaWiki API path.
+3. **Scrapling-first default**: For non-API scenarios, start with `scrapling-get` (lightest engine). Escalate only when output is incomplete.
+4. **Obscura for dynamic content**: When JS rendering is needed but full browser overhead is unwarranted, `obscura-fetch` provides 2-3.5× the speed of Playwright.
+5. **CloakBrowser for high protection**: `cloakbrowser-fetch` handles Cloudflare Turnstile (6-8s auto-resolve), reCAPTCHA v3 (score 0.9), and TLS fingerprint detection via 57 C++ Chromium patches.
+6. **DevTools for diagnostics only**: `chrome-devtools-mcp` is never a primary extraction engine; it provides DOM, network, console, and screenshot evidence.
 
 ## 4. Preflight Mechanism
 
