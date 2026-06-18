@@ -188,3 +188,18 @@ Orbitos Spec Standard v0.3。真源：`openspec/specs/`。变更：`openspec/cha
 | **改 Shell 脚本**（`scripts/*.sh`） | `08-tech-stack.md` §2.3 | `set -euo pipefail`、路径计算模式 |
 | **新增能力规范** | `openspec/specs/` 同类文件 + `docs/decisions/` | Orbitos Spec Standard v0.3 格式 |
 | **测试相关** | `08-tech-stack.md` §4 + testing-governance specs | 测试目录约定、runner 命令、站点样本机制、C9 测试义务 |
+
+---
+
+## Agent Skills
+
+> 本区块记录项目中可用的 agent skill 及其注册信息。
+> 由 `$setup-matt-pocock-skills` 初始化。
+
+| Skill | 用途 | 触发条件 |
+|-------|------|----------|
+| _暂无已注册 skill_ | | |
+
+### Skill 安装记录
+
+_尚无 skill 安装记录。_
