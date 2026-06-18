@@ -538,16 +538,70 @@ function findStrategy(repoRoot, targetUrl) {
 }
 
 function pagePatternMatches(page, targetUrl) {
-  if (!page?.url_pattern) {
+  // Check page_pattern array (new format with exact:/regex: prefixes)
+  const pagePatterns = page?.page_pattern ?? [];
+  for (const pp of pagePatterns) {
+    if (typeof pp !== "string") continue;
+    if (pp.startsWith("exact:")) {
+      if (targetUrl === pp.slice(6)) return true;
+    } else {
+      const patternText = pp.startsWith("regex:") ? pp.slice(6) : pp;
+      try {
+        if (new RegExp(patternText).test(targetUrl)) return true;
+      } catch { /* invalid regex, skip */ }
+    }
+  }
+
+  // Legacy url_pattern field fallback
+  if (page?.url_pattern) {
+    const url = new URL(targetUrl);
+    const isAbsolute = /^https?:\/\//.test(page.url_pattern);
+    const candidate = isAbsolute ? `${url.origin}${url.pathname}` : url.pathname;
+    const pattern = page.url_pattern.replace(/:[A-Za-z_][A-Za-z0-9_]*/g, "__PARAM__");
+    const escaped = pattern.replace(/[.*+?^\${}()|[\]\\]/g, "\\$&").replace(/__PARAM__/g, "[^/?#]+");
+    const regex = new RegExp(`^${escaped}$`);
+    if (regex.test(candidate)) return true;
+  }
+
+  return false;
+}
+
+// Match a single pattern string (with exact:/regex: prefix) against a URL.
+// Drives discovery.exclude_patterns. Supports glob wildcards in exact:
+// patterns (** matches any chars incl. '/'; * matches non-slash chars) and
+// tests BOTH the full URL and the URL pathname, so path-anchored patterns
+// like "exact:/docs/references/**" or "regex:^/docs/v\d+/.*" work against
+// absolute sitemap URLs (https://host/docs/...).
+function matchesPagePattern(pattern, targetUrl) {
+  if (typeof pattern !== "string" || pattern.length === 0) return false;
+  let pathname = targetUrl;
+  try {
+    pathname = new URL(targetUrl).pathname;
+  } catch {
+    /* targetUrl is not absolute — compare as-is */
+  }
+
+  if (pattern.startsWith("exact:")) {
+    const glob = pattern.slice(6);
+    const re = glob
+      .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
+      .replace(/\*\*/g, ".*")
+      .replace(/\*/g, "[^/]*");
+    try {
+      const compiled = new RegExp(`^${re}$`);
+      return compiled.test(targetUrl) || compiled.test(pathname);
+    } catch {
+      return false;
+    }
+  }
+
+  const patternText = pattern.startsWith("regex:") ? pattern.slice(6) : pattern;
+  try {
+    const compiled = new RegExp(patternText);
+    return compiled.test(targetUrl) || compiled.test(pathname);
+  } catch {
     return false;
   }
-  const url = new URL(targetUrl);
-  const isAbsolute = /^https?:\/\//.test(page.url_pattern);
-  const candidate = isAbsolute ? `${url.origin}${url.pathname}` : url.pathname;
-  const pattern = page.url_pattern.replace(/:[A-Za-z_][A-Za-z0-9_]*/g, "__PARAM__");
-  const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/__PARAM__/g, "[^/?#]+");
-  const regex = new RegExp(`^${escaped}$`);
-  return regex.test(candidate);
 }
 
 function findMatchingPage(strategyDoc, targetUrl) {
@@ -589,6 +643,45 @@ function selectFetcher(strategy, page) {
     return "fetch";
   }
   return "get";
+}
+
+// ── Sitemap XML parsing ──
+// locRegex is function-local so parseSitemapXml remains a pure, self-contained
+// unit (the discovery layer — not this parser — performs HTTP fetches).
+function parseSitemapXml(xmlString) {
+  // Extract <loc> content — handles CDATA, namespaces, whitespace.
+  const locRegex = /<loc>(?:<!\[CDATA\[)?([^<]*?)(?:\]\]>)?<\/loc>/gi;
+
+  // Detect sitemap index — extract child <sitemap><loc> URLs (no fetch here;
+  // runCrawlSitemapDiscovery iterates and fetches each sub-sitemap).
+  if (/<sitemapindex[\s>]/i.test(xmlString)) {
+    const sitemaps = [];
+    let match;
+    while ((match = locRegex.exec(xmlString)) !== null) {
+      const url = match[1].trim();
+      if (url && (url.startsWith("https://") || url.startsWith("http://"))) {
+        sitemaps.push(url);
+      }
+    }
+    return { isIndex: true, sitemaps };
+  }
+
+  // Try flat <urlset> first
+  const urlsetMatch = xmlString.match(/<urlset[\s>]/i);
+  if (!urlsetMatch) {
+    return { error: "parse_error", reason: "no <urlset> or <sitemapindex> root element found" };
+  }
+
+  const urls = [];
+  let match;
+  while ((match = locRegex.exec(xmlString)) !== null) {
+    const url = match[1].trim();
+    if (url && (url.startsWith("https://") || url.startsWith("http://"))) {
+      urls.push(url);
+    }
+  }
+
+  return { urls };
 }
 
 function runScraplingPreflight(repoRoot, allowInstall) {
@@ -2039,6 +2132,14 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
   if (apiConfig && apiConfig.platform === "mediawiki") {
     return runCrawlMediawikiApi(repoRoot, repoRef, resolutionMode, runDir, reportPath, manifestPath, emitReport, targetUrl, strategy, doc, startPage, matchingPage, entryPoints, opts);
   }
+  const discoveryMethod = doc?.discovery?.method;
+  if (discoveryMethod === "sitemap") {
+    if (discoveryOnly) {
+      return runCrawlSitemapDiscovery(repoRoot, repoRef, resolutionMode, runDir, reportPath, emitReport, targetUrl, strategy, doc, opts);
+    }
+    return runCrawlSitemapExtraction(repoRoot, repoRef, resolutionMode, runDir, reportPath, manifestPath, emitReport, targetUrl, strategy, doc, opts);
+  }
+
   if (discoveryOnly && !doc?.api?.platform) {
     return runCrawlScraplingDiscovery(repoRoot, repoRef, resolutionMode, runDir, reportPath, emitReport, targetUrl, strategy, doc, startPage, opts);
   }
@@ -2326,6 +2427,8 @@ async function runCrawlScrapling(repoRoot, repoRef, resolutionMode, runDir, repo
     parallel = false,
     workers = 5,
   } = opts;
+
+const pages = doc?.structure?.pages ?? [];
 let events = [];
 let fallbackReason = null;
 const preflight = runScraplingPreflight(repoRoot, true);
@@ -3814,3 +3917,467 @@ async function main() {
 }
 
 await main();
+
+// ── Sitemap auto-grouping ──
+function autoGroupSitemapUrls(urls, strategyDoc) {
+  const structurePages = strategyDoc?.structure?.pages ?? [];
+  return urls.map((url) => {
+    const urlObj = new URL(url);
+    const pathParts = urlObj.pathname.replace(/^\/+/, "").split("/");
+    const firstSegment = pathParts[0] || "misc";
+    const lastSegment = pathParts[pathParts.length - 1] || "index";
+
+    // Derive title from last path segment
+    const title = lastSegment
+      .replace(/[^a-zA-Z0-9_-]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim() || "index";
+
+    // Derive target_filename
+    let targetFilename = lastSegment.toLowerCase().replace(/[^a-z0-9_-]/g, "-").replace(/^-+|-+$/g, "");
+    if (!targetFilename) targetFilename = "index";
+    targetFilename += ".md";
+
+    // Derive assigned_category from first segment
+    const assignedCategory = firstSegment
+      .replace(/-/g, " ")
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+
+    // Match page_type from structure.pages via pagePatternMatches
+    let pageType = "unknown";
+    for (const page of structurePages) {
+      if (pagePatternMatches(page, url)) {
+        pageType = page.id;
+        break;
+      }
+    }
+
+    return {
+      url,
+      title,
+      target_directory: firstSegment,
+      target_filename: targetFilename,
+      assigned_category: assignedCategory,
+      page_type: pageType,
+    };
+  });
+}
+
+// ── Sitemap discovery summary builder ──
+function buildSitemapDiscoverySummary(domain, description, pages, outputDir) {
+  const totalPages = pages.length;
+
+  // Group by target_directory
+  const dirPages = {};
+  for (const page of pages) {
+    const tdir = page.target_directory || "misc";
+    if (!dirPages[tdir]) dirPages[tdir] = [];
+    dirPages[tdir].push(page);
+  }
+
+  // Build categories
+  const categories = [];
+  for (const [dir, catPages] of Object.entries(dirPages).sort()) {
+    const categoryName = (catPages[0]?.assigned_category) || dir.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+    const pageType = catPages[0]?.page_type || "static_article";
+    const samplePages = catPages.slice(0, 5).map((p) => p.title);
+
+    categories.push({
+      name: categoryName,
+      directory: dir,
+      type: "category_page",
+      is_index_page: false,
+      page_count: catPages.length,
+      sample_pages: samplePages,
+      page_type: pageType,
+    });
+  }
+
+  // Estimated time: 5 seconds per page, min 1 minute
+  const estimatedTimeMinutes = Math.max(Math.ceil(totalPages * 5 / 60), 1);
+
+  const siteTitle = (description || "").split(" - ")[0] || domain;
+  const manifestPath = outputDir ? outputDir + "/page_manifest.json" : null;
+
+  return {
+    discovery_method: "sitemap",
+    site_title: siteTitle,
+    domain: domain,
+    categories: categories,
+    excluded: [],
+    unclassified: { count: 0, directory: "misc", sample_pages: [] },
+    total_pages: totalPages,
+    estimated_time_minutes: estimatedTimeMinutes,
+    manifest_path: manifestPath,
+    warnings: [],
+    caveats: ["URLs sourced from sitemap.xml; pages without page_pattern match were excluded."],
+    failure_rate: 0.0,
+  };
+}
+
+// ── Sitemap discovery-only ──
+async function runCrawlSitemapDiscovery(repoRoot, repoRef, resolutionMode, runDir, reportPath, emitReport, targetUrl, strategy, doc, opts) {
+  const { yes: yesFlag = false } = opts;
+
+  // Determine sitemap URL
+  const sitemapUrl = doc?.discovery?.sitemap_url ?? `https://${doc.domain}/sitemap.xml`;
+
+  // Fetch sitemap (use curl — scrapling CLI doesn't handle XML)
+  const tempPath = path.join(runDir, "_sitemap.xml");
+  const sitemapFetch = spawnSync("curl", ["-sL", "-o", tempPath, "-w", "%{http_code}", sitemapUrl], { encoding: "utf8", timeout: 30_000 });
+  const httpCode = parseInt(sitemapFetch.stdout?.trim() || "0", 10);
+  const fetchOk = sitemapFetch.status === 0 && httpCode >= 200 && httpCode < 400;
+  if (!fetchOk) {
+    const fetchErr = `curl exited ${sitemapFetch.status} with HTTP ${httpCode}: ${sitemapFetch.stderr || ""}`;
+    const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: "sitemap_unreachable", summary: `Sitemap URL ${sitemapUrl} returned HTTP ${httpCode || "error"}.`, stderr: fetchErr }, strategy });
+    return makeResult("crawl", targetUrl, repoRef,
+      "Sitemap unreachable.",
+      [absoluteArtifact(tempPath, "disposable", "Sitemap fetch attempt")],
+      `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
+      "failure",
+      { workflow: "content_retrieval", engine_path: "sitemap_discovery -> sitemap_unreachable", handoff_path: handoff.path, handoff_summary: handoff.summary }
+    );
+  }
+
+  // Parse sitemap
+  const sitemapContent = fs.existsSync(tempPath) ? fs.readFileSync(tempPath, "utf8") : "";
+  const parsed = parseSitemapXml(sitemapContent);
+
+  if (parsed.error) {
+    const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: "sitemap_parse_error", summary: "Sitemap XML could not be parsed.", stderr: parsed.reason || "" }, strategy });
+    return makeResult("crawl", targetUrl, repoRef,
+      "Sitemap parse error.",
+      [absoluteArtifact(tempPath, "disposable", "Sitemap content")],
+      `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
+      "failure",
+      { workflow: "content_retrieval", engine_path: "sitemap_discovery -> parse_error", handoff_path: handoff.path, handoff_summary: handoff.summary }
+    );
+  }
+
+  // Sub-sitemap partial-failure tracking (populated only on the index path).
+  let subSitemapWarnings = [];
+  let subSitemapCaveats = [];
+  let subSitemapErrorsCount = 0;
+  let subSitemapTotal = 0;
+
+  // Resolve the URL set. For <sitemapindex>, iterate each sub-sitemap
+  // (curl fetch -> parse -> collect), Set-dedup across sub-sitemaps, and
+  // continue on partial failure. For flat <urlset>, use URLs directly.
+  let discoveredUrls;
+  if (parsed.isIndex) {
+    const subSitemaps = parsed.sitemaps || [];
+    subSitemapTotal = subSitemaps.length;
+    if (subSitemaps.length === 0) {
+      const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: "sitemap_index_empty", summary: "Sitemap index declared but listed no sub-sitemaps.", stderr: "" }, strategy });
+      return makeResult("crawl", targetUrl, repoRef,
+        "Sitemap index empty.",
+        [absoluteArtifact(tempPath, "disposable", "Sitemap index")],
+        `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
+        "failure",
+        { workflow: "content_retrieval", engine_path: "sitemap_discovery -> index_empty", handoff_path: handoff.path, handoff_summary: handoff.summary }
+      );
+    }
+    const subSitemapErrors = [];
+    const allUrls = [];
+    subSitemaps.forEach((subUrl, i) => {
+      const subTempPath = path.join(runDir, `_sitemap_sub_${i}.xml`);
+      const subFetch = spawnSync("curl", ["-sL", "-o", subTempPath, "-w", "%{http_code}", subUrl], { encoding: "utf8", timeout: 30_000 });
+      const subHttpCode = parseInt(subFetch.stdout?.trim() || "0", 10);
+      const subOk = subFetch.status === 0 && subHttpCode >= 200 && subHttpCode < 400;
+      if (!subOk) {
+        subSitemapErrors.push({ url: subUrl, reason: `HTTP ${subHttpCode || subFetch.status}` });
+        return;
+      }
+      const subContent = fs.existsSync(subTempPath) ? fs.readFileSync(subTempPath, "utf8") : "";
+      const subParsed = parseSitemapXml(subContent);
+      if (subParsed.error) {
+        subSitemapErrors.push({ url: subUrl, reason: `parse_error: ${subParsed.reason}` });
+        return;
+      }
+      if (subParsed.isIndex) {
+        // Recursive nesting (index -> index) is intentionally unsupported in v1.
+        subSitemapErrors.push({ url: subUrl, reason: "nested_index_unsupported" });
+        return;
+      }
+      allUrls.push(...(subParsed.urls || []));
+    });
+
+    if (subSitemapErrors.length === subSitemaps.length) {
+      const failedList = subSitemapErrors.map((e) => `${e.url} (${e.reason})`).join("; ");
+      const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: "sitemap_all_subs_failed", summary: `All ${subSitemaps.length} sub-sitemaps failed to fetch/parse.`, stderr: failedList }, strategy });
+      return makeResult("crawl", targetUrl, repoRef,
+        "All sub-sitemaps failed.",
+        [absoluteArtifact(tempPath, "disposable", "Sitemap index")],
+        `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
+        "failure",
+        { workflow: "content_retrieval", engine_path: "sitemap_discovery -> all_subs_failed", handoff_path: handoff.path, handoff_summary: handoff.summary }
+      );
+    }
+
+    if (subSitemapErrors.length > 0) {
+      subSitemapErrorsCount = subSitemapErrors.length;
+      for (const e of subSitemapErrors) {
+        const label = e.url.split("/").pop() || e.url;
+        subSitemapWarnings.push(`Sub-sitemap ${label} failed: ${e.reason}`);
+      }
+      subSitemapCaveats.push(`${subSitemapErrors.length}/${subSitemaps.length} sub-sitemaps failed`);
+    }
+
+    discoveredUrls = [...new Set(allUrls)];
+  } else {
+    discoveredUrls = parsed.urls || [];
+  }
+
+  // Filter URLs by page_pattern (include stage)
+  const pages = doc?.structure?.pages ?? [];
+  const matchedUrls = discoveredUrls.filter((url) => {
+    for (const page of pages) {
+      if (pagePatternMatches(page, url)) return true;
+    }
+    return false;
+  });
+
+  const filteredCount = discoveredUrls.length - matchedUrls.length;
+  if (filteredCount > 0) {
+    console.log(`Sitemap discovery: ${filteredCount} URLs excluded by page_pattern`);
+  }
+
+  // Exclude stage: drop URLs matching any discovery.exclude_patterns entry.
+  // Applied after the include stage so include (page_pattern) and exclude
+  // (exclude_patterns) stay independent and order is unambiguous.
+  const excludePatterns = doc?.discovery?.exclude_patterns ?? [];
+  let excludedByPatternsCount = 0;
+  const finalUrls = excludePatterns.length > 0
+    ? matchedUrls.filter((url) => {
+        for (const ep of excludePatterns) {
+          if (matchesPagePattern(ep, url)) { excludedByPatternsCount++; return false; }
+        }
+        return true;
+      })
+    : matchedUrls;
+  if (excludedByPatternsCount > 0) {
+    console.log(`Sitemap discovery: ${excludedByPatternsCount} URLs excluded by exclude_patterns`);
+  }
+
+  if (finalUrls.length === 0) {
+    const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: "sitemap_no_pattern_match", summary: `Sitemap returned ${discoveredUrls.length} URLs; none remained after page_pattern include + exclude_patterns filtering.`, stderr: "" }, strategy });
+    return makeResult("crawl", targetUrl, repoRef,
+      "No URLs matched page_pattern.",
+      [absoluteArtifact(tempPath, "disposable", "Sitemap content")],
+      `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
+      "failure",
+      { workflow: "content_retrieval", engine_path: "sitemap_discovery -> no_pattern_match", handoff_path: handoff.path, handoff_summary: handoff.summary }
+    );
+  }
+
+  // Auto-group URLs into page_manifest entries
+  const manifestPages = autoGroupSitemapUrls(finalUrls, doc);
+
+  // Write page_manifest.json
+  const pageManifestPath = path.join(runDir, "page_manifest.json");
+  writeTextFile(pageManifestPath, JSON.stringify({ pages: manifestPages }, null, 2));
+
+  // Build discovery_summary.json. Surface sub-sitemap partial failures as
+  // warnings/caveats + failure_rate, and downgrade result to partial_success.
+  const summary = buildSitemapDiscoverySummary(doc.domain, doc.description, manifestPages, runDir);
+  if (subSitemapWarnings.length > 0) {
+    summary.warnings = [...(summary.warnings || []), ...subSitemapWarnings];
+    summary.caveats = [...(summary.caveats || []), ...subSitemapCaveats];
+    summary.failure_rate = subSitemapTotal > 0 ? Number((subSitemapErrorsCount / subSitemapTotal).toFixed(2)) : 0.0;
+  }
+  const discoveryResult = subSitemapErrorsCount > 0 ? "partial_success" : "success";
+  const summaryPath = path.join(runDir, "discovery_summary.json");
+  writeTextFile(summaryPath, JSON.stringify(summary, null, 2));
+
+  return makeResult("crawl", targetUrl, repoRef,
+    `Discovery-only completed via sitemap (${finalUrls.length} pages across ${summary.categories.length} categories).`,
+    [
+      absoluteArtifact(pageManifestPath, "disposable", "Page manifest"),
+      absoluteArtifact(summaryPath, "disposable", "Discovery summary"),
+    ],
+    "Review discovery summary. Use --from-manifest to proceed with extraction.",
+    discoveryResult,
+    {
+      workflow: "content_retrieval",
+      engine_path: "sitemap_discovery -> discovery_only",
+      extraction_method: "sitemap",
+      discovery_only: true,
+      discovery_summary_path: path.resolve(summaryPath),
+      manifest_path: path.resolve(pageManifestPath),
+      confirmation_bypassed: yesFlag,
+      failure_rate: summary.failure_rate ?? 0.0,
+    }
+  );
+}
+
+// ── Sitemap extraction (full crawl) ──
+async function runCrawlSitemapExtraction(repoRoot, repoRef, resolutionMode, runDir, reportPath, manifestPath, emitReport, targetUrl, strategy, doc, opts) {
+  const {
+    maxPages = null,
+    fromManifest = null,
+    yes: yesFlag = false,
+    markdown = true,
+    keepHtml = false,
+    parallel = false,
+    workers = 5,
+    concurrency = 5,
+    merge = false,
+  } = opts;
+
+  const pages = doc?.structure?.pages ?? [];
+  let events = [];
+
+  // Read manifest
+  const manifestSource = fromManifest || path.join(runDir, "page_manifest.json");
+  if (!manifestSource || !fs.existsSync(manifestSource)) {
+    return makeResult("crawl", targetUrl, repoRef,
+      "Manifest not found. Run --discovery-only first.",
+      [],
+      "Run crawl --discovery-only to generate a page manifest, then retry with --from-manifest.",
+      "failure",
+      { workflow: "content_retrieval", engine_path: "sitemap_extraction -> manifest_missing" }
+    );
+  }
+
+  let manifestPages = [];
+  try {
+    const manifestData = JSON.parse(fs.readFileSync(manifestSource, "utf8"));
+    manifestPages = manifestData.pages || manifestData.visited || [];
+    if (manifestPages.length > 0 && typeof manifestPages[0] === "string") {
+      // Legacy visited array of URL strings — convert to page objects
+      manifestPages = manifestPages.map((url) => ({ url }));
+    }
+  } catch (err) {
+    return makeResult("crawl", targetUrl, repoRef,
+      `Failed to parse manifest: ${err.message}`,
+      [],
+      "Regenerate manifest with --discovery-only.",
+      "failure",
+      { workflow: "content_retrieval", engine_path: "sitemap_extraction -> manifest_parse_error" }
+    );
+  }
+
+  if (manifestPages.length === 0) {
+    return makeResult("crawl", targetUrl, repoRef,
+      "Manifest contains no pages.",
+      [],
+      "Regenerate manifest with --discovery-only.",
+      "failure",
+      { workflow: "content_retrieval", engine_path: "sitemap_extraction -> manifest_empty" }
+    );
+  }
+
+  // Apply maxPages limit
+  const max = maxPages != null ? Math.min(maxPages, manifestPages.length) : manifestPages.length;
+  const urlsToVisit = [];
+  for (let i = 0; i < max; i += 1) {
+    const entry = manifestPages[i];
+    urlsToVisit.push(typeof entry === "string" ? entry : entry.url);
+  }
+
+  const visited = new Set();
+  const artifacts = [];
+  let failures = 0;
+
+  // Linear traversal — no BFS diffusion
+  for (let i = 0; i < urlsToVisit.length; i += 1) {
+    const url = urlsToVisit[i];
+    if (visited.has(url)) continue;
+    visited.add(url);
+
+    // Match page type from strategy
+    let matchedPage = null;
+    for (const page of pages) {
+      if (pagePatternMatches(page, url)) {
+        matchedPage = page;
+        break;
+      }
+    }
+
+    const fetcher = selectFetcher(strategy, matchedPage);
+    const pageSlug = `${String(visited.size).padStart(2, "0")}-${matchedPage?.id || "page"}`;
+    const outputPath = path.join(runDir, `${pageSlug}.html`);
+    const fetchResult = runEngineFetch(repoRoot, fetcher, url, outputPath);
+
+    if (fetchResult.ok) {
+      artifacts.push(absoluteArtifact(outputPath, "disposable", `Crawled page ${matchedPage?.id || url}`));
+      events.push(`Fetched ${url} via ${fetcher}`);
+    } else {
+      failures += 1;
+      const errorPath = path.join(runDir, `${pageSlug}.stderr.log`);
+      writeTextFile(errorPath, fetchResult.stderr || "Sitemap extraction fetch failed.");
+      artifacts.push(absoluteArtifact(errorPath, "disposable", `Crawl error for ${pageSlug}`));
+      events.push(`Failed ${url} via ${fetcher}`);
+    }
+  }
+
+  const manifest = {
+    command: "crawl",
+    target: targetUrl,
+    repo_ref: repoRef,
+    resolution_mode: resolutionMode,
+    strategy_file: strategy ? path.relative(repoRoot, strategy.path) : null,
+    visited: [...visited],
+    max_pages: max,
+    bounded_by: { sitemap: true, links_to: false },
+  };
+
+  // Phase 2: Markdown conversion
+  let phase2Result = null;
+  if (markdown && visited.size > 0) {
+    phase2Result = convertTraversalToMarkdown(repoRoot, runDir, manifest, {
+      fetcherFn: (url) => {
+        for (const page of pages) {
+          if (pagePatternMatches(page, url)) return selectFetcher(strategy, page);
+        }
+        return selectFetcher(strategy, null);
+      },
+      concurrency,
+      merge,
+      cleanupHtml: !keepHtml,
+      outputName: "crawl-output",
+    });
+
+    manifest.phase2 = {
+      successful_count: phase2Result.successful.length,
+      failed_count: phase2Result.failed.length,
+      failed_urls: phase2Result.failed.map((f) => f.url),
+      merged_path: phase2Result.mergedPath,
+    };
+  }
+
+  writeTextFile(manifestPath, JSON.stringify(manifest, null, 2));
+
+  const finalArtifacts = [absoluteArtifact(manifestPath, "disposable", "Crawl manifest")];
+  if (markdown) {
+    finalArtifacts.push(...collectMarkdownArtifacts(runDir));
+  }
+
+  const traversalOk = visited.size > 0 && failures === 0;
+  const conversionOk = !markdown || (phase2Result && phase2Result.failed.length === 0);
+  const resultState = traversalOk && conversionOk ? "success" : "partial_success";
+
+  if (emitReport) {
+    const report = buildCrawlReport({
+      targetUrl, repoRef, resolutionMode, strategy, events, result: resultState,
+      phase2: markdown && phase2Result ? { successful: phase2Result.successful.length, failed: phase2Result.failed.length, mergedPath: phase2Result.mergedPath } : null,
+    });
+    writeTextFile(reportPath, report);
+    finalArtifacts.unshift(absoluteArtifact(reportPath, "durable", "Crawl report"));
+  }
+
+  const summary = resultState === "success"
+    ? `Crawl completed via sitemap and visited ${visited.size} page(s)${markdown ? `; ${phase2Result.successful.length} converted to Markdown` : ""}.`
+    : `Crawl visited ${visited.size} page(s)${markdown ? `; ${phase2Result.successful.length} converted, ${phase2Result.failed.length} failed` : ` with ${failures} failure(s)`}.`;
+
+  return makeResult("crawl", targetUrl, repoRef, summary, finalArtifacts,
+    "Inspect the crawl outputs.",
+    resultState,
+    {
+      workflow: "content_retrieval",
+      engine_path: `sitemap_extraction -> scrapling${markdown ? ` -> markdown_conversion(${phase2Result?.successful.length ?? 0}/${visited.size})` : ""}`,
+      extraction_method: "sitemap",
+      confirmation_bypassed: yesFlag,
+    }
+  );
+}

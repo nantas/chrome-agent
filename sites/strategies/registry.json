@@ -217,6 +217,43 @@
             ],
             "file": "bindingofisaacrebirth.wiki.gg/strategy.md",
             "backend": "wiki-gg-mediawiki-1.43"
+        },
+        {
+            "domain": "docs.gameanalytics.com",
+            "description": "GameAnalytics official documentation — Docusaurus v3.10.1 static site covering SDK integration, event tracking, product features (analytics-iq / pipeline-iq / segment-iq), and settings",
+            "protection_level": "low",
+            "page_types": [
+                "static_article"
+            ],
+            "pagination": [
+                "none"
+            ],
+            "entry_points": [
+                "home",
+                "doc_page"
+            ],
+            "anti_crawl_refs": [
+                "default"
+            ],
+            "file": "docs.gameanalytics.com/strategy.md"
+        },
+        {
+            "domain": "posthog.com",
+            "description": "PostHog Docs — Gatsby 4.25.9 static docs site (product analytics, session replay, feature flags, experiments, data warehouse, CDP, error tracking). Sitemap-index driven discovery with /docs/references/** excluded.",
+            "protection_level": "low",
+            "page_types": [
+                "static_article"
+            ],
+            "pagination": [
+                "none"
+            ],
+            "entry_points": [
+                "doc_page"
+            ],
+            "anti_crawl_refs": [
+                "default"
+            ],
+            "file": "posthog.com/strategy.md"
         }
     ]
 }
