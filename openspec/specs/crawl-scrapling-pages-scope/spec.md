@@ -1,20 +1,8 @@
-# Specification Delta
+# crawl-scrapling-pages-scope Specification
 
-## Capability 对齐（已确认）
-
-- Capability: `crawl-scrapling-pages-scope`
-- 来源: `proposal.md` / 已确认 capabilities
-- 变更类型: `modified`
-- 用户确认摘要: 修复 `runCrawlScrapling` 函数体内 `pages` 变量作用域 bug。`pages` 定义于外层 `runCrawl()`（line 2018），被 `runCrawlScrapling`（独立 `async function`）体内 4 处引用但未绑定，导致 `ReferenceError`。修复方案：函数体顶部添加 `const pages = doc?.structure?.pages ?? []`（与姊妹函数 `runCrawlScraplingDiscovery` line 2241 一致）
-
-## 规范真源声明
-
-- 本文件是该 capability 在本次 change 中的行为规范真源
-- design / tasks / verification 必须引用本文件
-- 项目页面回写不得替代本文件
-
-## MODIFIED Requirements
-
+## Purpose
+TBD - created by archiving change sitemap-driven-crawl. Update Purpose after archive.
+## Requirements
 ### Requirement: runCrawlScrapling-pages-binding
 
 `runCrawlScrapling` (`scripts/chrome-agent-cli.mjs`) SHALL 在函数体内显式绑定 `pages` 变量，所有函数体内对 `pages` 的引用 SHALL 解析为该局部绑定，不得依赖调用方作用域的标识符穿透。
@@ -72,20 +60,3 @@ const pages = doc?.structure?.pages ?? [];
 - **THEN** `result` 不为 `failure`
 - **AND** `summary` 不含 `is not defined`
 
-## ADDED Requirements
-
-_None_
-
-## REMOVED Requirements
-
-_None_
-
-## RENAMED Requirements
-
-_None_
-
-## Verification Plan
-
-1. `node --test tests/crawl-scrapling-pages-scope.test.mjs` 全绿
-2. Live smoke: 对非 MediaWiki 站点执行 crawl 不抛 ReferenceError
-3. 作用域审查: `grep -n "pages\.find\|pages\.filter\|pages\.map" scripts/chrome-agent-cli.mjs` 确认所有引用均在函数作用域内有绑定
