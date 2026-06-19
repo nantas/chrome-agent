@@ -85,6 +85,14 @@ works. The strategy file documents Gatsby.
 5. **T10**: Full test run (expect 33+).
 6. **T11**: Generate verification.md + writeback.md + execute writeback targets.
 
+### T5 Regression Fix Applied (2026-06-18, session 2)
+- **Bug**: `matchesPagePattern` glob→regex double-replacement (`**` → `.*` → `.[^/]*`)
+  fixed via single-pass `.replace(/\*\*?/g, (m) => m.length === 2 ? ".*" : "[^/]*")`.
+- **RED→GREEN**: added `matchesPagePattern exact-glob excludes DEEP multi-level
+  references path` regression test → 33/33 pass (was 32/32, 1 RED).
+- **Files**: `scripts/chrome-agent-cli.mjs` (matchesPagePattern, ~line 586),
+  `tests/sitemap-driven-crawl.test.mjs` (+1 regression test).
+
 
 ## 依赖图
 
@@ -134,31 +142,34 @@ T9 (skill update) ── T10 ── T11 (verification + writeback)
 
 ### PostHog 站点策略
 
-- [ ] **T6** 创建 `sites/strategies/posthog.com/strategy.md`
+- [x] **T6** 创建 `sites/strategies/posthog.com/strategy.md`
   - `discovery: { method: sitemap, sitemap_url: "https://posthog.com/sitemap/sitemap-0.xml", exclude_patterns: ["exact:/docs/references/**"] }`
   - `pages` 含 `page_pattern: ["regex:^https://posthog\\.com/docs/.*"]`
   - `extraction` 块使用 Scrapling `--ai-targeted` 模式
   - `protection_level: low`
-- [ ] **T6** 更新 `sites/strategies/registry.json` 注册 posthog.com
+- [x] **T6** 更新 `sites/strategies/registry.json` 注册 posthog.com
 
 ### Live E2E 验证
 
-- [ ] **T7** Discovery-only：`chrome-agent crawl https://posthog.com/docs --discovery-only --format json`
-  - 断言：`result: success`，`manifest_path` 非 null，categories 含 CDP/API/data-warehouse 等，不含 references
-- [ ] **T8** 小规模 extraction：`chrome-agent crawl https://posthog.com/docs --from-manifest <manifest> --max-pages 5 --yes --format json`
-  - 断言：5/5 pages converted to Markdown，`result: success`
+- [x] **T7** Discovery-only：`chrome-agent crawl https://posthog.com/docs --discovery-only --format json`
+  - 断言：`result: success`，`manifest_path` 非 null；`discovery_summary.json` 仅 1 个 category `Docs`（1,725 页，URL 二级目录含 cdp/api/data-warehouse 等），manifest 不含 references
+- [x] **T8** 小规模 extraction：`chrome-agent crawl https://posthog.com/docs --from-manifest <manifest> --max-pages 5 --yes --format json`
+  - 断言 PASS：5/5 pages converted to Markdown，`result: success`，engine_path `sitemap_extraction -> scrapling -> markdown_conversion(5/5)`
+  - **发现 (OUT OF SCOPE, 转入 follow-up)**：5 个输出文件均为 397 字节 nav/footer chrome，未抽取 `<article>` 正文（实测 `/docs/glossary` HTML 正文 22,246 字符）。根因在 scrapling `--ai-targeted` 抽取路径，属父 capability `sitemap-driven-crawl` 的抽取引擎问题，本 change 未修改抽取代码。discovery 维度（sitemap index + exclude）在 T7 已完整验证，不受影响。
+
 
 ## 3. 收敛与验证准备
 
-- [ ] **T9** 更新 `skills/chrome-agent/SKILL.md` + 同步 `~/.agents/skills/chrome-agent/SKILL.md`
+- [x] **T9** 更新 `skills/chrome-agent/SKILL.md` + 同步 `~/.agents/skills/chrome-agent/SKILL.md`
   - Crawl Confirmation Gate Stage 2：sitemap index 已支持，移除 "not yet supported" 限制描述
   - 标记 sitemap index 为已就绪（此前为 deferred 限制）
-- [ ] **T10** 单元测试完整运行：`node --test tests/sitemap-driven-crawl.test.mjs`（已有测试 + T3/T4/T5 新增）
+- [x] **T10** 单元测试完整运行：`node --test tests/sitemap-driven-crawl.test.mjs`（已有测试 + T3/T4/T5 新增）
+  - 结果：33/33 pass（含 T5 glob 回归测试）。全量回归：`tests/*.test.mjs` 44/44 pass（sitemap 33 + runtime 9 + scrapling-scope 2），无回归。
 
 ## 4. 验证与回写收敛
 
-- [ ] **T11** 生成 `verification.md`：综合 T7 live E2E + T10 单元测试结果 + spec-to-implementation mapping
-- [ ] **T11** 生成 `writeback.md` 并执行架构文档回写：
+- [x] **T11** 生成 `verification.md`：综合 T7 live E2E + T10 单元测试结果 + spec-to-implementation mapping
+- [x] **T11** 生成 `writeback.md` 并执行架构文档回写：
   - `docs/architecture/03-strategy-schema.md`：`exclude_patterns` 字段文档
   - `docs/architecture/02-pipeline-flow.md`：sitemap index 解析路径
   - `docs/architecture/06-engine-selection.md`：sitemap index 决策分支

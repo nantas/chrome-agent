@@ -87,7 +87,7 @@ REQUEST (URL + intent)
 ### Selection Rules
 
 1. **API-first for MediaWiki**: When strategy declares `api.platform: mediawiki`, the `mediawiki-api` engine takes priority (rank 0) for crawl operations. `fetch` and `scrape` commands do not trigger the API path.
-2. **Sitemap discovery for static doc sites**: When strategy declares `discovery.method: sitemap` (and no `api:` block), discovery parses `sitemap.xml` and page extraction uses `scrapling-get` (rank 1) linearly. This path is mutually exclusive with the MediaWiki API path.
+2. **Sitemap discovery for static doc sites**: When strategy declares `discovery.method: sitemap` (and no `api:` block), discovery parses `sitemap.xml` and page extraction uses `scrapling-get` (rank 1) linearly. This path is mutually exclusive with the MediaWiki API path. Sitemap **index** (`<sitemapindex>`) is transparently resolved: child sitemaps are fetched serially and merged with `Set` deduplication before filtering — engine selection itself is unaffected (all sub-sitemaps route to the same `scrapling-get` linear extraction). `discovery.exclude_patterns` (applied after `page_pattern` include) narrows the crawl scope without changing engine choice.
 3. **Scrapling-first default**: For non-API scenarios, start with `scrapling-get` (lightest engine). Escalate only when output is incomplete.
 4. **Obscura for dynamic content**: When JS rendering is needed but full browser overhead is unwarranted, `obscura-fetch` provides 2-3.5× the speed of Playwright.
 5. **CloakBrowser for high protection**: `cloakbrowser-fetch` handles Cloudflare Turnstile (6-8s auto-resolve), reCAPTCHA v3 (score 0.9), and TLS fingerprint detection via 57 C++ Chromium patches.

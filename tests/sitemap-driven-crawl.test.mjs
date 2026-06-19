@@ -42,6 +42,31 @@ function callFn(fnName, argsArray, depNames = []) {
   return JSON.parse(result.stdout.trim());
 }
 
+// Behavioral test helper for resolveSitemapIndex with an injected fake fetcher.
+// fetchBehavior maps subUrl -> { ok, httpCode, content }. No network needed.
+function callResolveSitemapIndex(subSitemapUrls, fetchBehavior) {
+  const resolveSrc = extractFn("resolveSitemapIndex");
+  assert.ok(resolveSrc, "resolveSitemapIndex must exist in source");
+  const deps = [extractFn("parseSitemapXml"), resolveSrc];
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "ga-rsi-"));
+  const tmpFile = path.join(tmpDir, "rsi.cjs");
+  const runner = [
+    deps[0],
+    deps[1],
+    'const __bh = ' + JSON.stringify(fetchBehavior) + ';',
+    'const __fetch = (url) => __bh[url] || { ok: false, httpCode: 404, content: "" };',
+    'const __urls = ' + JSON.stringify(subSitemapUrls) + ';',
+    'console.log(JSON.stringify(resolveSitemapIndex(__urls, __fetch)));'
+  ].join("\n");
+  fs.writeFileSync(tmpFile, runner, "utf8");
+  const result = spawnSync("node", [tmpFile], { encoding: "utf8" });
+  fs.rmSync(tmpDir, { recursive: true });
+  if (result.status !== 0) {
+    throw new Error("resolveSitemapIndex script failed: " + (result.stderr || result.stdout));
+  }
+  return JSON.parse(result.stdout.trim());
+}
+
 // ═══════════════════════════════════════════
 // parseSitemapXml tests
 // ═══════════════════════════════════════════
@@ -130,6 +155,17 @@ test("matchesPagePattern exact-glob keeps non-references path", async (t) => {
     JSON.stringify("https://posthog.com/docs/cdp/overview")
   ]);
   assert.strictEqual(r, false);
+});
+
+test("matchesPagePattern exact-glob excludes DEEP multi-level references path", async (t) => {
+  // Regression for glob double-replacement bug: `**` must compile to `.*`
+  // (any depth), not `.[^/]*` (single segment). A deep path with multiple
+  // slash-separated segments after /docs/references/ must still match.
+  const r = callFn("matchesPagePattern", [
+    JSON.stringify("exact:/docs/references/**"),
+    JSON.stringify("https://posthog.com/docs/references/posthog-js/types/ActionStepType")
+  ]);
+  assert.strictEqual(r, true);
 });
 
 test("matchesPagePattern regex anchored to path", async (t) => {
@@ -239,7 +275,10 @@ test("runCrawlSitemapDiscovery iterates sub-sitemaps instead of handoff for inde
   const body = extractFn("runCrawlSitemapDiscovery");
   assert.ok(!body.includes("sitemap_index_unsupported"), "must NOT handoff on sitemap index anymore");
   assert.ok(body.includes("parsed.sitemaps"), "must iterate parsed.sitemaps");
-  assert.ok(/new Set\(/.test(body), "must use Set for cross-sitemap dedup");
+  // Set dedup now lives inside resolveSitemapIndex (extracted for unit testing);
+  // cross-sitemap dedup behavior is covered by the behavioral test
+  // "resolveSitemapIndex: cross-sitemap deduplication via Set".
+  assert.ok(body.includes("resolveSitemapIndex("), "must delegate sub-sitemap iteration+dedup to resolveSitemapIndex");
   assert.ok(body.includes("sitemap_all_subs_failed"), "must handoff when ALL sub-sitemaps fail");
 });
 
@@ -269,6 +308,79 @@ test("runCrawlSitemapDiscovery uses curl for sitemap fetch", async (t) => {
   assert.ok(body.includes('"-sL"'), "must use -sL curl flags");
 });
 
+// ═══════════════════════════════════════════
+// resolveSitemapIndex behavioral tests (partial-failure coverage)
+// Injects a fake fetcher; no network. Covers spec scenarios:
+//   one-sub-sitemap-fails-others-succeed / all-sub-sitemaps-fail /
+//   cross-sitemap-deduplication / parse-error / nested-index.
+// ═══════════════════════════════════════════
+
+function __urlset(urls) {
+  return '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' +
+    urls.map(function (u) { return '<url><loc>' + u + '</loc></url>'; }).join('') +
+    '</urlset>';
+}
+
+test("resolveSitemapIndex exists in source", async (t) => {
+  assert.ok(extractFn("resolveSitemapIndex"), "resolveSitemapIndex must exist");
+});
+
+test("resolveSitemapIndex: one sub fails (404), others succeed -> merges ok urls + 1 error", async (t) => {
+  const r = callResolveSitemapIndex(
+    ["https://x/sitemap-0.xml", "https://x/sitemap-1.xml"],
+    {
+      "https://x/sitemap-0.xml": { ok: true, httpCode: 200, content: __urlset(["https://x/a", "https://x/b"]) },
+      "https://x/sitemap-1.xml": { ok: false, httpCode: 404, content: "" }
+    }
+  );
+  assert.deepStrictEqual(r.urls, ["https://x/a", "https://x/b"]);
+  assert.strictEqual(r.errors.length, 1);
+  assert.strictEqual(r.errors[0].url, "https://x/sitemap-1.xml");
+  assert.ok(r.errors[0].reason.startsWith("HTTP "), "reason must start with HTTP: " + r.errors[0].reason);
+});
+
+test("resolveSitemapIndex: all sub-sitemaps fail -> empty urls + all errors", async (t) => {
+  const r = callResolveSitemapIndex(
+    ["https://x/sitemap-0.xml", "https://x/sitemap-1.xml"],
+    {
+      "https://x/sitemap-0.xml": { ok: false, httpCode: 500, content: "" },
+      "https://x/sitemap-1.xml": { ok: false, httpCode: 404, content: "" }
+    }
+  );
+  assert.deepStrictEqual(r.urls, []);
+  assert.strictEqual(r.errors.length, 2);
+});
+
+test("resolveSitemapIndex: cross-sitemap deduplication via Set", async (t) => {
+  const r = callResolveSitemapIndex(
+    ["https://x/sitemap-0.xml", "https://x/sitemap-1.xml"],
+    {
+      "https://x/sitemap-0.xml": { ok: true, httpCode: 200, content: __urlset(["https://x/a", "https://x/b"]) },
+      "https://x/sitemap-1.xml": { ok: true, httpCode: 200, content: __urlset(["https://x/b", "https://x/c"]) }
+    }
+  );
+  assert.deepStrictEqual(r.urls, ["https://x/a", "https://x/b", "https://x/c"]);
+});
+
+test("resolveSitemapIndex: parse error -> error with parse_error prefix", async (t) => {
+  const r = callResolveSitemapIndex(
+    ["https://x/sitemap-0.xml"],
+    { "https://x/sitemap-0.xml": { ok: true, httpCode: 200, content: "this is not xml <<<" } }
+  );
+  assert.deepStrictEqual(r.urls, []);
+  assert.strictEqual(r.errors.length, 1);
+  assert.ok(r.errors[0].reason.startsWith("parse_error"), "reason must start with parse_error: " + r.errors[0].reason);
+});
+
+test("resolveSitemapIndex: nested index -> nested_index_unsupported", async (t) => {
+  const r = callResolveSitemapIndex(
+    ["https://x/sitemap-0.xml"],
+    { "https://x/sitemap-0.xml": { ok: true, httpCode: 200, content: '<?xml version="1.0"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>https://x/deep.xml</loc></sitemap></sitemapindex>' } }
+  );
+  assert.deepStrictEqual(r.urls, []);
+  assert.strictEqual(r.errors.length, 1);
+  assert.strictEqual(r.errors[0].reason, "nested_index_unsupported");
+});
 // ═══════════════════════════════════════════
 // runCrawlSitemapExtraction flow tests (T8.1)
 // ═══════════════════════════════════════════

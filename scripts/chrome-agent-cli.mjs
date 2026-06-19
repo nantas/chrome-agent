@@ -583,10 +583,15 @@ function matchesPagePattern(pattern, targetUrl) {
 
   if (pattern.startsWith("exact:")) {
     const glob = pattern.slice(6);
+    // Single-pass glob→regex: `**` → `.*` (any depth), single `*` → `[^/]*`.
+    // A naive two-step `.replace(/\*\*/g, ".*").replace(/\*/g, "[^/]*")` is
+    // buggy — the second pass re-matches the `*` inside the just-emitted `.*`,
+    // corrupting deep-path globs like `/docs/references/**` into `.[^/]*`
+    // (single segment) instead of `.*` (any depth). See change
+    // sitemap-index-and-exclude (T5 regression).
     const re = glob
       .replace(/[.+?^${}()|[\]\\]/g, "\\$&")
-      .replace(/\*\*/g, ".*")
-      .replace(/\*/g, "[^/]*");
+      .replace(/\*\*?/g, (m) => (m.length === 2 ? ".*" : "[^/]*"));
     try {
       const compiled = new RegExp(`^${re}$`);
       return compiled.test(targetUrl) || compiled.test(pathname);
@@ -682,6 +687,34 @@ function parseSitemapXml(xmlString) {
   }
 
   return { urls };
+}
+
+function resolveSitemapIndex(subSitemaps, fetchFn) {
+  // fetchFn: (subUrl, index) => { ok: boolean, httpCode: number, content: string }
+  // Returns { urls: [...deduped], errors: [{url, reason}] }. Pure relative to
+  // network — the caller injects the fetch strategy, which makes partial-failure
+  // behavior unit-testable without a server (see tests/sitemap-driven-crawl.test.mjs).
+  const errors = [];
+  const allUrls = [];
+  subSitemaps.forEach((subUrl, i) => {
+    const fetched = fetchFn(subUrl, i);
+    if (!fetched.ok) {
+      errors.push({ url: subUrl, reason: `HTTP ${fetched.httpCode}` });
+      return;
+    }
+    const subParsed = parseSitemapXml(fetched.content);
+    if (subParsed.error) {
+      errors.push({ url: subUrl, reason: `parse_error: ${subParsed.reason}` });
+      return;
+    }
+    if (subParsed.isIndex) {
+      // Recursive nesting (index -> index) is intentionally unsupported in v1.
+      errors.push({ url: subUrl, reason: "nested_index_unsupported" });
+      return;
+    }
+    allUrls.push(...(subParsed.urls || []));
+  });
+  return { urls: [...new Set(allUrls)], errors };
 }
 
 function runScraplingPreflight(repoRoot, allowInstall) {
@@ -4077,30 +4110,21 @@ async function runCrawlSitemapDiscovery(repoRoot, repoRef, resolutionMode, runDi
         { workflow: "content_retrieval", engine_path: "sitemap_discovery -> index_empty", handoff_path: handoff.path, handoff_summary: handoff.summary }
       );
     }
-    const subSitemapErrors = [];
-    const allUrls = [];
-    subSitemaps.forEach((subUrl, i) => {
+    // Inject a curl-based fetcher so resolveSitemapIndex stays a pure,
+    // unit-testable function. Partial-failure behavior (one/all sub-sitemap
+    // fail, dedup, nested-index) is covered by tests with a fake fetcher.
+    const fetchFn = (subUrl, i) => {
       const subTempPath = path.join(runDir, `_sitemap_sub_${i}.xml`);
       const subFetch = spawnSync("curl", ["-sL", "-o", subTempPath, "-w", "%{http_code}", subUrl], { encoding: "utf8", timeout: 30_000 });
       const subHttpCode = parseInt(subFetch.stdout?.trim() || "0", 10);
       const subOk = subFetch.status === 0 && subHttpCode >= 200 && subHttpCode < 400;
-      if (!subOk) {
-        subSitemapErrors.push({ url: subUrl, reason: `HTTP ${subHttpCode || subFetch.status}` });
-        return;
-      }
-      const subContent = fs.existsSync(subTempPath) ? fs.readFileSync(subTempPath, "utf8") : "";
-      const subParsed = parseSitemapXml(subContent);
-      if (subParsed.error) {
-        subSitemapErrors.push({ url: subUrl, reason: `parse_error: ${subParsed.reason}` });
-        return;
-      }
-      if (subParsed.isIndex) {
-        // Recursive nesting (index -> index) is intentionally unsupported in v1.
-        subSitemapErrors.push({ url: subUrl, reason: "nested_index_unsupported" });
-        return;
-      }
-      allUrls.push(...(subParsed.urls || []));
-    });
+      if (!subOk) return { ok: false, httpCode: subHttpCode || subFetch.status };
+      const content = fs.existsSync(subTempPath) ? fs.readFileSync(subTempPath, "utf8") : "";
+      return { ok: true, httpCode: subHttpCode, content };
+    };
+    const subResolution = resolveSitemapIndex(subSitemaps, fetchFn);
+    const subSitemapErrors = subResolution.errors;
+    const allUrls = subResolution.urls;  // already Set-deduped inside resolveSitemapIndex
 
     if (subSitemapErrors.length === subSitemaps.length) {
       const failedList = subSitemapErrors.map((e) => `${e.url} (${e.reason})`).join("; ");
@@ -4123,7 +4147,7 @@ async function runCrawlSitemapDiscovery(repoRoot, repoRef, resolutionMode, runDi
       subSitemapCaveats.push(`${subSitemapErrors.length}/${subSitemaps.length} sub-sitemaps failed`);
     }
 
-    discoveredUrls = [...new Set(allUrls)];
+    discoveredUrls = allUrls;
   } else {
     discoveredUrls = parsed.urls || [];
   }

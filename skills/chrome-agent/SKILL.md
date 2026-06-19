@@ -213,7 +213,8 @@ When `discovery_method` is `"first_level_links"` (Scrapling path):
 When `discovery_method` is `"sitemap"` (static documentation site):
 - Page counts are exact (sourced from sitemap.xml) — no estimate labeling needed
 - Caveats (e.g., sitemap-specific notes) follow the standard presentation
-- Sitemap index (sitemapindex) is not yet supported — discovery will handoff if detected
+- Sitemap index (`<sitemapindex>`) is **supported**: child sitemaps are fetched, parsed, and merged with Set-based deduplication. Partial sub-sitemap failures are non-blocking (warnings + caveats); only all-failed triggers a `sitemap_all_subs_failed` handoff.
+- `discovery.exclude_patterns` (optional, page_pattern syntax `exact:`/`regex:`) removes URLs after the `page_pattern` include stage — use for dropping auto-generated reference/duplicate trees.
 
 **Limitation**: `--exclude-category` is not yet supported for sitemap-driven crawls in Stage 3. The Adjust option will have no effect on the extraction scope.
 

@@ -259,17 +259,25 @@ strategy.md (YAML frontmatter)
 | 字段 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
 | `method` | string | ✅ | — | 发现方法，当前唯一支持值 `"sitemap"` |
-| `sitemap_url` | string | ❌ | `"https://<domain>/sitemap.xml"` | sitemap.xml 的 URL |
+| `sitemap_url` | string | ❌ | `"https://<domain>/sitemap.xml"` | sitemap.xml 的 URL。可为 sitemap **index** URL（`<sitemapindex>`）——发现路径会自动解析并迭代子 sitemap |
+| `exclude_patterns` | string[] | ❌ | `[]` | URL 排除规则，在 `page_pattern` include 过滤**之后**应用。使用与 `page_pattern` 相同的 `exact:` / `regex:` 前缀语法。空数组或未定义时不排除任何 URL |
 
 示例：
 
 ```yaml
 discovery:
   method: "sitemap"                                     # 必填，当前唯一支持值
-  sitemap_url: "https://docs.example.com/sitemap.xml"   # 可选，默认 "https://<domain>/sitemap.xml"
+  sitemap_url: "https://docs.example.com/sitemap.xml"   # 可选，默认 "https://<domain>/sitemap.xml"（可为 sitemap index）
+  exclude_patterns:                                     # 可选，include 后排除
+    - "exact:/docs/references/**"                       # glob：** 匹配任意深度
+    - "regex:^/docs/v\\d+/.*"                           # 正则前缀
 ```
 
-触发数据流（详见 [02 — 管线数据流](02-pipeline-flow.md)）：`sitemap.xml` → 解析 → URL 过滤 → 自动分组 → `page_manifest.json` → 确认闸门 → 线性 scrapling 提取。
+**Sitemap index 解析**：当 `sitemap_url` 指向 `<sitemapindex>` 格式时，发现路径提取所有子 sitemap URL，串行 fetch + parse，并以 `Set` 去重合并为统一 URL 列表。单个子 sitemap fetch/parse 失败不阻断（记录 warning + caveat），仅当**全部**子 sitemap 失败时才 handoff（`sitemap_all_subs_failed`）。不支持递归嵌套（index → index）。
+
+**过滤执行顺序**：`page_pattern` include → `exclude_patterns` exclude → 自动分组（auto-group）。两阶段后剩余 0 URL 则 handoff（`sitemap_no_pattern_match`）。
+
+触发数据流（详见 [02 — 管线数据流](02-pipeline-flow.md)）：`sitemap.xml`（或 `<sitemapindex>` 子 sitemap 迭代合并）→ `page_pattern` include 过滤 → `exclude_patterns` 排除 → 自动分组 → `page_manifest.json` → 确认闸门 → 线性 scrapling 提取。
 
 ### `platform_variant` 枚举
 
