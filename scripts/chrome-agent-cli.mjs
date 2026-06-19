@@ -8,6 +8,7 @@ import process from "node:process";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
+import { buildScraplingExtractionArgs } from "./lib/scrapling-extraction-args.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const inferredRepoRoot = path.resolve(__dirname, "..");
@@ -1331,6 +1332,7 @@ function convertTraversalToMarkdown(repoRoot, runDir, manifest, opts = {}) {
     outputName = "output",
     relativize = true,
     prefetchedHtml = null,
+    strategy = null,
   } = opts;
 
   const visited = manifest.visited ?? [];
@@ -1350,7 +1352,10 @@ function convertTraversalToMarkdown(repoRoot, runDir, manifest, opts = {}) {
       // Use Scrapling --ai-targeted via file:// for DOM-quality Markdown conversion
       const tmpHtmlPath = path.join(runDir, `_tmp_${i}.html`);
       writeTextFile(tmpHtmlPath, prefetchedHtml[url]);
-      const scraplingResult = runEngineFetch(repoRoot, "get", `file://${tmpHtmlPath}`, mdPath, ["--ai-targeted"]);
+      // Strategy-sourced selector (if declared) applies to file:// HTML conversion too;
+      // fetcher is "get" here. Falls back to --ai-targeted when no selector.
+      const fileArgs = buildScraplingExtractionArgs(strategy, "get");
+      const scraplingResult = runEngineFetch(repoRoot, "get", `file://${tmpHtmlPath}`, mdPath, fileArgs);
       fs.unlinkSync(tmpHtmlPath);
       if (scraplingResult.ok) {
         successful.push({ url, path: mdPath });
@@ -1364,7 +1369,10 @@ function convertTraversalToMarkdown(repoRoot, runDir, manifest, opts = {}) {
     }
 
     const fetcher = fetcherFn(url);
-    const result = runEngineFetch(repoRoot, fetcher, url, mdPath, ["--ai-targeted"]);
+    // Per-URL extraction args: strategy selector via -s, else --ai-targeted.
+    // mediawiki-api fetcher keeps strategy.path (helper branch).
+    const pageArgs = buildScraplingExtractionArgs(strategy, fetcher);
+    const result = runEngineFetch(repoRoot, fetcher, url, mdPath, pageArgs);
     if (result.ok) {
       successful.push({ url, path: mdPath });
     } else {
@@ -1910,8 +1918,9 @@ function runFetch(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride) 
   const { strategy } = findStrategy(repoRoot, targetUrl);
   const matchingPage = strategy ? findMatchingPage(strategy.document, targetUrl) : null;
   const fetcher = selectFetcher(strategy, matchingPage);
-  // When fetcher is mediawiki-api, pass strategy path instead of scrapling flags
-  const fetchExtraArgs = fetcher === "mediawiki-api" ? [strategy.path] : ["--ai-targeted"];
+  // Strategy-sourced selector (if declared) is passed via -s; otherwise the
+  // helper falls back to --ai-targeted. mediawiki-api keeps strategy.path.
+  const fetchExtraArgs = buildScraplingExtractionArgs(strategy, fetcher);
   const fetchResult = runEngineFetch(repoRoot, fetcher, targetUrl, outputPath, fetchExtraArgs);
 
   if (fetchResult.stderr) {
@@ -2666,7 +2675,8 @@ if (phase === "convert" && fromManifest) {
     const tmpHtmlPath = path.join(runDir, `_cached_${slug}.html`);
     writeTextFile(tmpHtmlPath, cached.html);
     const mdPath = urlToStructuredPath(url, runDir);
-    const scraplingResult = runEngineFetch(repoRoot, "get", `file://${tmpHtmlPath}`, mdPath, ["--ai-targeted"]);
+    const cachedArgs = buildScraplingExtractionArgs(strategy, "get");
+    const scraplingResult = runEngineFetch(repoRoot, "get", `file://${tmpHtmlPath}`, mdPath, cachedArgs);
     if (scraplingResult.ok) {
       convertOk++;
       events.push(`Converted cached ${url} to Markdown`);
@@ -2710,6 +2720,7 @@ if (markdown && visited.size > 0 && phase !== "fetch" && phase2Result === null) 
             const page = pages.find((p) => pagePatternMatches(p, url));
             return selectFetcher(strategy, page);
           },
+          strategy,
           concurrency,
           merge,
           cleanupHtml: !keepHtml,
@@ -2733,6 +2744,7 @@ if (markdown && visited.size > 0 && phase !== "fetch" && phase2Result === null) 
         const page = pages.find((p) => pagePatternMatches(p, url));
         return selectFetcher(strategy, page);
       },
+      strategy,
       concurrency,
       merge,
       cleanupHtml: !keepHtml,
@@ -4356,6 +4368,7 @@ async function runCrawlSitemapExtraction(repoRoot, repoRef, resolutionMode, runD
         }
         return selectFetcher(strategy, null);
       },
+      strategy,
       concurrency,
       merge,
       cleanupHtml: !keepHtml,

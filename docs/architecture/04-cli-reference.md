@@ -111,6 +111,8 @@ chrome-agent fetch <url> [--report] [--no-report]
 
 **行为**：Scrapling-first 单页内容获取。匹配站点策略时走对应 fetcher，否则使用 `scrapling-get`。
 
+**提取参数**：当匹配策略声明 `extraction.selectors.content` 时，fetch 通过 scrapling `-s <selector>` 精确提取主内容；未声明选择器时回退 `--ai-targeted` 启发式。该决策由共享 helper `buildScraplingExtractionArgs(strategy, fetcher)`（`scripts/lib/scrapling-extraction-args.mjs`）统一封装，`crawl` 命令的提取循环与 `--phase convert` 缓存转换复用同一 helper。`mediawiki-api` fetcher 保留 `[strategy.path]` 传递；`cloakbrowser` fetcher 保留既有 `--ai-targeted` 透传（其 CLI 不接受 `-s`）。
+
 **实现**：`runFetch()`（`chrome-agent-cli.mjs:1766`）
 
 ### crawl
