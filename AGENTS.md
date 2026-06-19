@@ -20,6 +20,7 @@
 | C7 | **策略注册**：新增策略必须更新 `registry.json`；frontmatter 与 registry 冲突时以 frontmatter 为准 | 策略不生效 / bootstrap 与手动创建行为不一致 |
 | C8 | **函数声明风格**：Node.js 顶层用 `function xxx()` 声明，不用箭头函数 | — |
 | C9 | **测试义务**：修改 `scripts/lib/`、`scripts/pipeline/pipeline/phases/`、`scripts/lib/extraction/` 时必须在 `tests/` 新增或更新对应测试；修改站点策略时必须运行 `python3 scripts/test_runner.py site-samples --domain <domain>` 确认回归通过。代码任务遵循 vertical slice TDD（详见 `08-tech-stack.md` §4 TDD 约定） | 新代码无测试覆盖 / 回归未捕获 |
+| C10 | **全局 skill/runtime 同步**（同 C4 的「改 X 后必须同步 Y」模式）：修改 tracked files——`scripts/chrome-agent-runtime.mjs`、`scripts/chrome-agent-cli.mjs`、`skills/chrome-agent/SKILL.md`——后，必须将改动同步到全局副本（`~/.agents/scripts/chrome-agent.mjs`、`~/.agents/skills/chrome-agent/SKILL.md`）并刷新 `~/.agents/scripts/.chrome-agent-installed-hash` 至当前 `git rev-parse HEAD`。详见 [chrome-agent-global-install](docs/playbooks/chrome-agent-global-install.md) 的 Case 6 与 Installed Hash Semantics | 全局副本与仓库源漂移 / doctor 误判 freshness / 其它机器拿不到改动 |
 
 ## 1. Service Identity
 
@@ -186,6 +187,7 @@ Orbitos Spec Standard v0.3。真源：`openspec/specs/`。变更：`openspec/cha
 | **改 CLI**（`scripts/*.mjs`） | `04-cli-reference.md` | 命令路由、ESM 规范、函数声明风格 |
 | **改共享库**（`scripts/lib/`） | `05-converter-architecture.md` | 两阶段转换模型、Python 兼容 |
 | **改 Shell 脚本**（`scripts/*.sh`） | `08-tech-stack.md` §2.3 | `set -euo pipefail`、路径计算模式 |
+| **改 runtime/cli/SKILL.md**（全局同步） | `docs/playbooks/chrome-agent-global-install.md` | tracked files 清单、ahead / 手动同步（Case 6）、installed-hash 刷新、C10 约束 |
 | **新增能力规范** | `openspec/specs/` 同类文件 + `docs/decisions/` | Orbitos Spec Standard v0.3 格式 |
 | **测试相关** | `08-tech-stack.md` §4 + testing-governance specs | 测试目录约定、runner 命令、站点样本机制、C9 测试义务 |
 

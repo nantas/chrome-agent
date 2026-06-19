@@ -90,6 +90,27 @@ Do not rewrite it. Report that the environment variable is already configured co
 
 Do not replace it silently. Ask whether to update it. If approved, replace the existing shell-config line manually and reload the shell later.
 
+### Case 6: Manually sync global copies (ahead of origin, or immediate-effect needed)
+
+Auto-update (see Version Freshness Check) only fires when the source repo is **behind** `origin/main` AND a tracked file differs. When local HEAD is **ahead** (unpushed commits) or you want changes to take effect without waiting for the next `doctor`, sync manually with four steps:
+
+```bash
+# 1. runtime -> ~/.agents/scripts/chrome-agent.mjs (make it executable)
+cp scripts/chrome-agent-runtime.mjs ~/.agents/scripts/chrome-agent.mjs
+chmod +x ~/.agents/scripts/chrome-agent.mjs
+
+# 2. skill -> ~/.agents/skills/chrome-agent/SKILL.md
+cp skills/chrome-agent/SKILL.md ~/.agents/skills/chrome-agent/SKILL.md
+
+# 3. refresh installed-hash to the current HEAD (NOT a content hash)
+git rev-parse HEAD > ~/.agents/scripts/.chrome-agent-installed-hash
+
+# 4. validate, then reload the skill (restart session) since SKILL.md changed
+chrome-agent doctor --format json
+```
+
+Why manual sync is needed when ahead: doctor reports `repo_freshness` as `ahead` and ok, so it does NOT auto-update, yet the global copies are stale relative to local HEAD. Alternatively, `git push` first so the normal behind-path applies on other machines.
+
 ## Validation
 
 After installation, verify:
@@ -116,7 +137,8 @@ Expected result:
 Behavior:
 
 - **Source repo current** (`HEAD == origin/main`): `repo_freshness` check is ok. No action needed.
-- **Source repo behind with tracked file changes**: doctor auto-updates global runtime (`~/.agents/scripts/chrome-agent.mjs`) and skill (`~/.agents/skills/chrome-agent/SKILL.md`), writes the current HEAD hash to `~/.agents/scripts/.chrome-agent-installed-hash`, and returns `partial_success` with a skill reload hint.
+- **Source repo AHEAD of `origin/main`** (unpushed local commits): `repo_freshness` reports `ahead: …` and is ok. Auto-update does NOT fire, but the global copies are stale relative to local HEAD — sync manually (see Case 6) or `git push` first so the normal behind-path applies on other machines.
+- **Source repo behind with tracked file changes**: doctor auto-updates global runtime (`~/.agents/scripts/chrome-agent.mjs`) and skill (`~/.agents/skills/chrome-agent/SKILL.md`), refreshes the installed-hash to the current HEAD (see Installed Hash Semantics), and returns `partial_success` with a skill reload hint.
 - **Source repo behind but no tracked files changed**: `repo_freshness` is ok. The `behind but no tracked files changed` detail indicates no update is needed.
 - **Network failure / non-git repo / detached HEAD**: check is skipped (marked ok). Does not block workflow.
 
@@ -125,6 +147,15 @@ Tracked files for auto-update:
 - `scripts/chrome-agent-runtime.mjs`
 - `scripts/chrome-agent-cli.mjs`
 - `skills/chrome-agent/SKILL.md`
+
+Note: `scripts/chrome-agent-cli.mjs` is a **trigger**, not a copy destination. When it changes, doctor / manual sync re-copies `chrome-agent-runtime.mjs` to `~/.agents/scripts/chrome-agent.mjs` — the cli file itself is never copied globally. This is why a cli change forces a runtime refresh.
+
+## Installed Hash Semantics
+
+`~/.agents/scripts/.chrome-agent-installed-hash` records the commit SHA captured at the last sync. Its value equals `git rev-parse HEAD` — it is **not** a hash of file contents. Confusion often arises when the global file sha1 already matches the source but this hash file still points at an older commit.
+
+- It seeds `doctor`'s incremental freshness check (the behind-vs-tracked-files decision).
+- Any manual sync (Case 6) MUST refresh it, otherwise subsequent `doctor` runs may misjudge freshness.
 
 When doctor returns `partial_success` with a skill reload hint, the operator must reload the skill (restart the session or re-read the skill file) before proceeding.
 
