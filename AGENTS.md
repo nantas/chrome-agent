@@ -83,7 +83,9 @@ openspec/specs/                   ← 冻结能力规范
 
 ## 5. Decision Record Governance
 
-`docs/decisions/` 内。命名 `YYYY-MM-DD-topic.md`。每份含 Context / Decision / Consequences。
+`docs/adr/` 内。命名 `NNNN-slug.md`（四位数编号，kebab-case 标题）。每份含标题、状态、背景、决策、后果。与 `grill-with-docs` / `improve-codebase-architecture` skill 对齐。
+
+历史决策（2026-03 至 2026-05）已从旧 `docs/decisions/`（日期格式）迁移至 `docs/adr/0004-0012`。
 
 ## 6. Spec & Change Governance
 
@@ -125,9 +127,11 @@ Orbitos Spec Standard v0.3。真源：`openspec/specs/`。变更：`openspec/cha
 | 优先级 | 位置 | 用途 |
 |--------|------|------|
 | P2 | `docs/governance-and-capability-plan.md` | 路线图 |
-| P2 | `docs/decisions/` | 架构决策记录（ADR） |
+| P1 | `docs/adr/` | 架构决策记录（ADR），编号格式，grill-with-docs skill 自动使用 |
 | P2 | `docs/playbooks/` | 操作手册（抓取/fallback/认证） |
 | P2 | `docs/setup/` | 环境配置 |
+| P0 | `CONTEXT.md` / `CONTEXT-MAP.md` | 领域语言词汇表、模块关系图 |
+| P0 | `docs/GOVERNANCE.md` | 治理工作流：文档体系、change 链路、SSOT 仲裁、维护检查清单 |
 | P2 | `openspec/specs/` | 冻结能力规范 |
 | P2 | `openspec/changes/` | 进行中变更 |
 | P2 | `scripts/explore/ki_lifecycle.py` | Issue 分类与修复 |
@@ -150,6 +154,8 @@ Orbitos Spec Standard v0.3。真源：`openspec/specs/`。变更：`openspec/cha
 | 后端检测签名 | `configs/backend-signatures.json` | 平台识别规则 |
 | CLI 命令定义 | `scripts/chrome-agent-cli.mjs` | 所有命令路由 + 参数解析 |
 
+| 应用层依赖清单 | `requirements.txt`（仓库根） | Python 依赖 SSOT（bs4 / selectolax / pyyaml / markdownify / requests）|
+| Python 解析策略 | `scripts/lib/python-resolver.mjs` → `resolveAppPython()` | `.venv/bin/python` 优先，`CHROME_AGENT_PYTHON` 覆盖，system `python3` fallback |
 ### 架构 & 规范 SSOT
 
 | 知识领域 | 真源文件 | 说明 |
@@ -164,6 +170,8 @@ Orbitos Spec Standard v0.3。真源：`openspec/specs/`。变更：`openspec/cha
 | 技术栈 & 开发约定 | `docs/architecture/08-tech-stack.md` | 依赖 + 语言规范 + 常见坑 |
 | CLI 命令参考 | `docs/architecture/04-cli-reference.md` | 命令路由 + 参数签名 |
 
+| Python 环境治理 | `openspec/specs/app-layer-venv-governance/spec.md` + `docs/adr/0002` / `docs/adr/0003` + CONTEXT.md | 应用层 vs 引擎层 venv 边界、懒触发 preflight 生命周期、依赖声明 SSOT |
+| 治理工作流 | `docs/GOVERNANCE.md` | 文档体系设计、各类型生命周期、change 工作流完整链路、SSOT 冲突仲裁、维护检查清单 |
 ## 11. Prerequisite Reading by Task
 
 > 执行开发任务前，按任务类型完成必读。未读必读文档就开始改代码 = 违反开发流程。
@@ -175,6 +183,7 @@ Orbitos Spec Standard v0.3。真源：`openspec/specs/`。变更：`openspec/cha
 | **P0** | 本文件 §0.5 Hard Constraints | 技术红线 |
 | **P0** | `docs/architecture/01-overview.md` | 系统全景 + 目录结构，不知道代码在哪就不能改 |
 | **P0** | `docs/architecture/08-tech-stack.md` | 依赖、语言规范、常见坑 |
+| **P0** | `docs/GOVERNANCE.md` | 治理工作流：文档类型生命周期、change 链路、SSOT 仲裁、反模式 |
 
 ### 按任务类型必读
 
@@ -184,6 +193,7 @@ Orbitos Spec Standard v0.3。真源：`openspec/specs/`。变更：`openspec/cha
 | **改 Explore**（`scripts/explore/`） | `07-explore-workflow.md` | Deep discovery 阶段、Python 3.10+ 依赖 |
 | **改/新增策略**（`sites/strategies/`） | `03-strategy-schema.md` + `07-explore-workflow.md` | frontmatter 字段、策略类型、Explore→Pipeline 桥接 |
 | **改/新增引擎**（引擎相关） | `06-engine-selection.md` + `configs/engine-versions.json` | 评分机制、fallback 链、版本同步流程 |
+| **改 Python 环境/依赖**（`requirements.txt`、preflight 脚本、`python-resolver.mjs`） | CONTEXT.md + `docs/adr/0002` + `docs/adr/0003` + `docs/architecture/08-tech-stack.md` §1 | 应用层/引擎层 venv 边界、懒触发生命周期、`resolveAppPython()` 解析策略 |
 | **改 CLI**（`scripts/*.mjs`） | `04-cli-reference.md` | 命令路由、ESM 规范、函数声明风格 |
 | **改共享库**（`scripts/lib/`） | `05-converter-architecture.md` | 两阶段转换模型、Python 兼容 |
 | **改 Shell 脚本**（`scripts/*.sh`） | `08-tech-stack.md` §2.3 | `set -euo pipefail`、路径计算模式 |

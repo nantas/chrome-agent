@@ -1,6 +1,8 @@
-# Browser Tooling Workflow Decision
+# 0004 — Browser Tooling Workflow Decision
 
-## Decision
+## 状态
+
+已接受（历史决策，从 docs/decisions/ 迁移至 docs/adr/）
 
 This decision is historical.
 

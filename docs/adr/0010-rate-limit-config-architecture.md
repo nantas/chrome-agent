@@ -1,9 +1,8 @@
-# ADR: Rate Limit 配置架构 — Anti-Crawl 模板 + Site Strategy 覆盖
+# 0010 — ADR: Rate Limit 配置架构 — Anti-Crawl 模板 + Site Strategy 覆盖
 
-**日期**: 2026-05-08
-**作者**: Pi agent
-**状态**: 已采纳
-**关联**: `mediawiki-api-rate-limit-config` openspec change
+## 状态
+
+已接受（历史决策，从 docs/decisions/ 迁移至 docs/adr/）
 
 ## Context
 

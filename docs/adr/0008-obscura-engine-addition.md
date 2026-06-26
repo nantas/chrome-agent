@@ -1,6 +1,8 @@
-# 2026-05-02 Obscura Engine Addition
+# 0008 — 2026-05-02 Obscura Engine Addition
 
-## Context
+## 状态
+
+已接受（历史决策，从 docs/decisions/ 迁移至 docs/adr/）
 
 chrome-agent 当前引擎管线在 `scrapling-get`（纯 HTTP）和 `scrapling-fetch`（Playwright）之间存在明显的效率断层：
 

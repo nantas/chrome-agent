@@ -1,6 +1,8 @@
-# Engine Registry Design Decision
+# 0006 — Engine Registry Design Decision
 
-## Context
+## 状态
+
+已接受（历史决策，从 docs/decisions/ 迁移至 docs/adr/）
 
 Phase 2 froze the engine contracts, but the engine inventory, routing hints, error matrix, and smoke-check summary remained partially duplicated inside `openspec/specs/engine-contracts/spec.md`. Phase 3 standardized strategy files, yet anti-crawl ordering still relied on `engine_sequence.purpose`, which could not express a precise priority chain or integrate with site-level overrides.
 

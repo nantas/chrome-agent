@@ -1,6 +1,8 @@
-# Skill-First Entry Reframe
+# 0007 — Skill-First Entry Reframe
 
-## Context
+## 状态
+
+已接受（历史决策，从 docs/decisions/ 迁移至 docs/adr/）
 
 Phase 5 introduced a repo-backed global `chrome-agent` CLI and explicitly downgraded `skills/chrome-agent` to a historical compatibility artifact. In practice that removed the agent-facing intent layer instead of removing complexity: upstream callers still had to decide between `fetch`, `explore`, and `crawl`, which contradicted the repository's `workflow-driven` governance model.
 

@@ -1,7 +1,8 @@
-# Decision: `_BLOCK_TAGS` Completeness Rule
+# 0012 — Decision: `_BLOCK_TAGS` Completeness Rule
 
-**日期**: 2026-05-20
-**来源**: `fix-complex-table-rendering` change 中的嵌套表格调试
+## 状态
+
+已接受（历史决策，从 docs/decisions/ 迁移至 docs/adr/）
 
 ## Context
 

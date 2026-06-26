@@ -1,6 +1,8 @@
-# 2026-05-02 Obscura Verification Outcome
+# 0009 — 2026-05-02 Obscura Verification Outcome
 
-## Context
+## 状态
+
+已接受（历史决策，从 docs/decisions/ 迁移至 docs/adr/）
 
 `add-obscura-engine` change (2026-05-02) completed core implementation with `obscura-fetch` registered as `draft`. Two critical verification gaps remained before `frozen` promotion:
 

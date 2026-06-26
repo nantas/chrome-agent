@@ -1,6 +1,8 @@
-# Scrapling-First Workflow Decision
+# 0005 — Scrapling-First Workflow Decision
 
-## Decision
+## 状态
+
+已接受（历史决策，从 docs/decisions/ 迁移至 docs/adr/）
 
 Use Scrapling as the repository default webpage grabbing path.
 

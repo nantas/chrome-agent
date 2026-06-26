@@ -1,6 +1,8 @@
-# 2026-05-15-engine-version-tracking
+# 0011 — 2026-05-15-engine-version-tracking
 
-## Context
+## 状态
+
+已接受（历史决策，从 docs/decisions/ 迁移至 docs/adr/）
 
 chrome-agent 依赖多个外部引擎 CLI（Scrapling、Obscura、CloakBrowser），各引擎独立安装和版本管理。在 Obscura 从 v0.1.0 升级到 v0.1.2 时暴露以下问题：
 
