@@ -54,12 +54,12 @@
     },
 
     "cloakbrowser": {
-      "expected_version": "0.3.27",
+      "expected_version": "0.4.3",
       "type": "pip_module",
       "detection": {
-        "method": "python_attribute",
-        "command": "python3 -c \"import cloakbrowser; print(cloakbrowser.__version__)\"",
-        "managed_path": null
+        "method": "python_importlib",
+        "command": "python -c \"import cloakbrowser; print(cloakbrowser.__version__)\"",
+        "managed_path": "$HOME/.cache/chrome-agent-cloakbrowser/bin/python"
       },
       "update": {
         "method": "pip_install",

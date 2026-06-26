@@ -146,6 +146,7 @@ Tracked files for auto-update:
 
 - `scripts/chrome-agent-runtime.mjs`
 - `scripts/chrome-agent-cli.mjs`
+- `scripts/lib/python-resolver.mjs`
 - `skills/chrome-agent/SKILL.md`
 
 Note: `scripts/chrome-agent-cli.mjs` is a **trigger**, not a copy destination. When it changes, doctor / manual sync re-copies `chrome-agent-runtime.mjs` to `~/.agents/scripts/chrome-agent.mjs` — the cli file itself is never copied globally. This is why a cli change forces a runtime refresh.

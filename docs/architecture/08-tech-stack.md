@@ -75,10 +75,22 @@ No TypeScript, no build step. All `.mjs` files are pure ESM executed directly.
 
 | Scope | Package | Version | Purpose |
 |-------|---------|---------|---------|
-| Explore (`scripts/explore/requirements.txt`) | `beautifulsoup4` | `>=4.12` | HTML parsing (BS4 mode) |
-| Explore | `pyyaml` | `>=6.0` | YAML frontmatter parsing |
-| Explore | `selectolax` | `>=0.3` | Fast HTML parsing (selectolax mode) |
-| Pipeline (`scripts/pipeline/`) | *(none declared)* | — | Uses stdlib + selectolax (via html_to_markdown) |
+| Application-layer (root `requirements.txt`) | `beautifulsoup4` | `>=4.12` | HTML parsing (BS4 mode) |
+| Application-layer | `pyyaml` | `>=6.0` | YAML frontmatter parsing |
+| Application-layer | `selectolax` | `>=0.3` | Fast HTML parsing (selectolax mode) |
+| Application-layer | `markdownify` | (*latest*) | HTML to Markdown conversion |
+| Application-layer | `requests` | `>=2.28` | HTTP client (pipeline API calls) |
+
+### Application-Layer Venv
+
+All application-layer Python dependencies (explore + pipeline + shared lib) are governed by a single `.venv/` at the repository root. Dependencies are declared in the root `requirements.txt`.
+
+- **venv 位置**：`.venv/`（仓库根，已 gitignore）
+- **依赖清单**：`requirements.txt`（仓库根，SSOT）
+- **懒触发创建**：`scripts/repo-venv.sh preflight`（仿 `scrapling-cli.sh` 模式）— 检测 `.venv/bin/python` 是否可 import 全量 deps，缺了自动 `uv venv` + `uv pip install -r requirements.txt`
+- **解析规则**（`scripts/lib/python-resolver.mjs` → `resolveAppPython(repoRoot)`）：`CHROME_AGENT_PYTHON` env > `.venv/bin/python` > system `python3`（fallback 保持向后兼容）
+- `chrome-agent doctor` 的 `explore_deps` 检查与所有应用层 spawn（explore freeze/iterate/main, pipeline）共用同一解析器，确保检测与执行一致
+
 
 ### External Engine Dependencies
 
@@ -88,7 +100,7 @@ Managed via `configs/engine-versions.json`:
 |--------|---------------|--------------|
 | Scrapling | Python venv (pip) | `$HOME/.cache/chrome-agent-scrapling/` |
 | Obscura | Precompiled binary (GitHub Release) | `$HOME/.cache/chrome-agent-obscura/bin/` |
-| CloakBrowser | pip module | System Python (`~/.cloakbrowser/chromium-{ver}/`) |
+| CloakBrowser | Managed venv (Python 3.11, uv) | `$HOME/.cache/chrome-agent-cloakbrowser/` |
 
 See `docs/architecture/06-engine-selection.md` for version details and upgrade procedures.
 
@@ -114,9 +126,11 @@ install-chrome-agent-cli.sh
         │       │   管理路径: $HOME/.cache/chrome-agent-obscura/bin/
         │       └── ✓ Obscura 就绪
         │
-        ├── 3. cloakbrowser-preflight.sh
-        │       │   pip install CloakBrowser
-        │       │   管理路径: ~/.cloakbrowser/chromium-{ver}/
+        ├── 3. cloakbrowser-cli.sh preflight
+        │       │   创建 CloakBrowser managed venv (Python 3.11)
+        │       │   uv pip install cloakbrowser
+        │       │   Chromium binary: ~/.cloakbrowser/chromium-{ver}/
+        │       │   管理路径: $HOME/.cache/chrome-agent-cloakbrowser/
         │       └── ✓ CloakBrowser 就绪
         │
         └── 4. engine-version-check.sh --json
@@ -146,7 +160,7 @@ install-chrome-agent-cli.sh
 | Compatibility | **Python 3.9+**: Use `from typing import Optional` instead of `X \| Y` union syntax |
 | Import style | Relative imports within packages (`from .module import func`) |
 | Pipeline invocation | `python3 -m scripts.pipeline <subcommand>` (not direct file execution) |
-| Explore invocation | `python3 scripts/explore/main.py <args>` (uses `sys.path.insert` for local imports) |
+| Explore invocation | `.venv/bin/python scripts/explore/main.py <args>` (uses `sys.path.insert` for local imports); Python interpreter resolved via `resolveAppPython()` — prefers `.venv/bin/python`, overridable by `CHROME_AGENT_PYTHON`, falls back to system `python3` |
 | Logging | `logging.getLogger(__name__)` pattern |
 | Type annotations | `from __future__ import annotations` enables PEP 604 syntax in type hints |
 
@@ -244,17 +258,17 @@ sites/strategies/<domain>/
 
 ```bash
 # 运行所有测试（单元 + 站点样本回归）
-python3 scripts/test_runner.py all
+.venv/bin/python scripts/test_runner.py all
 
 # 仅单元测试（stdlib discover）
-python3 scripts/test_runner.py unit
+.venv/bin/python scripts/test_runner.py unit
 # 或直接:
-python3 -m unittest discover -s tests -v
+.venv/bin/python -m unittest discover -s tests -v
 
 # 站点样本回归
-python3 scripts/test_runner.py site-samples
-python3 scripts/test_runner.py site-samples --domain developer.nintendo.com
-python3 scripts/test_runner.py site-samples --update-golden
+.venv/bin/python scripts/test_runner.py site-samples
+.venv/bin/python scripts/test_runner.py site-samples --domain developer.nintendo.com
+.venv/bin/python scripts/test_runner.py site-samples --update-golden
 ```
 
 ### 框架约定

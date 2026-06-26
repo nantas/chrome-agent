@@ -113,9 +113,10 @@ Before any engine runs, a preflight check ensures the engine is installed and fu
 
 ### CloakBrowser Preflight
 
-- **Module check**: Verifies `cloakbrowser` Python module is importable
-- **Binary cache**: Chromium binary auto-downloads to `~/.cloakbrowser/chromium-{version}/` on first use
-- **Reference**: `scripts/cloakbrowser-preflight.sh`
+- **Managed venv**: CloakBrowser runs in a dedicated Python 3.11 venv at `$HOME/.cache/chrome-agent-cloakbrowser/`
+- **Auto-install**: If missing, `scripts/cloakbrowser-cli.sh preflight` provisions the venv via `uv venv --python 3.11` + `uv pip install cloakbrowser`
+- **Binary cache**: Chromium binary auto-downloads to `~/.cloakbrowser/chromium-{version}/` on first use (managed by cloakbrowser package, not the venv)
+- **Reference**: `scripts/cloakbrowser-cli.sh`
 
 ### Doctor Integration
 
@@ -164,7 +165,7 @@ The single source of truth for all engine versions:
 |--------|-------------|-----------------|--------------|
 | Scrapling | `pip` | `python_importlib` in managed venv | `$HOME/.cache/chrome-agent-scrapling/` |
 | Obscura | `precompiled_binary` | `file_hash` (MD5 + size) | `$HOME/.cache/chrome-agent-obscura/bin/` |
-| CloakBrowser | `pip_module` | `python_attribute` (`__version__`) | System Python (pip-managed) |
+| CloakBrowser | `pip_module` | `python_importlib` in managed venv | `$HOME/.cache/chrome-agent-cloakbrowser/bin/python` |
 
 ### Upgrade Workflow
 

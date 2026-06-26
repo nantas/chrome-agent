@@ -125,7 +125,8 @@ def detect_obscura(cfg):
 
 
 def detect_cloakbrowser(cfg):
-    out, rc = run(["python3", "-c", "import cloakbrowser; print(cloakbrowser.__version__)"])
+    python_bin = expand(cfg["detection"]["managed_path"])
+    out, rc = run([python_bin, "-c", "import cloakbrowser; print(cloakbrowser.__version__)"])
     if rc != 0 or not out:
         return None, "missing"
     return out, "detected"

@@ -5,7 +5,7 @@ CloakBrowser 是 chrome-agent 的高保护页面引擎（rank 4, `playwright_ste
 ## 安装
 
 ```bash
-pip install cloakbrowser
+bash scripts/cloakbrowser-cli.sh preflight
 ```
 
 首次使用时 CloakBrowser 会自动下载 ~200MB 的 patched Chromium binary 到 `~/.cloakbrowser/chromium-{version}/`。
@@ -13,11 +13,11 @@ pip install cloakbrowser
 ## 验证安装
 
 ```bash
-# 方法 1: 使用 preflight 脚本
-bash scripts/cloakbrowser-preflight.sh
+# 方法 1: 使用 managed venv preflight
+bash scripts/cloakbrowser-cli.sh preflight
 
-# 方法 2: 直接检查模块
-python3 -c "from cloakbrowser import launch; print('OK')"
+# 方法 2: 直接检查模块（在 managed venv 中）
+$HOME/.cache/chrome-agent-cloakbrowser/bin/python -c "from cloakbrowser import launch; print('OK')"
 ```
 
 ## macOS 首次使用
@@ -67,14 +67,14 @@ chrome-agent fetch <url> --fetcher cloakbrowser
 
 - CloakBrowser Python wrapper: MIT
 - Patched Chromium binary: **专有许可证**，不可重新分发
-- 用户需自行通过 `pip install` 获取
+- 用户需自行通过 `scripts/cloakbrowser-cli.sh preflight` 获取
 
 ## 故障排查
 
 | 问题 | 解决方案 |
 |------|---------|
-| `ModuleNotFoundError: No module named 'cloakbrowser'` | 运行 `pip install cloakbrowser` |
+| `ModuleNotFoundError: No module named 'cloakbrowser'` | 运行 `bash scripts/cloakbrowser-cli.sh preflight` |
 | Gatekeeper 阻止 Chromium | `xattr -cr ~/.cloakbrowser/chromium-*/Chromium.app` |
-| Binary 未下载 | 手动运行 `python3 -c "from cloakbrowser import launch; b = launch(); b.close()"` 触发下载 |
+| Binary 未下载 | 手动运行 `~/.cache/chrome-agent-cloakbrowser/bin/python -c "from cloakbrowser import launch; b = launch(); b.close()"` 触发下载 |
 | 内存不足 | CloakBrowser 需要 ~443MB，确保系统有足够可用内存 |
 | Turnstile 未解析 | 部分站点可能需要 headed 模式：`--no-headless` |

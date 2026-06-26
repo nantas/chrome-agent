@@ -9,6 +9,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import { buildScraplingExtractionArgs } from "./lib/scrapling-extraction-args.mjs";
+import { resolveAppPython } from "./lib/python-resolver.mjs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const inferredRepoRoot = path.resolve(__dirname, "..");
@@ -777,7 +778,7 @@ function runScraplingFetch(repoRoot, fetcher, targetUrl, outputPath, extraArgs =
 function runCloakbrowserFetch(repoRoot, targetUrl, outputPath, extraArgs = []) {
   ensureDir(path.dirname(outputPath));
 
-  const preflight = spawnSync("bash", ["./scripts/cloakbrowser-preflight.sh"], {
+  const preflight = spawnSync("bash", ["./scripts/cloakbrowser-cli.sh", "preflight"], {
     cwd: repoRoot,
     encoding: "utf8",
   });
@@ -785,19 +786,23 @@ function runCloakbrowserFetch(repoRoot, targetUrl, outputPath, extraArgs = []) {
     return {
       ok: false,
       preflight: { ok: false },
-      summary: "CloakBrowser preflight failed. Install with: pip install cloakbrowser",
+      summary: "CloakBrowser preflight failed. Re-run scripts/cloakbrowser-cli.sh preflight to provision the managed venv.",
       stderr: `${preflight.stdout ?? ""}${preflight.stderr ?? ""}`.trim(),
     };
   }
 
-  const args = ["python3", "scripts/cloakbrowser_fetcher.py", targetUrl, "--output", outputPath, "--json", ...extraArgs];
+  const preflightStdout = preflight.stdout || "";
+  const resolvedCliMatch = preflightStdout.match(/^RESOLVED_CLI_PATH=(.+)$/m);
+  const managedPython = resolvedCliMatch ? resolvedCliMatch[1].trim() : "python3";
+
+  const args = [managedPython, "scripts/cloakbrowser_fetcher.py", targetUrl, "--output", outputPath, "--json", ...extraArgs];
   const result = spawnSync(args[0], args.slice(1), {
     cwd: repoRoot,
     encoding: "utf8",
   });
   return {
     ok: result.status === 0,
-    preflight: { ok: true },
+    preflight: { ok: true, resolvedCliPath: managedPython },
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
     command: args.join(" "),
@@ -1679,7 +1684,7 @@ function generateHandoff(context) {
 
 function runExplorePythonDepsCheck(repoRoot) {
   try {
-    const result = spawnSync("python3", ["-c", "import bs4, yaml; print('ok')"], {
+    const result = spawnSync(resolveAppPython(repoRoot), ["-c", "import bs4, yaml; print('ok')"], {
       cwd: repoRoot,
       encoding: "utf8",
       timeout: 15000,
@@ -1729,7 +1734,7 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
     ensureDir(runDir);
 
     // Phase 1: Run deep discovery pipeline (no silent catch)
-    const ddResult = spawnSync("python3", [
+    const ddResult = spawnSync(resolveAppPython(repoRoot), [
       path.join(repoRoot, "scripts", "explore", "main.py"),
       repoRoot,
       targetUrl,
@@ -2262,7 +2267,7 @@ function runCrawlMediawikiApi(repoRoot, repoRef, resolutionMode, runDir, reportP
     if (maxPages != null) {
       apiArgs.push("--max-pages", String(maxPages));
     }
-    const apiResult = spawnSync("python3", apiArgs, {
+    const apiResult = spawnSync(resolveAppPython(repoRoot), apiArgs, {
       cwd: repoRoot,
       encoding: "utf-8",
       timeout: 600_000,  // 10 min max
@@ -3275,7 +3280,7 @@ function runFreeze(repoRoot, repoRef, resolutionMode, scaffoldPath) {
     );
   }
 
-  const result = spawnSync("python3", [
+  const result = spawnSync(resolveAppPython(repoRoot), [
     path.join(repoRoot, "scripts", "explore", "freeze.py"),
     repoRoot,
     absScaffoldPath,
@@ -3339,7 +3344,7 @@ function runIterate(repoRoot, repoRef, resolutionMode, scaffoldPath) {
     );
   }
 
-  const result = spawnSync("python3", [
+  const result = spawnSync(resolveAppPython(repoRoot), [
     path.join(repoRoot, "scripts", "explore", "iterate.py"),
     repoRoot,
     absScaffoldPath,
