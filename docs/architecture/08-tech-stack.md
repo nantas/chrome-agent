@@ -66,7 +66,6 @@
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `better-sqlite3` | `^12.8.0` | SQLite database access (CLI cache/manifest) |
 | `yaml` | `^2.8.3` | YAML frontmatter parsing for strategy files |
 
 No TypeScript, no build step. All `.mjs` files are pure ESM executed directly.

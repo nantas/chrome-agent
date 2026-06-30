@@ -55,7 +55,7 @@
 
 | 层级 | 技术 | 说明 |
 |------|------|------|
-| **CLI 入口** | Node.js ESM（`.mjs`） | 无 TypeScript，无编译步骤；依赖 `better-sqlite3`、`yaml` |
+| **CLI 入口** | Node.js ESM（`.mjs`） | 无 TypeScript，无编译步骤；依赖 `yaml` |
 | **MediaWiki 管线** | Python 3.9+ | `scripts/pipeline/`，纯 stdlib + `requests` + `pyyaml` |
 | **Explore 管线** | Python 3.10+ | `scripts/explore/`，额外依赖 `beautifulsoup4`、`selectolax` |
 | **共享库** | Python | `scripts/lib/`（strategy_loader、config_resolver、extraction） |
@@ -70,7 +70,7 @@
 .
 ├── AGENTS.md                    # 治理文档（服务身份、能力契约、治理规则）
 ├── README.md                    # 仓库全景
-├── package.json                 # Node.js 依赖（better-sqlite3, yaml）
+├── package.json                 # Node.js 依赖（yaml）
 ├── configs/
 │   ├── engine-registry.json     # 引擎注册索引（类型、评分、状态）
 │   ├── engine-versions.json     # 引擎版本清单（权威来源）
