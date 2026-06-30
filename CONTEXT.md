@@ -1,6 +1,6 @@
 # CONTEXT.md — chrome-agent 领域语言词汇表
 
-> 定义 chrome-agent 项目 Python 环境治理的核心术语。`grill-with-docs` / `improve-codebase-architecture` skill 读取此文件对齐语言。
+> 定义 chrome-agent 项目的核心术语：Python 环境治理 + 业务架构维度（4 维模型）。`grill-with-docs` / `improve-codebase-architecture` skill 读取此文件对齐语言。
 
 ## 执行上下文
 
@@ -40,5 +40,48 @@ _Avoid_: 显式 setup 脚本、README 里写"先跑 xxx 再跑 yyy"
 _Avoid_: 一个 venv 全管、引擎脚本用 system python3
 
 **shared lib/extraction/**：
-`lib/extraction/converter.py`（依赖 selectolax）同时被 pipeline 和 explore import，是共享层。**共享层依赖进应用层 venv**（根 `requirements.txt` 包含 selectolax），因为 explore 和 pipeline 都属应用层。
-_Avoid_: 按"explore 需要"或"pipeline 需要"切分共享层依赖
+共享提取库。`converter.py`（HtmlToMarkdownConverter）是 HTML→Markdown 转换的**共享内核**（intended single implementation），同时被 pipeline 直接 import、被 explore 通过 `sample_converter.py` 间接使用。`preprocessor.py` 同时被 pipeline 和 explore 直接 import。`html_to_markdown.py` 是历史遗留实现，计划消解。
+_Avoid_: 在共享层外另建独立的 HTML→Markdown 实现、共享层模块被不同管线取不同入口而实为非共享
+
+## 业务架构维度 (Business Architecture Dimensions)
+
+> chrome-agent 的抓取/转换/提取业务领域是 **4 维正交**的。每个模块同时是这 4 维空间的一个点。
+> 架构的所有表达层必须能区分'同一模块'和'镜像/变体模块'。
+
+**架构维度 (Architecture Dimension)**：
+模块在 4 轴空间中的一根轴。chrome-agent 有 4 个正交维度。
+_Avoid_: 把维度压扁成一个文件、用一个参数运行时切换维度
+
+**能力 (Capability)**：
+A 轴——横切关注点：fetch、convert、extract、discover、assemble。当前架构唯一显式建模的维度。
+_Avoid_: 所有模块只按能力命名，忽略其他维度
+
+**执行路径 (Execution Path)**：
+B 轴——哪个管线在调用：explore（采样审计）、pipeline（批量生产）、site-samples（质量回归）。
+同一能力在不同执行路径的实现是 **镜像 (Mirror)**：必须声明等价关系并提供等价证明。
+_Avoid_: 不加声明地在不同路径复制同一能力、用 context 参数运行时切换路径
+
+**策略变体 (Strategy Variant)**：
+C 轴——站点特定的特化：generic、fandom、wiki.gg 等。变体要么通过 strategy.md frontmatter 配置驱动（推荐），要么显式声明特化文件。
+_Avoid_: 变体和内核混淆在同一文件、变体完全复制内核不共享代码
+
+**输入格式 (Input Format)**：
+D 轴——rendered HTML、wikitext、API JSON。
+_Avoid_: 格式转换与内容提取耦合
+
+**镜像 (Mirror)**：
+同一能力在不同执行路径下的等价投影。explore convert 和 pipeline convert 是镜像。必须声明等价关系 + 提供等价证明（测试/golden snapshot）。
+_Avoid_: 镜像各自独立实现、无等价声明
+
+**变体 (Variant)**：
+站点特定的策略适配层。应复用共享内核，仅在 strategy.md 配置声明差异。
+_Avoid_: 不加声明地完全复制实现
+
+**共享内核 (Shared Kernel)**：
+所有镜像和变体共用的权威单一实现。一个能力只有一个共享内核。
+_Avoid_: 名义共享但各镜像取不同入口（实际非共享）
+
+**维度归属 (Dimensional Coordinates)**：
+一个模块在 4 维空间中声明的坐标。新 agent 面对任一模块，应能从结构回答：
+① 单一还是镜像/变体 ② 镜像伙伴/变体基类 ③ 等价证明在哪。
+_Avoid_: 靠读全量代码推断、靠问作者才知道关系
