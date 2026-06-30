@@ -7,13 +7,19 @@ import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CDP = resolve(__dirname, "..", ".agents", "skills", "chrome-cdp", "scripts", "cdp.mjs");
-const CREATOR_ID = "atdfb";
-const BASE_DIR = "/Volumes/Shuttle/downloads";
+const CREATOR_ID = process.env.FANBOX_CREATOR_ID ?? "atdfb";
+const BASE_DIR = process.env.FANBOX_BASE_DIR ?? "/Volumes/Shuttle/downloads";
 const DETAIL_API = "https://api.fanbox.cc/post.info";
 const CUTOFF_DATE = new Date("2021-06-01T00:00:00+09:00");
 const PROGRESS_FILE = resolve(__dirname, "fanbox-download-progress.json");
 const VIDEO_EXTS = ["mp4", "wmv", "avi", "mov", "mkv", "webm", "mpg", "mpeg"];
 const MAX_PAGES = 10;
+
+const FANBOX_COOKIE = process.env.FANBOX_COOKIE || "";
+if (!FANBOX_COOKIE) {
+  console.error("Error: FANBOX_COOKIE env var not set (expected 'FANBOXSESSID=...; p_ab_id=...; ...')");
+  process.exit(1);
+}
 
 let TARGET = null;
 
@@ -86,7 +92,7 @@ function fetchDetail(postId) {
 }
 
 function downloadVideo(url, destPath) {
-  const cookie = "FANBOXSESSID=3391520_YwKSEowRvq7OztoTheOkT5AeqkA4UiNs; p_ab_id=0; p_ab_id_2=7; p_ab_d_id=1522472693";
+  const cookie = FANBOX_COOKIE;
   const cmd = `curl -L -s -o "${destPath}" -w "%{http_code}" -H "Cookie: ${cookie}" -H "Referer: https://www.fanbox.cc/" -H "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36" "${url}"`;
   return sh(cmd, 600000);
 }

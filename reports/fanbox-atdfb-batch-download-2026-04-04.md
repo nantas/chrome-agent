@@ -3,7 +3,7 @@
 - **Date**: 2026-04-04
 - **Creator**: ATD (`https://atdfb.fanbox.cc`)
 - **Creator ID**: atdfb
-- **Script**: `scripts/fanbox-download-videos.mjs`
+- **Script**: `sites/strategies/fanbox.cc/_attachments/fanbox-download-videos.mjs` _(路径于后续重构迁移至策略附件；原 `scripts/fanbox-download-videos.mjs` 已删除)_
 - **Output**: `/Volumes/Shuttle/downloads/`
 - **Total posts scanned**: 100 (newest to ~2021-06)
 - **Posts with video**: 72
@@ -409,6 +409,6 @@ Post IDs: 2309083, 2185484, 2132864, 2075711, 2023941, 1965553, 1858382, 1755977
 
 ## Script Location
 
-- **Script**: `scripts/fanbox-download-videos.mjs`
-- **Progress**: `scripts/fanbox-download-progress.json`
+- **Script**: `sites/strategies/fanbox.cc/_attachments/fanbox-download-videos.mjs` _(已迁移至策略附件)_
+- **Progress**: `sites/strategies/fanbox.cc/_attachments/fanbox-download-progress.json` _(已迁移至策略附件)_
 - **CDP skill**: `.agents/skills/chrome-cdp/scripts/cdp.mjs`
