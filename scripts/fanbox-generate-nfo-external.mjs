@@ -7,14 +7,20 @@ import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CDP = resolve(__dirname, "..", ".agents", "skills", "chrome-cdp", "scripts", "cdp.mjs");
-const BASE_DIR = "/Volumes/video/学习资料/Anime/ATD";
+const BASE_DIR = process.env.FANBOX_BASE_DIR ?? "/Volumes/video/学习资料/Anime/ATD";
 const DETAIL_API = "https://api.fanbox.cc/post.info";
 const PROGRESS_FILE = resolve(__dirname, "fanbox-nfo-external-progress.json");
 const TODAY = new Date().toISOString().replace("T", " ").slice(0, 19);
 const API_DELAY_MS = 4000;
 const RATE_LIMIT_COOLDOWN_MS = 3 * 60 * 60 * 1000;
 const START_PAGE = 1;
-const CREATOR_ID = "atdfb";
+const CREATOR_ID = process.env.FANBOX_CREATOR_ID ?? "atdfb";
+
+const FANBOX_COOKIE = process.env.FANBOX_COOKIE || "";
+if (!FANBOX_COOKIE) {
+  console.error("Error: FANBOX_COOKIE env var not set (expected 'FANBOXSESSID=...; p_ab_id=...; ...')");
+  process.exit(1);
+}
 
 let TARGET = null;
 
@@ -184,7 +190,7 @@ async function fetchWithRetry(postId, maxRetries = 2) {
 }
 
 function downloadCover(url, destPath) {
-  const cookie = "FANBOXSESSID=3391520_YwKSEowRvq7OztoTheOkT5AeqkA4UiNs; p_ab_id=0; p_ab_id_2=7; p_ab_d_id=1522472693";
+  const cookie = FANBOX_COOKIE;
   const ep = destPath.replace(/'/g, "'\\''");
   try {
     return sh(`curl -L -s -o '${ep}' -w '%{http_code}' -H 'Cookie: ${cookie}' -H 'Referer: https://www.fanbox.cc/' -H 'User-Agent: Mozilla/5.0' '${url}'`, 30000);
