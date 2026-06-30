@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import re
 from typing import Dict, List, Tuple
+from html import unescape
 
 
 # ---------------------------------------------------------------------------
@@ -328,17 +329,7 @@ def html_to_markdown(html: str) -> str:
     html = re.sub(r"<[^>]+>", "", html)
 
     # Decode entities
-    for entity, char in [
-        ("&amp;", "&"),
-        ("&lt;", "<"),
-        ("&gt;", ">"),
-        ("&quot;", '"'),
-        ("&apos;", "'"),
-        ("&nbsp;", " "),
-        ("&#39;", "'"),
-        ("&copy;", "\u00a9"),
-    ]:
-        html = html.replace(entity, char)
+    html = unescape(html)
 
     # Step 5: Restore tables and images
     for k, v in tbl_placeholders.items():

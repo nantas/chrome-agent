@@ -2,7 +2,6 @@
 
 import logging
 import os
-import re
 import time
 
 from ...strategies import LinkResolver, ListPageAssembler
@@ -158,14 +157,9 @@ def run_assemble(output_dir: str, manifest: dict, results: dict,
     list_page_content = manifest.get("list_page_content", {})
     frontmatter_fields = api.get("output", {}).get("frontmatter_fields", [])
 
-    # Build manifest page lookup for existence checks
-    manifest_pages_by_title: dict[str, dict] = {
-        p["title"]: p for p in manifest.get("pages", [])
-    }
-
     for page_title, directory in list_pages.items():
         # Check if this list page exists in the manifest
-        if page_title not in manifest_pages_by_title:
+        if page_title not in manifest_by_title:
             log.warning("Skipping list page '%s': not found in manifest", page_title)
             continue
 
@@ -179,7 +173,7 @@ def run_assemble(output_dir: str, manifest: dict, results: dict,
         dir_path = os.path.join(output_dir, actual_dir)
 
         # Verify this page is marked as list_page in manifest (prevents excluded pages from overwriting)
-        manifest_page = manifest_pages_by_title.get(page_title, {})
+        manifest_page = manifest_by_title.get(page_title, {})
         if not manifest_page.get("is_list_page", False):
             log.warning("Skipping list page '%s': not marked is_list_page in manifest (possibly excluded)", page_title)
             continue

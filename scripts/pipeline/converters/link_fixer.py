@@ -1,7 +1,7 @@
 """Unified link fixer for Markdown output directories.
 
 Consolidates link repair logic that was previously scattered across
-strategies.py, phases/ modules, and ad-hoc scripts.
+strategies/, phases/ modules, and ad-hoc scripts.
 """
 
 import json

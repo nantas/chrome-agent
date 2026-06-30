@@ -6,11 +6,6 @@ from typing import Optional
 
 from bs4 import BeautifulSoup
 
-CHECKS = [
-    "S1", "S2", "S3", "S4", "S5", "S6", "S7",
-    "S8", "S9", "S10", "S11", "S12",
-]
-
 FIXABLE_ISSUES = {
     "base64_residue",
     "space_normalization",
@@ -27,14 +22,22 @@ FIXABLE_ISSUES = {
     "id_navigation_leak",
 }
 
-NON_FIXABLE_ISSUES = {
-    "empty_content",
-    "infobox_mismatch",
-    "structural_failure",
-    # New non-fixable types
-    "infobox_incomplete",
-    "name_spacing",
-    "name_is_filename",
+_FIX_TO_CLEANUP = {
+    "base64_residue": "fix_lazyload_images",
+    "link_resolution": "unwrap_image_wrappers",
+    "image_wrapper": "unwrap_image_wrappers",
+    "table_class_missing": "strip_fandom_infobox_tables",
+    "relative_image_url": "convert_images_full_url",
+    "relative_link": "convert_links_full_url",
+    "infobox_html_residue": "use_balanced_div_matching",
+    "section_loss": "use_balanced_toc_removal",
+    "nav_leak": "remove_nav_header_sidebar",
+    "youtube_title": "retry_oembed_titles",
+    "id_navigation_leak": "extract_infobox_nav_cur",
+}
+
+_FIX_TO_NORMALIZATION = {
+    "space_normalization": "fix_spaces",
 }
 
 # Navigation keywords for S9
@@ -569,31 +572,10 @@ def auto_remediate(
 
     for failure in fixable_failures:
         fix_type = failure.get("fixable_type")
-        if fix_type == "base64_residue":
-            cleanup.add("fix_lazyload_images")
-        elif fix_type == "space_normalization":
-            normalization.add("fix_spaces")
-        elif fix_type == "link_resolution":
-            cleanup.add("unwrap_image_wrappers")
-        elif fix_type == "image_wrapper":
-            cleanup.add("unwrap_image_wrappers")
-        elif fix_type == "table_class_missing":
-            cleanup.add("strip_fandom_infobox_tables")
-        elif fix_type == "relative_image_url":
-            cleanup.add("convert_images_full_url")
-        elif fix_type == "relative_link":
-            cleanup.add("convert_links_full_url")
-        elif fix_type == "infobox_html_residue":
-            cleanup.add("use_balanced_div_matching")
-        elif fix_type == "section_loss":
-            cleanup.add("use_balanced_toc_removal")
-        elif fix_type == "nav_leak":
-            cleanup.add("remove_nav_header_sidebar")
-        elif fix_type == "youtube_title":
-            cleanup.add("retry_oembed_titles")
-        elif fix_type == "id_navigation_leak":
-            cleanup.add("extract_infobox_nav_cur")
-
+        if fix_type in _FIX_TO_CLEANUP:
+            cleanup.add(_FIX_TO_CLEANUP[fix_type])
+        elif fix_type in _FIX_TO_NORMALIZATION:
+            normalization.add(_FIX_TO_NORMALIZATION[fix_type])
     updated["cleanup"] = sorted(cleanup)
     updated["text_normalization"] = sorted(normalization)
     return updated

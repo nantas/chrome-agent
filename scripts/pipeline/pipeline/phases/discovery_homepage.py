@@ -14,6 +14,15 @@ from ..page_assigner import assign_pages
 log = logging.getLogger("pipeline")
 
 
+_EMPTY_MANIFEST = {
+    "pages": [],
+    "phase": "homepage",
+    "source": "homepage-driven-discovery",
+    "total_pages": 0,
+    "categories_discovered": 0,
+}
+
+
 def run_homepage_discovery(client, strategy: dict, origin: str,
                 platform_variant: str = "standard",
                 exclude_categories: Optional[list[str]] = None) -> dict:
@@ -71,13 +80,7 @@ def run_homepage_discovery(client, strategy: dict, origin: str,
 
     if not categories:
         log.warning("Homepage discovery: No categories found on homepage — manifest will be empty")
-        return {
-            "pages": [],
-            "phase": "homepage",
-            "source": "homepage-driven-discovery",
-            "total_pages": 0,
-            "categories_discovered": 0,
-        }
+        return _EMPTY_MANIFEST
 
     # Exclude categories (strategy + CLI merged by orchestrator)
     exclude_set = set(exclude_categories or [])
@@ -94,13 +97,7 @@ def run_homepage_discovery(client, strategy: dict, origin: str,
 
     if not categories:
         log.warning("Homepage discovery: No categories found on homepage — manifest will be empty")
-        return {
-            "pages": [],
-            "phase": "homepage",
-            "source": "homepage-driven-discovery",
-            "total_pages": 0,
-            "categories_discovered": 0,
-        }
+        return _EMPTY_MANIFEST
 
     # Step 2: Discover pages for each category
     log.info("Homepage discovery: Discovering pages for %d categories...", len(categories))

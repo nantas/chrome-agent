@@ -390,7 +390,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
         }
         final_state = {
             "completed_pages": list(all_completed),
-            "phase": "convert_done" if "assemble" not in phases else "convert_done",
+            "phase": "convert_done",
             "total_pages": len(manifest.get("pages", [])),
         }
         save_state(args.output, final_state)

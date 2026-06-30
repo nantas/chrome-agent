@@ -14,6 +14,13 @@ from ..strategies import title_to_filepath
 log = logging.getLogger("pipeline")
 
 
+def _mark_assigned(pages, idx, target_dir, title, assigned_cat, method):
+    pages[idx]["target_directory"] = target_dir
+    pages[idx]["target_filename"] = title_to_filepath(title, 0)[1]
+    pages[idx]["assigned_category"] = assigned_cat
+    pages[idx]["assignment_method"] = method
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -57,7 +64,6 @@ def assign_pages(pages: list[dict], categories: list[dict],
     categories_cfg = homepage_cfg.get("categories", [])
     assignment_priority = homepage_cfg.get("assignment_priority", [])
     manual_assignments = homepage_cfg.get("manual_assignments", {})
-    category_page_types = homepage_cfg.get("category_page_types", {})
 
     # Build lookup maps
     cat_name_to_dir = {c["name"]: c["dir"] for c in categories_cfg}
@@ -276,11 +282,7 @@ def _apply_mw_category_matching(
             if priority_name in mw_cats:
                 target_dir = cat_name_to_dir.get(priority_name)
                 if target_dir:
-                    target_file = title_to_filepath(page["title"], 0)[1]
-                    pages[idx]["target_directory"] = target_dir
-                    pages[idx]["target_filename"] = target_file
-                    pages[idx]["assigned_category"] = priority_name
-                    pages[idx]["assignment_method"] = "mw_category_match"
+                    _mark_assigned(pages, idx, target_dir, page["title"], priority_name, "mw_category_match")
                     log.info("Page '%s' assigned to '%s' (MW category match: '%s')",
                              page["title"], target_dir, priority_name)
                     assigned = True
@@ -291,11 +293,7 @@ def _apply_mw_category_matching(
                     if alias_name in mw_cats:
                         target_dir = cat_name_to_dir.get(priority_name)
                         if target_dir:
-                            target_file = title_to_filepath(page["title"], 0)[1]
-                            pages[idx]["target_directory"] = target_dir
-                            pages[idx]["target_filename"] = target_file
-                            pages[idx]["assigned_category"] = priority_name
-                            pages[idx]["assignment_method"] = "mw_category_match"
+                            _mark_assigned(pages, idx, target_dir, page["title"], priority_name, "mw_category_match")
                             log.info("Page '%s' assigned to '%s' (MW alias match: '%s' → '%s')",
                                      page["title"], target_dir, alias_name, priority_name)
                             assigned = True
@@ -308,11 +306,7 @@ def _apply_mw_category_matching(
             for mw_cat in mw_cats:
                 if mw_cat in page_cat_dir_map:
                     target_dir = page_cat_dir_map[mw_cat]
-                    target_file = title_to_filepath(page["title"], 0)[1]
-                    pages[idx]["target_directory"] = target_dir
-                    pages[idx]["target_filename"] = target_file
-                    pages[idx]["assigned_category"] = mw_cat
-                    pages[idx]["assignment_method"] = "mw_category_match"
+                    _mark_assigned(pages, idx, target_dir, page["title"], mw_cat, "mw_category_match")
                     log.info("Page '%s' assigned to '%s' (MW page_categories fallback: '%s')",
                              page["title"], target_dir, mw_cat)
                     assigned = True
@@ -338,7 +332,6 @@ def _query_batch_categories(titles: list[str], page_index: dict,
         max_retries: Max retry attempts per batch.
         strategy: Strategy dict for config.
     """
-    import urllib.parse
 
     # Build pipe-separated titles
     titles_pipe = "|".join(titles)

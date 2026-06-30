@@ -75,82 +75,6 @@ class HtmlToMarkdownConverter:
         self._redirect_map = redirect_map or {}
 
     # ------------------------------------------------------------------
-    # Balanced element removal
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def remove_balanced_element(html: str, tag: str, attr_pattern: str) -> str:
-        """Remove an HTML element using balanced depth counting.
-
-        Finds the first <tag ...attr_pattern...> opening tag, then tracks
-        nesting depth to find the matching closing tag, removing the entire
-        span.  Uses depth counting rather than non-greedy regex.
-
-        Args:
-            html: Raw HTML string.
-            tag: HTML tag name (e.g. "div", "span", "table"). Auto-escaped.
-            attr_pattern: Regex fragment matching opening-tag attributes
-                (e.g. r'id="toc"', r'class="[^\"]*mw-editsection"').
-                Callers MUST ensure this is a safe regex fragment.
-        """
-        open_re = re.compile(
-            r'<' + re.escape(tag) + r'\b[^>]*' + attr_pattern + r'[^>]*>',
-            re.IGNORECASE,
-        )
-        match = open_re.search(html)
-        if not match:
-            return html
-
-        start = match.start()
-        pos = match.end()
-        depth = 1
-
-        tag_open_re = re.compile(
-            r'<' + re.escape(tag) + r'\b[^>]*(?<!/)>',
-            re.IGNORECASE,
-        )
-        tag_close_re = re.compile(
-            r'</' + re.escape(tag) + r'\s*>',
-            re.IGNORECASE,
-        )
-
-        while depth > 0 and pos < len(html):
-            next_open = tag_open_re.search(html, pos)
-            next_close = tag_close_re.search(html, pos)
-
-            if next_close is None:
-                return html  # No matching close tag — return unchanged
-
-            if next_open is not None and next_open.start() < next_close.start():
-                depth += 1
-                pos = next_open.end()
-            else:
-                depth -= 1
-                if depth == 0:
-                    end = next_close.end()
-                    return html[:start] + html[end:]
-                pos = next_close.end()
-
-        return html
-
-    @staticmethod
-    def remove_all_matching(html: str, tag: str, attr_pattern: str) -> str:
-        """Remove all matching HTML elements using balanced depth counting.
-
-        Repeatedly calls remove_balanced_element until no matching opening
-        tags remain.
-        """
-        result = html
-        for _ in range(100):  # Safety limit
-            new_result = HtmlToMarkdownConverter.remove_balanced_element(
-                result, tag, attr_pattern,
-            )
-            if new_result == result:
-                break
-            result = new_result
-        return result
-
-    # ------------------------------------------------------------------
     # Tooltip link merge
     # ------------------------------------------------------------------
 
@@ -855,18 +779,6 @@ class HtmlToMarkdownConverter:
             header_row_count = 1
 
         return self._render_grid_as_table(grid, header_row_count)
-
-    def _extract_row(self, row, source_dir: str = "") -> list[str]:
-        cells = []
-        for child in self._child_nodes(row):
-            if child.tag not in {"th", "td"}:
-                continue
-            cells.append(self._render_inline_children(child, source_dir=source_dir) or "")
-        return cells
-
-    def _markdown_table_line(self, cells: list[str]) -> str:
-        escaped = [cell.replace("|", "\\|") for cell in cells]
-        return "| " + " | ".join(escaped) + " |"
 
     # ------------------------------------------------------------------
     # Inline rendering

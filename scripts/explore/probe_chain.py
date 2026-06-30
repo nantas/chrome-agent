@@ -21,6 +21,28 @@ ENGINES = [
 ]
 
 
+def _build_success(engine, html, output_path):
+    return {
+        "engine": engine,
+        "status": "success",
+        "http_status": 200,
+        "page_title": _extract_title(html),
+        "content_length": len(html) if html else 0,
+        "output_path": output_path,
+    }
+
+
+def _build_failure(engine, stderr, http_status=None, stdout=""):
+    detail = stderr[:500] or stdout[:500]
+    return {
+        "engine": engine,
+        "status": "failure",
+        "http_status": http_status,
+        "error_type": _classify_error(stderr, http_status),
+        "detail": detail,
+    }
+
+
 def _run_scrapling_get(repo_root: str, url: str, output_path: str) -> dict:
     """Run scrapling-get via scrapling CLI."""
     preflight = _scrapling_preflight(repo_root)
@@ -42,24 +64,11 @@ def _run_scrapling_get(repo_root: str, url: str, output_path: str) -> dict:
 
     if result.returncode == 0 and os.path.exists(output_path):
         html = _read_html(output_path)
-        return {
-            "engine": "scrapling-get",
-            "status": "success",
-            "http_status": 200,
-            "page_title": _extract_title(html),
-            "content_length": len(html) if html else 0,
-            "output_path": output_path,
-        }
+        return _build_success("scrapling-get", html, output_path)
 
     stderr = result.stderr.strip()
     http_status = _extract_http_status(stderr)
-    return {
-        "engine": "scrapling-get",
-        "status": "failure",
-        "http_status": http_status,
-        "error_type": _classify_error(stderr, http_status),
-        "detail": stderr[:500],
-    }
+    return _build_failure("scrapling-get", stderr, http_status)
 
 
 def _run_obscura_fetch(repo_root: str, url: str, output_path: str) -> dict:
@@ -83,24 +92,11 @@ def _run_obscura_fetch(repo_root: str, url: str, output_path: str) -> dict:
 
     if result.returncode == 0 and os.path.exists(output_path):
         html = _read_html(output_path)
-        return {
-            "engine": "obscura-fetch",
-            "status": "success",
-            "http_status": 200,
-            "page_title": _extract_title(html),
-            "content_length": len(html) if html else 0,
-            "output_path": output_path,
-        }
+        return _build_success("obscura-fetch", html, output_path)
 
     stderr = result.stderr.strip()
     http_status = _extract_http_status(stderr)
-    return {
-        "engine": "obscura-fetch",
-        "status": "failure",
-        "http_status": http_status,
-        "error_type": _classify_error(stderr, http_status),
-        "detail": stderr[:500],
-    }
+    return _build_failure("obscura-fetch", stderr, http_status)
 
 
 def _run_cloakbrowser_fetch(repo_root: str, url: str, output_path: str) -> dict:
@@ -125,26 +121,13 @@ def _run_cloakbrowser_fetch(repo_root: str, url: str, output_path: str) -> dict:
         parsed = json.loads(result.stdout)
         if parsed.get("ok"):
             html = _read_html(output_path)
-            return {
-                "engine": "cloakbrowser-fetch",
-                "status": "success",
-                "http_status": 200,
-                "page_title": _extract_title(html),
-                "content_length": len(html) if html else 0,
-                "output_path": output_path,
-            }
+            return _build_success("cloakbrowser-fetch", html, output_path)
     except json.JSONDecodeError:
         pass
 
     stderr = result.stderr.strip()
     http_status = _extract_http_status(stderr)
-    return {
-        "engine": "cloakbrowser-fetch",
-        "status": "failure",
-        "http_status": http_status,
-        "error_type": _classify_error(stderr, http_status),
-        "detail": stderr[:500] or result.stdout[:500],
-    }
+    return _build_failure("cloakbrowser-fetch", stderr, http_status, result.stdout)
 
 
 def _run_chrome_devtools_mcp(repo_root: str, url: str, output_path: str) -> dict:

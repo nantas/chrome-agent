@@ -12,7 +12,6 @@ from __future__ import annotations
 import re
 from typing import Callable, Optional
 
-log_mod = __import__("logging").getLogger(__name__)
 
 
 def extract_infobox(
