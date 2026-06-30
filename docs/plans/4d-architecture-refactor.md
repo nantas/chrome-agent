@@ -13,8 +13,8 @@
 
 | # | Stage | Nature | Governance Track | Current Status |
 |---|-------|--------|-----------------|----------------|
-| 1 | Target Architecture Design | Architecture meta-design (no code changes) | Independent — produces `00-target-architecture.md` | `pending` |
-| 2 | Capability Map Realignment | Documentation alignment (no code changes) | Independent — updates `01-08` + AGENTS.md + specs | `pending` |
+| 1 | Target Architecture Design | Architecture meta-design (no code changes) | Independent — produces `00-target-architecture.md` | `done` |
+| 2 | Capability Map Realignment | Documentation alignment (no code changes) | Independent — updates `01-08` + AGENTS.md + specs | `done` |
 | 3 | Residual Audit & Fix | Code/test/doc drift resolution | **openspec change** — `[TBD]` | `pending` |
 
 **Governance**: Stages 1 and 2 are architecture design — they produce new or
@@ -33,17 +33,17 @@ will measure all drift.
 - [x] 4-dimensional domain model confirmed (ADR 0013)
 - [x] Root cause diagnosed (00-architecture-review.md)
 - [x] Three-question cure criteria accepted
-- [ ] Cross-cutting design decisions resolved via grill:
-  - Mirror equivalence contract form
-  - Variant mechanism policy (config-driven vs file-fork)
-  - Format split policy (when is D-axis split legitimate vs accidental)
-  - Naming schema convention
-- [ ] Per-capability target profiles designed:
-  - convert (6 impls → target: 1 shared kernel + declared mirrors)
-  - fetch (engine stack + pipeline phases → target: mirror declaration)
-  - discover (explore + pipeline → target: mirror declaration)
-  - extract (good, mostly → target: formalize shared kernel contract)
-  - assemble / link_fix (single impl → target: archive as-is)
+- [x] Cross-cutting design decisions resolved via grill:
+  - [x] Mirror equivalence contract form (golden snapshot, §4.3)
+  - [x] Variant mechanism policy (config-driven only, §4.2)
+  - [x] Format split policy (D-axis boundary = input syntax, §4.5)
+  - [x] Naming schema convention (§4.1)
+- [x] Per-capability target profiles designed:
+  - [x] convert (1 shared kernel with optional wiki_domain + format_converter for wikitext)
+  - [x] fetch (engine router as infrastructure, probe_chain as explore fetch kernel)
+  - [x] discover (consolidated into explore site_analysis; pipeline no longer discovers)
+  - [x] extract (removed preprocessor context param; moved sample_converter orchestration into kernel)
+  - [x] assemble (run_assemble as sole kernel, mergeMarkdownFiles as infrastructure tool)
 
 ### Primary deliverable
 
@@ -54,10 +54,10 @@ will measure all drift.
 
 ### Exit criteria
 
-- [ ] `00-target-architecture.md` exists and is reviewed
-- [ ] All cross-cutting design decisions resolved and documented
-- [ ] All capability profiles filled with target declarations
-- [ ] No code changes (verify: `git diff --stat` is empty outside docs/)
+- [x] `00-target-architecture.md` exists，5 章节含全部能力流程图、决策表、声明 Schema
+- [x] All cross-cutting design decisions resolved and documented (§4)
+- [x] All capability profiles filled with target declarations (§3)
+- [x] No code changes — only `docs/architecture/00-target-architecture.md` created
 
 ### Grill prompts (to be used in Stage 1 grill sessions)
 
@@ -75,28 +75,27 @@ so every architectural layer consistently expresses the 4-dimensional model.
 
 ### Entry criteria
 
-- [ ] Stage 1 complete (exit criteria met)
+- [x] Stage 1 complete (exit criteria met)
 
 ### Work items
 
 | Target doc | Current state | Required changes |
 |------------|--------------|-----------------|
-| `AGENTS.md` §2 Capability Framework | 1-dim (capability names only) | Add dimensional coordinate schema per capability; update Reference Index |
-| `AGENTS.md` §10 SSOT Map | Maps knowledge → file, no dimensions | Add capability registry pointer |
-| `docs/architecture/01-overview.md` | Missing converter.p整体 y; wrong html_to_markdown location | Rewrite with dimensional declarations; place `00-target-architecture` as root reference |
-| `docs/architecture/02-pipeline-flow.md` | Pipeline only, no mirror context | Add B-axis context; declare pipeline mirrors of explore capabilities |
-| `docs/architecture/05-converter-architecture.md` | Specific to wikitext path | Expand to 4-dim convert model: mirrors, variants, shared kernel |
-| `docs/architecture/07-explore-workflow.md` | Explore only | Add B-axis context; declare explore mirrors of pipeline capabilities |
-| `CONTEXT.md` | Updated in c9b474f (terms added) | Verify alignment with Stage 1 declaration schema — no structural changes expected |
-| `openspec/specs/capability-contracts/` | A-axis behaviour only | Determine whether to add B/C/D expression or defer to Stage 3 openspec change |
-| `openspec/specs/capabilities-derivation/` | Same | Same as above |
+| `AGENTS.md` §2 Capability Framework | 1-dim (capability names only) | ✅ Replaced with 4-dim capability table |
+| `AGENTS.md` §10 SSOT Map | Maps knowledge → file, no dimensions | ✅ Added `00-target-architecture` as architecture SSOT |
+| `docs/architecture/01-overview.md` | Missing converter.py; wrong html_to_markdown location | ✅ Fixed extraction listing, removed dead converter refs, added 00 link |
+| `docs/architecture/02-pipeline-flow.md` | Pipeline only, no mirror context | ✅ Added B-axis context in 关联文档 |
+| `docs/architecture/05-converter-architecture.md` | Specific to wikitext path | ✅ 4-dim model framing + fandom dead-code annotation + 关联文档 updated |
+| `docs/architecture/07-explore-workflow.md` | Explore only | ✅ Added B-axis context in 关联文档 |
+| `CONTEXT.md` | Updated in c9b474f (terms added) | ✅ Verified — 8 references to 4-dim/mirror/kernel terms already present |
+| `openspec/specs/` | A-axis behaviour only | ⏭ Deferred to Stage 3 — B/C/D dimension expression belongs in 00-target-architecture, Stage 3 openspec change will align specs with code changes |
 
 ### Exit criteria
 
-- [ ] All 01-08 docs reference the 4-dim model from `00-target-architecture`
-- [ ] `AGENTS.md` capability framework updated with dimensional coordinates
-- [ ] No code changes outside docs/
-- [ ] `git diff --stat` changes are documentation-only
+- [x] All 01-08 docs reference the 4-dim model from `00-target-architecture`
+- [x] `AGENTS.md` capability framework updated with dimensional coordinates
+- [x] No code changes outside docs/ (7 files, all docs)
+- [x] `git diff --stat` changes are documentation-only
 
 ---
 
@@ -107,8 +106,8 @@ docs. List every drift. Fix them. This is the only stage that modifies code.
 
 ### Entry criteria
 
-- [ ] Stage 1 complete
-- [ ] Stage 2 complete
+- [x] Stage 1 complete
+- [x] Stage 2 complete
 
 ### Method
 

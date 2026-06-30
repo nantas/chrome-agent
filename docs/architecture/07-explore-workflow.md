@@ -365,6 +365,6 @@ External dependencies (from `scripts/explore/requirements.txt`):
 
 ## 关联文档
 
+- [00 — 目标架构](00-target-architecture.md) — **架构真源**：explore 作为 B 轴执行路径的 4 维坐标
 - [01 — 系统总览](01-overview.md) — 多后端架构全景
-- [03 — 策略 Schema 参考](03-strategy-schema.md) — 策略 scaffold 的输出格式
-- [05 — 转换器架构](05-converter-architecture.md) — sample_converter 的提取引擎
+

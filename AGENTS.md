@@ -29,16 +29,18 @@
 范围：网页内容获取、前端调试、经验积累。范围外（v1）：凭据管理、自动化框架。
 → 全景详见 [系统总览](docs/architecture/01-overview.md)
 
-## 2. Capability Framework
+## 2. Capability Framework (4-Dimensional Model)
 
-| 对外 | 说明 | 对内 | 状态 |
-|------|------|------|------|
-| explore | 分析页面结构与反爬 | site-strategy | 未结构化 |
-| fetch | 获取页面内容 | anti-crawl-strategy | 未结构化 |
-| crawl | 策略引导遍历 | engine-registry | 已规范 |
-| scrape | 策略无关爬取 | output-lifecycle | 未实现 |
+chrome-agent 的业务能力按 4 维模型（ADR 0013）组织。
+完整目标架构及每项能力的决策树流程图见 [00-target-architecture](docs/architecture/00-target-architecture.md)。
 
-→ 全景详见 [总体规划](docs/governance-and-capability-plan.md)
+| 能力 (A) | 子能力 | 内核 | 镜像 | 变体机制 | 说明 |
+|----------|--------|------|------|---------|------|
+| **fetch** | — | `pipeline/phases/fetch.py` (MediaWiki API) / `pipeline/phases/fetch_cdp.py` (CDP cache) | `explore/probe_chain.py` (引擎探测) | — | 引擎路由为基础设施（.mjs），不注册为能力 |
+| **convert** | — | `lib/extraction/converter.py` (selectolax, 可选 wiki_domain) | explore/pipeline/cdp 三路径薄壳编排器 | 策略配置驱动 | D 轴分叉：wikitext→MD 为独立 format_converter |
+| **extract** | infobox / preprocess / card_stats / link_fix | `lib/extraction/` (共享内核) | — | 策略配置驱动 | 无 context 参数，统一清理路径 |
+| **discover** | site_analysis | `scripts/explore/` (8 步管线) | — | — | pipeline 不再自行发现页面，清单来自 explore 冻结的 strategy |
+| **assemble** | — | `pipeline/phases/assemble.py` | — | — | .mjs mergeMarkdownFiles 为基础设施工具 |
 
 ## 3. Governance Rules
 
@@ -127,6 +129,7 @@ Orbitos Spec Standard v0.3。真源：`openspec/specs/`。变更：`openspec/cha
 | 优先级 | 位置 | 用途 |
 |--------|------|------|
 | P2 | `docs/governance-and-capability-plan.md` | 路线图 |
+| P0 | `docs/architecture/00-target-architecture.md` | 4 维目标架构：能力注册表、声明 Schema、等价契约 |
 | P1 | `docs/adr/` | 架构决策记录（ADR），编号格式，grill-with-docs skill 自动使用 |
 | P2 | `docs/playbooks/` | 操作手册（抓取/fallback/认证） |
 | P2 | `docs/setup/` | 环境配置 |
@@ -162,6 +165,7 @@ Orbitos Spec Standard v0.3。真源：`openspec/specs/`。变更：`openspec/cha
 |----------|----------|------|
 | 能力行为规范 | `openspec/specs/` | 已冻结规范，变更走 `openspec/changes/` |
 | 系统架构全景 | `docs/architecture/01-overview.md` | 多后端架构 + 目录结构 |
+| 目标能力架构 | `docs/architecture/00-target-architecture.md` | 4 维模型：能力注册表、声明 Schema、等价契约 |
 | 管线数据流 | `docs/architecture/02-pipeline-flow.md` | 五阶段管线 + orchestrator 编排 |
 | 策略 Schema | `docs/architecture/03-strategy-schema.md` | frontmatter 字段 + 策略类型 |
 | 转换器架构 | `docs/architecture/05-converter-architecture.md` | 两阶段转换 + 共享提取引擎 |
@@ -181,6 +185,7 @@ Orbitos Spec Standard v0.3。真源：`openspec/specs/`。变更：`openspec/cha
 | 优先级 | 文档 | 理由 |
 |--------|------|------|
 | **P0** | 本文件 §0.5 Hard Constraints | 技术红线 |
+| **P0** | `docs/architecture/00-target-architecture.md` | 目标能力架构：知道每个模块的维度坐标、关系类型、等价契约 |
 | **P0** | `docs/architecture/01-overview.md` | 系统全景 + 目录结构，不知道代码在哪就不能改 |
 | **P0** | `docs/architecture/08-tech-stack.md` | 依赖、语言规范、常见坑 |
 | **P0** | `docs/GOVERNANCE.md` | 治理工作流：文档类型生命周期、change 链路、SSOT 仲裁、反模式 |
@@ -189,16 +194,16 @@ Orbitos Spec Standard v0.3。真源：`openspec/specs/`。变更：`openspec/cha
 
 | 任务类型 | 必读文档 | 关键关注点 |
 |----------|----------|------------|
-| **改 Pipeline**（`scripts/pipeline/`） | `02-pipeline-flow.md` | 五阶段编排、Python 3.9 兼容、`-m` 调用方式 |
-| **改 Explore**（`scripts/explore/`） | `07-explore-workflow.md` | Deep discovery 阶段、Python 3.10+ 依赖 |
+| **改 Pipeline**（`scripts/pipeline/`） | `00-target-architecture.md` + `02-pipeline-flow.md` | 4 维能力坐标 + 五阶段编排 |
+| **改 Explore**（`scripts/explore/`） | `00-target-architecture.md` + `07-explore-workflow.md` | 4 维能力坐标 + Deep discovery 阶段 |
 | **改/新增策略**（`sites/strategies/`） | `03-strategy-schema.md` + `07-explore-workflow.md` | frontmatter 字段、策略类型、Explore→Pipeline 桥接 |
 | **改/新增引擎**（引擎相关） | `06-engine-selection.md` + `configs/engine-versions.json` | 评分机制、fallback 链、版本同步流程 |
 | **改 Python 环境/依赖**（`requirements.txt`、preflight 脚本、`python-resolver.mjs`） | CONTEXT.md + `docs/adr/0002` + `docs/adr/0003` + `docs/architecture/08-tech-stack.md` §1 | 应用层/引擎层 venv 边界、懒触发生命周期、`resolveAppPython()` 解析策略 |
 | **改 CLI**（`scripts/*.mjs`） | `04-cli-reference.md` | 命令路由、ESM 规范、函数声明风格 |
-| **改共享库**（`scripts/lib/`） | `05-converter-architecture.md` | 两阶段转换模型、Python 兼容 |
+| **改共享库**（`scripts/lib/`） | `00-target-architecture.md` + `05-converter-architecture.md` | 4 维 convert 模型 + 两阶段转换 |
 | **改 Shell 脚本**（`scripts/*.sh`） | `08-tech-stack.md` §2.3 | `set -euo pipefail`、路径计算模式 |
 | **改 runtime/cli/SKILL.md**（全局同步） | `docs/playbooks/chrome-agent-global-install.md` | tracked files 清单、ahead / 手动同步（Case 6）、installed-hash 刷新、C10 约束 |
-| **新增能力规范** | `openspec/specs/` 同类文件 + `docs/decisions/` | Orbitos Spec Standard v0.3 格式 |
+| **新增能力规范** | `00-target-architecture.md` §2 声明 Schema + `openspec/specs/` 同类文件 | 先确定维度坐标，再写行为 spec |
 | **测试相关** | `08-tech-stack.md` §4 + testing-governance specs | 测试目录约定、runner 命令、站点样本机制、C9 测试义务 |
 
 ---

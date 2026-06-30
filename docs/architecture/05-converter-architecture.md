@@ -1,8 +1,9 @@
-# 05 — Converter Architecture
+# 05 — Converter Architecture (4-Dimensional Model)
 
-> **Spec reference**: `openspec/specs/unified-infobox-extraction/`, `openspec/specs/unified-html-preprocessing/`
->
-> **Source modules**: `scripts/lib/extraction/`, `scripts/pipeline/converters/`
+chrome-agent 的 convert 能力遵循 [00-target-architecture](00-target-architecture.md) 定义的 4 维模型：
+- **执行路径**：explore / pipeline / pipeline(cdp) 共享同一内核 `lib/extraction/converter.py`，各路径通过薄壳编排器调用
+- **策略变体**：fandom 等站点通过 strategy.md 的 `cleanup` ops 配置驱动，不走代码分叉
+- **输入格式**：HTML 走共享内核，wikitext 走独立 `format_converter`
 
 ## 1. Overview
 
@@ -39,12 +40,20 @@ Raw HTML
 
 | Module | Key Class/Function | Purpose |
 |--------|-------------------|---------|
-| `fandom_html_to_markdown.py` | — | Fandom-specific HTML converter |
+| `fandom_html_to_markdown.py` | — | ❌ 死代码——功能已被 converter.py + preprocessor 覆盖，待 Stage 3 删除 |
 | `card_stats.py` | — | Card/game stats table converter |
 | `link_fixer.py` | — | Post-conversion link normalization |
 | `wikitext_to_md.py` | — | Wikitext source → Markdown converter |
 
-### 2.3 Design Decision: `converter.py` Location
+### 2.3 4-Dimensional Positioning
+
+`converter.py` 是 convert 能力的**唯一共享内核**（kernel）。其 4 维坐标：
+- **能力**：convert（A 轴）
+- **执行路径**：shared——同时被 pipeline (`convert.py`)、pipeline(cdp) (`convert_html.py`)、explore (`sample_converter.py`) 三个执行路径的薄壳镜像调用
+- **策略变体**：config_driven——所有站点特定行为通过 strategy.md 的 `extraction` 配置驱动
+- **输入格式**：html_mediawiki + html_generic——`wiki_domain` 可选参数控制是否启用 MediaWiki 语义
+
+### 2.4 历史决策：converter.py 位置
 
 `converter.py` was moved from `scripts/pipeline/converters/` to `scripts/lib/extraction/` during the `finish-refactor-cleanup` change to enable shared access from both the pipeline and explore paths. The rationale for the current location:
 
@@ -252,6 +261,7 @@ Key diagnostic: render individual blocks independently and compare to combined o
 
 ## 关联文档
 
+- [00 — 目标架构](00-target-architecture.md) — **架构真源**：convert 能力的 4 维坐标、镜像关系、等价契约
 - [02 — 管线数据流](02-pipeline-flow.md) — MediaWiki API 五阶段管线，converter 的运行时上下文
 - [03 — 策略 Schema 参考](03-strategy-schema.md) — extraction.infox 等字段的权威定义
 - [08 — 技术栈](08-tech-stack.md) — Python 依赖与兼容性约束

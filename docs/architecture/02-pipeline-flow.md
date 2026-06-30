@@ -242,8 +242,7 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
 
 ## 关联文档
 
+- [00 — 目标架构](00-target-architecture.md) — **架构真源**：pipeline 作为 B 轴执行路径的 4 维坐标
 - [01 — 系统总览](01-overview.md) — 多后端架构全景
-- [03 — 策略 Schema 参考](03-strategy-schema.md) — 策略 YAML frontmatter 字段权威参考
-- [05 — 转换器架构](05-converter-architecture.md) — HTML→Markdown 两阶段转换模型
 
 ---

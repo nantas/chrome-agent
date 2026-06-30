@@ -93,7 +93,7 @@
 │   ├── lib/                     # 共享 Python 库
 │   │   ├── strategy_loader.py   #   策略 frontmatter 解析
 │   │   ├── config_resolver.py   #   速率限制 + 分类排除优先级解析
-│   │   └── extraction/          #   提取工具（infobox、preprocessor）
+│   │   └── extraction/          #   共享提取引擎（infobox / preprocessor / converter）
 │   ├── pipeline/                # MediaWiki API 提取管线
 │   │   ├── __main__.py          #   python3 -m scripts.pipeline 入口
 │   │   ├── cli.py               #   子命令路由（pipeline/fetch/reprocess/fix-links/reconvert）
@@ -119,9 +119,7 @@
 │   │   │       ├── link_resolver.py    # 链接解析策略
 │   │   │       ├── template.py         # 模板处理策略
 │   │   │       └── list_assembler.py   # 列表页装配策略
-│   │   ├── converters/          #   HTML/Wikitext → Markdown 转换器
-│   │   │   ├── html_to_markdown.py
-│   │   │   ├── fandom_html_to_markdown.py
+│   │   ├── converters/          #   格式转换器（wikitext / card_stats / link_fixer）
 │   │   │   ├── wikitext_to_md.py
 │   │   │   ├── card_stats.py
 │   │   │   └── link_fixer.py
@@ -163,9 +161,11 @@
 
 ## 关联文档
 
+- [00 — 目标架构](00-target-architecture.md) — **架构真源**：4 维能力模型、声明 Schema、能力注册表
 - [02 — 管线数据流](02-pipeline-flow.md) — MediaWiki API 五阶段管线详解
 - [06 — 引擎选择](06-engine-selection.md) — 引擎选择决策树与 fallback 机制
 - [07 — Explore 工作流](07-explore-workflow.md) — 站点分析 deep discovery 管线
 - [08 — 技术栈](08-tech-stack.md) — 运行时依赖与组件关系图
+
 
 ---
