@@ -37,6 +37,7 @@
 | 组件 | 位置 | 被谁使用 | 核心依赖 |
 |------|------|---------|---------|
 | `converter.py` (HtmlToMarkdownConverter) | `scripts/lib/extraction/` | pipeline + explore | `selectolax` → 进应用层 venv |
+| `preprocessor.py` (preprocess_html) | `scripts/lib/extraction/` | pipeline + explore | `beautifulsoup4` → 进应用层 venv |
 | `config_resolver.py` | `scripts/lib/` | pipeline | `yaml` → 进应用层 venv |
 | `strategy_loader.py` | `scripts/lib/` | pipeline + explore | `yaml` → 进应用层 venv |
 | `python-resolver.mjs` (resolveAppPython) | `scripts/lib/` | cli.mjs (doctor + 所有应用层 spawn) | 无 Python 依赖 |

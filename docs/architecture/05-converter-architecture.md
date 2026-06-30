@@ -14,7 +14,8 @@ Raw HTML
   ├─→ [Phase 1: Preprocessing] ──→ Cleaned HTML
   │       │
   │       ├─ Explore path: 6-step full cleanup (lib/extraction/preprocessor.py)
-  │       └─ Pipeline path: lightweight cleanup (converter.py:clean_html)
+  │       └─ Pipeline path: SAME 6-step cleanup (preprocessor.preprocess_html),
+  │              then HtmlToMarkdownConverter.clean_html for residual noise
   │
   └─→ [Phase 2: Conversion] ──→ Markdown output
           │
@@ -55,12 +56,12 @@ Raw HTML
 
 ### Phase 1: Preprocessing
 
-Preprocessing removes noise, normalizes structure, and isolates content before conversion. The behavior is **context-aware**:
+Preprocessing removes noise, normalizes structure, and isolates content before conversion. **Both paths now share identical preprocessing** so that explore sample output serves as a valid quality proxy for pipeline production:
 
 | Context | Trigger | Implementation | Steps |
 |---------|---------|---------------|-------|
-| **Explore** (full) | `context="explore"` | `preprocessor.preprocess_html()` | 6-step pipeline |
-| **Pipeline** (lightweight) | Default pipeline flow | `HtmlToMarkdownConverter.clean_html()` | Selector-based removal only |
+| **Explore** | `context="explore"` | `preprocessor.preprocess_html()` | 6-step pipeline |
+| **Pipeline** | `convert.py:_process_html_page` calls `preprocess_html(context="explore")` before `convert_body()` | `preprocessor.preprocess_html()` then `HtmlToMarkdownConverter.clean_html()` | 6-step pipeline + residual-noise removal |
 
 #### Explore 6-Step Preprocessing (`preprocessor._preprocess_explore`)
 
@@ -73,7 +74,9 @@ Executed by `scripts/lib/extraction/preprocessor.py`:
 5. **Remove decorative images** — Filters images matching `image_filtering.skip_patterns`.
 6. **Select main content** — Extracts content using `selectors.content` CSS selector (defaults to `body`).
 
-#### Pipeline Lightweight Preprocessing (`HtmlToMarkdownConverter.clean_html`)
+#### Pipeline Residual-Noise Removal (`HtmlToMarkdownConverter.clean_html`)
+
+> Pipeline now runs the **same `preprocess_html(context="explore")`** as explore first (see `_process_html_page` in `scripts/pipeline/pipeline/phases/convert.py`); `clean_html` below is the second-stage residual-noise removal inside `convert_body()`.
 
 Executed by `scripts/lib/extraction/converter.py`:
 
@@ -209,7 +212,7 @@ Strategy frontmatter (YAML)
 1. **Config-driven**: All site-specific behavior is sourced from strategy YAML frontmatter. No hardcoded selectors or domain names in converter code.
 2. **Parser-agnostic infobox**: `extract_infobox()` works with both BS4 and selectolax, enabling code reuse across explore and pipeline paths.
 3. **Separation of extraction and conversion**: `lib/extraction/` extracts structured data; `pipeline/converters/` transforms format. One-way dependency: converters → extraction library.
-4. **Context-aware preprocessing**: Explore gets full 6-step cleanup; pipeline gets lightweight selector-based cleanup. No unnecessary processing.
+4. **Cross-path preprocessing consistency**: Explore and pipeline run the SAME 6-step `preprocess_html(context="explore")`, so explore sample output is a valid quality proxy for pipeline production. `HtmlToMarkdownConverter.clean_html()` is a residual-noise second stage shared by both paths, NOT a divergent lightweight path.
 5. **Balanced element removal**: `converter.py` uses depth-counting balanced tag removal (not regex) for nested HTML elements, avoiding malformed markup issues.
 6. **Block-tag completeness**: `_BLOCK_TAGS` MUST include all HTML5 semantic block-level elements. Missing tags cause `_has_block_children()` to return `False`, routing block containers through `_render_inline_children()` and causing adjacent block content to be concatenated via `_join_inline_parts`. See [Decision 2026-05-20-block-tags-completeness](../decisions/2026-05-20-block-tags-completeness.md).
 7. **Direct child traversal for structured elements**: When iterating table rows or other nested structures, prefer `_child_nodes()` traversal over selectolax CSS selectors (e.g., `node.css("tr")`). CSS selectors match ALL descendants, including elements from nested child structures, causing structural corruption.

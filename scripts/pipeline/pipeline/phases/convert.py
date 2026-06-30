@@ -15,10 +15,20 @@ from ...strategies import (
 )
 from ...strategies import LinkResolver, TemplateProcessor
 from scripts.lib.extraction.converter import HtmlToMarkdownConverter
+from scripts.lib.extraction.preprocessor import preprocess_html
 from ...strategies import convert_wikitext_to_markdown
 from ...client import PageNotFoundError
 
 from ..state import load_state, save_state, is_page_completed
+
+
+def _first_image_name(images: list[str], extraction_config: dict | None) -> str | None:
+    """Apply skip_patterns filter, return first image name (spaces to underscores) or None."""
+    skip_patterns = (extraction_config or {}).get("image_filtering", {}).get("skip_patterns", [])
+    filtered = images
+    if skip_patterns:
+        filtered = [img for img in images if not any(re.search(pat, img) for pat in skip_patterns)]
+    return filtered[0].replace(" ", "_") if filtered else None
 
 log = logging.getLogger("pipeline")
 
@@ -113,19 +123,10 @@ def convert_single_page(raw: dict, page_info: dict, manifest_pages: list[dict],
         # Inject images into frontmatter if available (applying skip_patterns)
         images = raw.get("images")
         if images and isinstance(images, list) and len(images) > 0:
-            from urllib.parse import quote as url_quote
-            import re as _re
-            skip_patterns = (extraction_config or {}).get("image_filtering", {}).get("skip_patterns", [])
-            filtered_images = images
-            if skip_patterns:
-                filtered_images = [
-                    img for img in images
-                    if not any(_re.search(pat, img) for pat in skip_patterns)
-                ]
-            if filtered_images:
-                first_img = filtered_images[0]
-                img_name = first_img.replace(" ", "_")
+            img_name = _first_image_name(images, extraction_config)
+            if img_name:
                 frontmatter["image"] = img_name
+                from urllib.parse import quote as url_quote
                 img_url = f"https://{domain}/Special:Redirect/file/{url_quote(img_name, safe='')}"
                 if "---" in md_content:
                     end_fm = md_content.find("\n---", 3)
@@ -162,7 +163,13 @@ def _process_html_page(raw: dict, title: str, source_dir: str, source_url: str,
     converter = HtmlToMarkdownConverter(wiki_domain=domain, extraction_config=extraction_config)
     converter.build_link_index(manifest_pages, redirect_map)
 
-    md_content = converter.convert_body(html, source_dir=source_dir)
+    # Preprocess HTML with the same pipeline as explore (context="explore") so that
+    # cleanup operations run identically in both paths — explore samples then
+    # serve as a valid quality proxy for pipeline production output.
+    # NOTE: extract_card_stats() below still uses the raw `html` (needs the intact
+    # infobox structure), so the preprocessed result stays in a local var.
+    cleaned_html = preprocess_html(html, extraction_config or {}, context="explore")
+    md_content = converter.convert_body(cleaned_html, source_dir=source_dir)
 
     # Build frontmatter
     frontmatter = {"title": title, "source_url": source_url}
@@ -179,18 +186,8 @@ def _process_html_page(raw: dict, title: str, source_dir: str, source_url: str,
     # Inject first image into frontmatter if available (applying skip_patterns)
     images = raw.get("images")
     if images and isinstance(images, list) and len(images) > 0:
-        from urllib.parse import quote as url_quote
-        import re as _re
-        skip_patterns = (extraction_config or {}).get("image_filtering", {}).get("skip_patterns", [])
-        # Filter out images matching skip patterns
-        filtered_images = images
-        if skip_patterns:
-            filtered_images = [
-                img for img in images
-                if not any(_re.search(pat, img) for pat in skip_patterns)
-            ]
-        if filtered_images:
-            img_name = filtered_images[0].replace(" ", "_")
+        img_name = _first_image_name(images, extraction_config)
+        if img_name:
             frontmatter["image"] = img_name
 
     # Assemble final content with YAML frontmatter

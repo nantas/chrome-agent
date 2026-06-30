@@ -243,7 +243,7 @@ Audits `html_to_markdown.py` for site-specific values not sourced from strategy 
   "strategy_to_pipeline": {
     "status": "pass" | "fail",
     "dead_config": [...],
-    "files_checked": ["html_to_markdown.py"]
+    "files_checked": ["converter.py", "preprocessor.py"]
   },
   "pipeline_to_strategy": {
     "status": "pass" | "fail",
@@ -252,7 +252,7 @@ Audits `html_to_markdown.py` for site-specific values not sourced from strategy 
 }
 ```
 
-The gate runs on ALL pipeline converter files defined in `_PIPELINE_FILES` (currently `html_to_markdown.py` only).
+The gate runs on the pipeline extraction files defined in `_PIPELINE_FILES` (currently `converter.py` + `preprocessor.py`): `converter.py` for conversion/hardcoded-value audit, `preprocessor.py` for cleanup-operation consumption.
 
 ## 5. KI Lifecycle Gate
 

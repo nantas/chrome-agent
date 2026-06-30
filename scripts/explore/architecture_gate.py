@@ -14,6 +14,7 @@ _ALWAYS_CONSUMED = {"selectors"}
 # Pipeline source files relative to repo root
 _PIPELINE_FILES = [
     os.path.join("scripts", "lib", "extraction", "converter.py"),
+    os.path.join("scripts", "lib", "extraction", "preprocessor.py"),
 ]
 
 
@@ -27,8 +28,8 @@ def validate(
 ) -> dict:
     """Architecture Gate entry point.
 
-    Validates alignment between strategy extraction config and ALL pipeline
-    converter files (sample_converter.py AND converter.py).
+    Validates alignment between strategy extraction config and the pipeline
+    extraction files (converter.py + preprocessor.py).
 
     Args:
         samples: List of sample dicts with 'title', 'url', 'type' keys.
@@ -62,12 +63,12 @@ def validate(
     if not isinstance(extraction, dict):
         extraction = extraction_rules
 
-    # Check 1: Strategy → Pipeline (single-file dead config detection)
-    dead_config = _detect_dead_config(extraction_rules, pipeline_paths[0])
+    # Check 1: Strategy → Pipeline (multi-file dead config detection)
+    dead_config = _detect_dead_config(extraction_rules, pipeline_paths)
 
     # Check 1b: Cleanup operations enumeration
     all_dead = list(dead_config)
-    dead_cleanup_ops = detect_dead_cleanup_operations(extraction, pipeline_paths[0])
+    dead_cleanup_ops = detect_dead_cleanup_operations(extraction, pipeline_paths)
     for op in dead_cleanup_ops:
         label = f"cleanup.{op} ({pipeline_names[0]})"
         if label not in all_dead:
@@ -107,14 +108,14 @@ def _read_file(path: str) -> str:
 
 def _detect_dead_config(
     strategy: dict,
-    pipeline_path: str,
+    pipeline_paths: list[str],
 ) -> list[str]:
-    """Return list of dead config fields not referenced in pipeline source.
+    """Return list of dead config fields not referenced in any pipeline source.
 
-    A field is dead_config if the pipeline file does not reference it.
-    A field is covered if the pipeline file references it.
+    A field is dead_config if NO pipeline file references it.
+    A field is covered if ANY pipeline file references it.
     """
-    source = _read_file(pipeline_path)
+    source = "\n".join(_read_file(p) for p in pipeline_paths)
 
     extraction = strategy.get("extraction", strategy)
     if not isinstance(extraction, dict):
@@ -150,20 +151,15 @@ def _field_is_consumed(key: str, source: str) -> bool:
     if re.search(rf'if\s+["\']{escaped}["\']', source):
         return True
 
-    # Special: cleanup is consumed via "in cleanup" checks
-    if key == "cleanup":
-        return True
-
     return False
 
 
 def detect_dead_cleanup_operations(
     extraction: dict,
-    pipeline_path: str,
+    pipeline_paths: list[str],
 ) -> list[str]:
-    """Check that each cleanup operation name in strategy exists in pipeline source."""
-    with open(pipeline_path, "r", encoding="utf-8") as f:
-        source = f.read()
+    """Check that each cleanup operation name in strategy exists in any pipeline source."""
+    source = "\n".join(_read_file(p) for p in pipeline_paths)
 
     cleanup_ops = extraction.get("cleanup", [])
     if not isinstance(cleanup_ops, list):
