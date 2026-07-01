@@ -24,7 +24,7 @@ def preprocess_html(
         config: Extraction config dict from strategy frontmatter.
         context: "explore" (full 6-step preprocessing) or
             "pipeline" (placeholder — returns HTML unchanged; pipeline path
-            uses html_to_markdown.clean_html() directly and does not call
+            uses HtmlToMarkdownConverter (selectolax kernel) and does not call
             this function).
 
     Returns:

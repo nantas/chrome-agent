@@ -40,7 +40,6 @@ Raw HTML
 
 | Module | Key Class/Function | Purpose |
 |--------|-------------------|---------|
-| `fandom_html_to_markdown.py` | — | ❌ 死代码——功能已被 converter.py + preprocessor 覆盖，待 Stage 3 删除 |
 | `card_stats.py` | — | Card/game stats table converter |
 | `link_fixer.py` | — | Post-conversion link normalization |
 | `wikitext_to_md.py` | — | Wikitext source → Markdown converter |

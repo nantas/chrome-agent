@@ -40,8 +40,8 @@ class HtmlToMarkdownConverter:
     }
 
     def __init__(self, wiki_domain: str, extraction_config: dict | None = None):
-        if not wiki_domain:
-            raise TypeError("wiki_domain is required and must be non-empty")
+        if wiki_domain is None:
+            raise TypeError("wiki_domain must be a string (use empty string for generic HTML)")
         self.wiki_domain = wiki_domain
         self.config = extraction_config or {}
         # Read cleanup selectors from config, fall back to class defaults
@@ -855,13 +855,15 @@ class HtmlToMarkdownConverter:
         # Strip javascript: links → text-only rendering
         if normalized.startswith("javascript:"):
             return None
-        if normalized.startswith("about:/wiki/"):
-            normalized = normalized.replace("about:/wiki/", f"https://{self.wiki_domain}/wiki/", 1)
-        elif normalized.startswith("/wiki/") or normalized.startswith("/images/"):
-            normalized = f"https://{self.wiki_domain}{normalized}"
-        elif normalized.startswith("/") and not normalized.startswith("//"):
-            # Other absolute paths → full URL
-            normalized = f"https://{self.wiki_domain}{normalized}"
+        # Wiki-specific absolutization — skip for generic HTML (empty wiki_domain)
+        if self.wiki_domain:
+            if normalized.startswith("about:/wiki/"):
+                normalized = normalized.replace("about:/wiki/", f"https://{self.wiki_domain}/wiki/", 1)
+            elif normalized.startswith("/wiki/") or normalized.startswith("/images/"):
+                normalized = f"https://{self.wiki_domain}{normalized}"
+            elif normalized.startswith("/") and not normalized.startswith("//"):
+                # Other absolute paths → full URL
+                normalized = f"https://{self.wiki_domain}{normalized}"
         elif normalized.startswith("#"):
             return normalized
         elif normalized.startswith("//"):
@@ -875,6 +877,9 @@ class HtmlToMarkdownConverter:
 
         Decodes percent-encoded characters in the title before manifest lookup.
         """
+        # Generic HTML path (empty wiki_domain): no wiki /wiki/ resolution
+        if not self.wiki_domain:
+            return None
         if not href.startswith(f"https://{self.wiki_domain}/wiki/"):
             return None
         title = href[len(f"https://{self.wiki_domain}/wiki/"):]

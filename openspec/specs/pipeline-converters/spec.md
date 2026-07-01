@@ -164,6 +164,21 @@ Added by the `link-fallback-redirect-skip` change; authoritative spec delta resi
 - **WHEN** `extract_infobox()` uses BS4 mode (explore path)
 - **THEN** behavior SHALL be identical to before this change (BS4 path does not use `source_dir`)
 
+### Requirement: strategy-variant-config-driven
+
+All site-specific HTML conversion variations SHALL be expressed through `strategy.md` frontmatter configuration fields (`extraction.cleanup`, `extraction.image_filtering`, `extraction.selectors`), NOT through separate converter module files. The system SHALL NOT create new `*_html_to_markdown.py` files for individual wiki domains or platforms.
+
+#### Scenario: fandom-variant-via-config
+- **WHEN** a fandom wiki page is converted
+- **THEN** the conversion SHALL go through `HtmlToMarkdownConverter` with the shared kernel
+- **AND** fandom-specific cleanup SHALL be driven by the strategy's `extraction.cleanup` configuration
+- **AND** no fandom-specific converter file SHALL be imported or executed
+
+#### Scenario: new-variant-via-config-only
+- **WHEN** a new wiki platform requires HTML conversion
+- **THEN** the new platform's behavior SHALL be expressed entirely in `strategy.md` configuration
+- **AND** no new `*_html_to_markdown.py` file SHALL be created
+
 ## REMOVED Requirements
 
 ### Requirement: is-simple-markdown-table-check

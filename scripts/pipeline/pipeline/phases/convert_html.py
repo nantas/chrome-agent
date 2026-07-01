@@ -2,7 +2,7 @@
 
 This is the HTML variant of the Convert phase.  It reads page entries from
 the ``chrome-cdp`` cache and converts them to ``.md`` files using the shared
-``html_to_markdown()`` converter.
+``convert_html_to_markdown()`` converter (selectolax shared kernel).
 
 Pipeline integration: the orchestrator (or a manual workflow) calls
 ``run_convert_html()`` with the same *repo_root* / *domain* pair used by
@@ -16,7 +16,7 @@ import os
 from typing import Dict, List, Optional
 
 from .. import cache as cache_mod
-from scripts.lib.extraction.html_to_markdown import html_to_markdown
+from scripts.lib.extraction.converter import convert_html_to_markdown
 
 log = logging.getLogger("pipeline.convert_html")
 
@@ -89,7 +89,7 @@ def run_convert_html(
             continue
 
         try:
-            md_body = html_to_markdown(html)
+            md_body = convert_html_to_markdown(html, wiki_domain="")
 
             # Build output filename: use page title if available, else safe_path stem
             if title:

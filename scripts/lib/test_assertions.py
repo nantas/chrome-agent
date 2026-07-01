@@ -112,7 +112,8 @@ def assert_valid_md_tables(md_text: str) -> None:
         # Separate separator rows from data/header rows
         data_rows = []
         for row in block:
-            cells = [c.strip() for c in row.strip("|").split("|")]
+            # Honor \| (escaped pipes inside cells) before counting columns
+            cells = [c.replace("\x00", "|").strip() for c in row.strip("|").replace("\\|", "\x00").split("|")]
             if all(re.match(r"^[-:]+$", c) for c in cells):
                 continue  # separator row
             data_rows.append(cells)

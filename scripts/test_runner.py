@@ -195,7 +195,7 @@ def _make_site_sample_test(
     """Create a ``unittest.TestCase`` class for a single (domain, page) sample."""
 
     # Import converter
-    from scripts.lib.extraction.html_to_markdown import html_to_markdown
+    from scripts.lib.extraction.converter import convert_html_to_markdown
 
     # Domains that need link resolution post-processing
     _LINK_RESOLUTION_DOMAINS = {"developer.nintendo.com"}
@@ -215,7 +215,7 @@ def _make_site_sample_test(
                 return
 
             # Convert
-            md_output = html_to_markdown(html)
+            md_output = convert_html_to_markdown(html, wiki_domain="")
 
             # Link resolution post-processing for domains with
             # ../Pages/Page_*.html relative links (e.g. Nintendo Developer Portal)
