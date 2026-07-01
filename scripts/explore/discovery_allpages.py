@@ -3,8 +3,8 @@
 import logging
 from typing import Optional
 
-from ...client import ApiClient
-from ...strategies import DiscoveryStrategy, title_to_filepath
+from scripts.pipeline.client import ApiClient
+from scripts.pipeline.strategies import DiscoveryStrategy, title_to_filepath
 
 log = logging.getLogger("pipeline")
 

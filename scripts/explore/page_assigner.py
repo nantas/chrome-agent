@@ -9,7 +9,7 @@ import logging
 import time
 from typing import Optional
 
-from ..strategies import title_to_filepath
+from scripts.pipeline.strategies import title_to_filepath
 
 log = logging.getLogger("pipeline")
 

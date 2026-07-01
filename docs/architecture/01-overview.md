@@ -33,12 +33,12 @@
      │  (Scrapling CLI)│  │  (scripts/pipeline/)│
      └────┬───────────┘  └────┬────────────────┘
           │                   │
-  ┌───────▼────────┐   ┌─────▼──────────────────┐
-  │  引擎链         │   │  五阶段管线             │
-  │  scrapling-get  │   │  discovery → fetch →   │
-  │  obscura-fetch  │   │  convert → assemble →  │
-  │  scrapling-fetch│   │  link-fix + validation │
-  │  cloakbrowser   │   └────┬──────────────────┘
+   ┌───────▼────────┐   ┌─────▼──────────────────┐
+   │  引擎链         │   │  四阶段管线             │
+   │  scrapling-get  │   │  fetch → convert →     │
+   │  obscura-fetch  │   │  assemble →            │
+   │  scrapling-fetch│   │  link-fix + validation │
+   │  cloakbrowser   │   └────┬──────────────────┘
   │  chrome-devtools│        │
   │  chrome-cdp     │        │
   └───────┬────────┘        │
@@ -105,16 +105,11 @@
 │   │   │   ├── cache.py         #     持久化页面缓存
 │   │   │   ├── state.py         #     断点续传状态
 │   │   │   ├── discovery_summary.py  # 发现摘要生成
-│   │   │   ├── homepage_parser.py    # 首页解析
-│   │   │   ├── page_assigner.py      # 页面→目录分配
 │   │   │   ├── phases/          #     各阶段实现
-│   │   │   │   ├── discovery_homepage.py  # Phase 0: 首页发现
-│   │   │   │   ├── discovery_allpages.py  # Phase A: 全页发现
 │   │   │   │   ├── fetch.py              # Phase Fetch: API 内容获取
 │   │   │   │   ├── convert.py            # Phase Convert: 内容→Markdown
 │   │   │   │   └── assemble.py           # Phase C: 输出装配
 │   │   │   └── strategies/      #     策略实现类
-│   │   │       ├── discovery.py        # 发现策略（allpages, category_members）
 │   │   │       ├── acquisition.py      # 内容获取策略
 │   │   │       ├── link_resolver.py    # 链接解析策略
 │   │   │       ├── template.py         # 模板处理策略
@@ -128,6 +123,11 @@
 │       ├── main.py              #   CLI 入口
 │       ├── probe_chain.py       #   引擎链探测
 │       ├── api_discovery.py     #   API 端点发现
+│       ├── discovery_homepage.py  # 首页驱动页面发现
+│       ├── discovery_allpages.py  # 全页面发现
+│       ├── discovery.py         #   发现策略接口
+│       ├── homepage_parser.py   #   首页 HTML 解析
+│       ├── page_assigner.py     #   页面→目录分配
 │       ├── structure_mapper.py  #   结构映射
 │       ├── protection_identifier.py  # 保护识别
 │       ├── sample_converter.py  #   样本转换

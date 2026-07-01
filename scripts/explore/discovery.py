@@ -4,7 +4,7 @@ import logging
 import time
 from typing import Optional
 
-from ..client import ApiClient
+from scripts.pipeline.client import ApiClient
 
 log = logging.getLogger("pipeline")
 

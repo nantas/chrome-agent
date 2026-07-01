@@ -225,7 +225,7 @@ def run_validation(output_dir: str, client=None) -> dict:
 # Re-exports from sub-modules (backward compatibility)
 # ===========================================================================
 
-from .discovery import AllPagesDiscoveryStrategy, CategoryMembersDiscoveryStrategy
+from scripts.explore.discovery import AllPagesDiscoveryStrategy, CategoryMembersDiscoveryStrategy
 from .acquisition import WikitextOnlyAcquisitionStrategy, HybridAcquisitionStrategy, HtmlRenderedAcquisitionStrategy
 from .link_resolver import ExactTitleLinkResolver, ShortNameLinkResolver
 from .template import SimpleSubstitutionTemplateProcessor, StructuredTemplateProcessor, FandomInfoboxTemplateProcessor

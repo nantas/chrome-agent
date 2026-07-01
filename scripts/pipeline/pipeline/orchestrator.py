@@ -16,15 +16,12 @@ from ...lib.config_resolver import (
 )
 
 from ..client import ApiClient, probe_api_endpoint
-from .phases.discovery_allpages import run_allpages_discovery
 from .phases.assemble import run_assemble
-from .phases.discovery_homepage import run_homepage_discovery
 
 from .registry import (
     PipelineStrategies,
     build_pipeline,
 )
-from .discovery_summary import build_discovery_summary
 from .phases.fetch import run_fetch
 from .phases.convert import run_convert
 
@@ -122,42 +119,9 @@ def run_pipeline(args: argparse.Namespace) -> int:
     # Create output directory
     os.makedirs(args.output, exist_ok=True)
 
-    # ===========================================================================
-    # Discovery phase resolution
-    # ===========================================================================
-    # Resolve discovery strategy based on --discovery CLI and strategy config
-    discovery_strategy = getattr(args, "discovery", "auto")
-    has_homepage = bool(strategy.get("api", {}).get("homepage"))
-
     # Resolve exclude_categories via priority chain
     cli_excludes = getattr(args, "exclude_category", None) or []
     merged_excludes = resolve_exclude_categories(strategy, cli_excludes)
-
-    _dispatch_discovery = None  # "allpages" or "homepage"
-    if discovery_strategy == "homepage":
-        if not has_homepage:
-            log.error("Strategy has no 'api.homepage' configuration — cannot use homepage discovery")
-            return EXIT_STRATEGY_ERROR
-        _dispatch_discovery = "homepage"
-        log.info("Explicit --discovery homepage — using homepage discovery")
-    elif discovery_strategy == "allpages":
-        _dispatch_discovery = "allpages"
-        if has_homepage:
-            log.info("Discovery strategy overridden to allpages by --discovery flag")
-        else:
-            log.info("Explicit --discovery allpages — using allpages discovery")
-    else:  # auto
-        if has_homepage:
-            _dispatch_discovery = "homepage"
-            # Check if discovery_strategy in content_profile contradicts
-            content_ds = strategy.get("api", {}).get("content_profile", {}).get("discovery_strategy")
-            if content_ds and content_ds != "allpages":
-                log.warning("api.homepage defined — using homepage discovery despite discovery_strategy: %s. Use --discovery allpages to override.", content_ds)
-            else:
-                log.info("Strategy has api.homepage — using homepage discovery")
-        else:
-            _dispatch_discovery = "allpages"
-            log.info("No api.homepage config — using allpages discovery")
 
     # Determine phases to run
     phases = args.phase if args.phase else ["all"]
@@ -174,61 +138,15 @@ def run_pipeline(args: argparse.Namespace) -> int:
         log.info("Loaded manifest from --from-manifest: %s (%d pages)",
                  from_manifest, len(manifest.get("pages", [])))
 
-    # --- Discovery phase (only when NOT using --from-manifest) ---
-    if not from_manifest and ("all" in phases or "discover" in phases or "fetch" in phases or "convert" in phases or "assemble" in phases):
-        if _dispatch_discovery == "homepage":
-            try:
-                log.info("Running homepage discovery...")
-                manifest = run_homepage_discovery(client, strategy, origin,
-                                       platform_variant=platform_variant,
-                                       exclude_categories=merged_excludes)
-                manifest_path = os.path.join(args.output, "page_manifest.json")
-                with open(manifest_path, "w", encoding="utf-8") as f:
-                    json.dump(manifest, f, indent=2, ensure_ascii=False)
-                log.info("Homepage discovery manifest saved to %s (%d pages)",
-                         manifest_path, len(manifest.get("pages", [])))
-            except Exception as e:
-                log.error("Homepage discovery failed: %s", e)
-                return EXIT_PHASE_A_FAILURE
-        elif _dispatch_discovery == "allpages":
-            try:
-                log.info("Running allpages discovery...")
-                manifest = run_allpages_discovery(client, strategy, origin, strategies.discovery,
-                                       platform_variant=platform_variant,
-                                       exclude_categories=merged_excludes)
-                manifest_path = os.path.join(args.output, "page_manifest.json")
-                with open(manifest_path, "w", encoding="utf-8") as f:
-                    json.dump(manifest, f, indent=2, ensure_ascii=False)
-                log.info("Allpages discovery manifest saved to %s (%d pages)",
-                         manifest_path, len(manifest.get("pages", [])))
-            except Exception as e:
-                log.error("Allpages discovery failed: %s", e)
-                return EXIT_PHASE_A_FAILURE
-        else:
-            log.error("No discovery strategy resolved")
-            return EXIT_STRATEGY_ERROR
     elif not from_manifest:
-        # No discovery phase needed (e.g., --phase assemble)
         manifest_path = os.path.join(args.output, "page_manifest.json")
+        if not os.path.exists(manifest_path):
+            log.error("No manifest specified. Use --from-manifest <path> or ensure page_manifest.json exists in output directory.")
+            return EXIT_INVALID_ARGS
         with open(manifest_path, "r", encoding="utf-8") as f:
             manifest = json.load(f)
         log.info("Loaded existing manifest: %d pages", len(manifest["pages"]))
 
-    # --- Discovery summary generation ---
-    if not from_manifest and ("all" in phases or "discover" in phases or "fetch" in phases or "convert" in phases):
-        discovery_method_val = "homepage" if _dispatch_discovery == "homepage" else "allpages"
-        summary = build_discovery_summary(
-            manifest, strategy,
-            rate_limit_config=rate_limit_config,
-            output_dir=args.output,
-            exclude_categories=merged_excludes,
-            discovery_method=discovery_method_val,
-        )
-        summary_path = os.path.join(args.output, "discovery_summary.json")
-        with open(summary_path, "w", encoding="utf-8") as f:
-            json.dump(summary, f, indent=2, ensure_ascii=False)
-        log.info("Discovery summary saved to %s (%d pages, %d categories)",
-                 summary_path, summary["total_pages"], len(summary["categories"]))
 
     # --- --max-pages: limit manifest before extraction ---
     max_pages = getattr(args, "max_pages", None)
@@ -255,16 +173,6 @@ def run_pipeline(args: argparse.Namespace) -> int:
             log.info("Excluded %d pages from %d categories: %s",
                      filtered, len(exclude_set), ", ".join(sorted(exclude_set)))
 
-    # --- Early exit for --phase discover ---
-    if "discover" in phases and "all" not in phases:
-        resume_enabled = getattr(args, "resume", True) and not getattr(args, "no_resume", False)
-        if resume_enabled:
-            from .state import initialize_state
-            initialize_state(args.output, manifest, phase="discover_done")
-            log.info("Resume state initialized: phase=discover_done, total_pages=%d",
-                     len(manifest.get("pages", [])))
-        log.info("--phase discover complete — exiting without extraction or assembly")
-        return EXIT_SUCCESS
 
     # --- Resume state initialization ---
     completed_pages_set = None

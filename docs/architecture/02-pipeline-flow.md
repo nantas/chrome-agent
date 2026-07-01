@@ -22,25 +22,17 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
                     │  API 探测    │  probe_api_endpoint(origin, base_url) → base_url
                     └──────┬──────┘
                            │
-          ┌────────────────┼───────────────────┐
-          │                │                   │
-    ┌─────▼─────┐   ┌─────▼──────┐     ┌──────▼──────┐
-    │ Homepage   │   │ Allpages   │     │ --from-     │
-    │ Homepage  │   │ Allpages   │     │ manifest    │
-    │ Discovery │   │ Discovery  │     │ (跳过发现)  │
-    └─────┬─────┘   └─────┬──────┘     └──────┬──────┘
-          │               │                   │
-          └───────────────┼───────────────────┘
-                          │
-                   ┌──────▼──────┐
-                   │ page_       │
-                   │ manifest    │
-                   │ .json       │
-                   │             │
-                   │ discovery_  │
-                   │ summary     │
-                   │ .json       │
-                   └──────┬──────┘
+                     ┌──────▼──────┐
+                     │  --from-     │
+                     │  manifest    │
+                     │  (explore 产出)│
+                     └──────┬──────┘
+                            │
+                     ┌──────▼──────┐
+                     │  page_       │
+                     │  manifest    │
+                     │  .json       │
+                     └──────┬──────┘
                           │
             ┌─────────────┼──────────────┐
             │                            │

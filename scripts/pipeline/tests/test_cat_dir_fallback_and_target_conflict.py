@@ -21,7 +21,7 @@ _repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..",
 if _repo_root not in sys.path:
     sys.path.insert(0, _repo_root)
 
-from scripts.pipeline.pipeline.phases.discovery_homepage import _build_homepage_manifest
+from scripts.explore.discovery_homepage import _build_homepage_manifest
 from scripts.pipeline.pipeline.phases.convert import run_convert
 
 
@@ -116,7 +116,7 @@ class TestCatDirAutoFallback(unittest.TestCase):
         assigned_pages = []
         client = _mock_client()
 
-        with patch("scripts.pipeline.pipeline.phases.discovery_homepage.log") as mock_log:
+        with patch("scripts.explore.discovery_homepage.log") as mock_log:
             _build_homepage_manifest(assigned_pages, categories, client, strategy)
             mock_log.warning.assert_any_call(
                 "Category '%s' has no dir mapping in strategy, auto-fallback to '%s'",
@@ -139,7 +139,7 @@ class TestCatDirExistingMapping(unittest.TestCase):
         assigned_pages = []
         client = _mock_client()
 
-        with patch("scripts.pipeline.pipeline.phases.discovery_homepage.log") as mock_log:
+        with patch("scripts.explore.discovery_homepage.log") as mock_log:
             manifest = _build_homepage_manifest(assigned_pages, categories, client, strategy)
 
             # No auto-fallback warning should be emitted
@@ -437,7 +437,7 @@ class TestStrategyDirMappingPriority(unittest.TestCase):
         assigned_pages = []
         client = _mock_client()
 
-        with patch("scripts.pipeline.pipeline.phases.discovery_homepage.log") as mock_log:
+        with patch("scripts.explore.discovery_homepage.log") as mock_log:
             manifest = _build_homepage_manifest(assigned_pages, categories, client, strategy)
 
             # No auto-fallback warning
