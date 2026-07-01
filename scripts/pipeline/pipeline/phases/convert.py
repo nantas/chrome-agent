@@ -163,12 +163,12 @@ def _process_html_page(raw: dict, title: str, source_dir: str, source_url: str,
     converter = HtmlToMarkdownConverter(wiki_domain=domain, extraction_config=extraction_config)
     converter.build_link_index(manifest_pages, redirect_map)
 
-    # Preprocess HTML with the same pipeline as explore (context="explore") so that
-    # cleanup operations run identically in both paths — explore samples then
+    # Preprocess HTML with the same pipeline as explore so that cleanup
+    # operations run identically in both paths — explore samples then
     # serve as a valid quality proxy for pipeline production output.
     # NOTE: extract_card_stats() below still uses the raw `html` (needs the intact
     # infobox structure), so the preprocessed result stays in a local var.
-    cleaned_html = preprocess_html(html, extraction_config or {}, context="explore")
+    cleaned_html = preprocess_html(html, extraction_config or {})
     md_content = converter.convert_body(cleaned_html, source_dir=source_dir)
 
     # Build frontmatter

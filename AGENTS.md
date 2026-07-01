@@ -36,9 +36,9 @@ chrome-agent 的业务能力按 4 维模型（ADR 0013）组织。
 
 | 能力 (A) | 子能力 | 内核 | 镜像 | 变体机制 | 说明 |
 |----------|--------|------|------|---------|------|
-| **fetch** | — | `pipeline/phases/fetch.py` (MediaWiki API) / `pipeline/phases/fetch_cdp.py` (CDP cache) | `explore/probe_chain.py` (引擎探测) | — | 引擎路由为基础设施（.mjs），不注册为能力 |
-| **convert** | — | `lib/extraction/converter.py` (selectolax, 可选 wiki_domain) | explore/pipeline/cdp 三路径薄壳编排器 | 策略配置驱动 | D 轴分叉：wikitext→MD 为独立 format_converter |
-| **extract** | infobox / preprocess / card_stats / link_fix | `lib/extraction/` (共享内核) | — | 策略配置驱动 | 无 context 参数，统一清理路径 |
+| **fetch** | — | `pipeline/phases/fetch.py` (MediaWiki API) / `pipeline/phases/fetch_cdp.py` (CDP cache) | `explore/probe_chain.py` (引擎探测) | — | .mjs 路由到 pipeline fetch 内核（`ApiClient`），不再实现自有 API client |
+| **convert** | — | `lib/extraction/converter.py` (selectolax, 可选 wiki_domain) + `convert_page_full()` 共享编排入口 | explore/pipeline/cdp 三路径薄壳编排器 | 策略配置驱动 | D 轴分叉：wikitext→MD 为独立 format_converter |
+| **extract** | infobox / preprocess / card_stats / link_fix | `lib/extraction/` (共享内核) | — | 策略配置驱动 | preprocessor 统一 always-full-cleanup（无 context 分支） |
 | **discover** | site_analysis | `scripts/explore/` (8 步管线) | — | — | pipeline 不再自行发现页面，清单来自 explore 冻结的 strategy |
 | **assemble** | — | `pipeline/phases/assemble.py` | — | — | .mjs mergeMarkdownFiles 为基础设施工具 |
 

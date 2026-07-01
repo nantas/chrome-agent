@@ -810,9 +810,11 @@ function runCloakbrowserFetch(repoRoot, targetUrl, outputPath, extraArgs = []) {
 }
 
 /**
- * Fetch page HTML via MediaWiki action=parse API.
- * Reads strategy's api.base_url, extracts page title from targetUrl,
- * calls the MediaWiki parse API, and writes the resulting HTML to outputPath.
+ * Fetch page HTML via pipeline's shared MediaWiki ApiClient.
+ * Delegates to scripts.pipeline.client.ApiClient (Python subprocess)
+ * instead of implementing its own MediaWiki API client.
+ *
+ * Spec: fetch-kernel / fetch-via-pipeline-kernel
  */
 function runMediawikiApiFetch(repoRoot, targetUrl, outputPath, extraArgs = []) {
   // extraArgs[0] is expected to be the strategy path (passed from runEngineFetch)
@@ -838,7 +840,6 @@ function runMediawikiApiFetch(repoRoot, targetUrl, outputPath, extraArgs = []) {
   try {
     const url = new URL(targetUrl);
     const pathParts = url.pathname.split("/");
-    // Look for the part after /wiki/ (or use the last path segment)
     const wikiIdx = pathParts.indexOf("wiki");
     if (wikiIdx >= 0 && wikiIdx + 1 < pathParts.length) {
       pageTitle = decodeURIComponent(pathParts[wikiIdx + 1].replace(/_/g, " "));
@@ -849,47 +850,44 @@ function runMediawikiApiFetch(repoRoot, targetUrl, outputPath, extraArgs = []) {
     return { ok: false, summary: `Invalid target URL: ${targetUrl}`, stderr: "Invalid URL." };
   }
 
-  // Determine API endpoint: if base_url already includes /api.php, use it directly.
-  // Otherwise append /api.php (standard MediaWiki endpoint suffix).
-  let endpoint = apiConfig.base_url.replace(/\/+$/, "");
-  if (!endpoint.endsWith("/api.php")) {
-    endpoint += "/api.php";
-  }
-  const apiUrl = `${endpoint}?action=parse&page=${encodeURIComponent(pageTitle)}&redirects=true&prop=text&format=json`;
+  // Delegate to pipeline's shared fetch kernel (ApiClient via Python subprocess)
+  const python = resolveAppPython(repoRoot);
+  const fetchScript = [
+    "from scripts.pipeline.client import ApiClient",
+    "import sys, json, os",
+    `base_url = ${JSON.stringify(apiConfig.base_url)}`,
+    `page_title = ${JSON.stringify(pageTitle)}`,
+    `output_path = ${JSON.stringify(outputPath)}`,
+    "try:",
+    "    c = ApiClient(base_url)",
+    "    d = c.parse(page=page_title, prop='text', redirects=True)",
+    "    h = d.get('parse',{}).get('text',{}).get('*','')",
+    "    if not h: raise RuntimeError('Empty HTML from MediaWiki API')",
+    "    os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)",
+    "    open(output_path, 'w', encoding='utf-8').write(h)",
+    "except Exception as e:",
+    "    print(str(e), file=sys.stderr)",
+    "    sys.exit(1)",
+  ].join("\n");
 
-  const result = spawnSync("curl", ["-s", "--max-time", "30", apiUrl], {
+  const result = spawnSync(python, ["-c", fetchScript], {
     cwd: repoRoot,
     encoding: "utf8",
   });
 
   if (result.status !== 0) {
-    return { ok: false, summary: `MediaWiki API request failed for "${pageTitle}".`, stderr: result.stderr || "curl failed." };
+    return {
+      ok: false,
+      summary: `Pipeline fetch failed for "${pageTitle}".`,
+      stderr: result.stderr || "Python ApiClient fetch failed.",
+    };
   }
-
-  let data;
-  try {
-    data = JSON.parse(result.stdout);
-  } catch (err) {
-    return { ok: false, summary: `Invalid JSON from MediaWiki API for "${pageTitle}".`, stderr: err.message };
-  }
-
-  if (data.error) {
-    return { ok: false, summary: `MediaWiki API error for "${pageTitle}": ${data.error.info || JSON.stringify(data.error)}`, stderr: JSON.stringify(data.error) };
-  }
-
-  const html = data?.parse?.text?.["*"];
-  if (!html) {
-    return { ok: false, summary: `MediaWiki API returned no text content for "${pageTitle}".`, stderr: "Missing parse.text[*] in API response." };
-  }
-
-  ensureDir(path.dirname(outputPath));
-  fs.writeFileSync(outputPath, html, "utf8");
 
   return {
     ok: true,
-    stdout: `Fetched "${pageTitle}" via MediaWiki API from ${baseUrl}`,
+    stdout: `Fetched "${pageTitle}" via pipeline shared fetch kernel`,
     stderr: "",
-    command: `curl -s --max-time 30 "${apiUrl}"`,
+    command: `${python} -m scripts.pipeline (ApiClient.parse)`,
     page_title: pageTitle,
   };
 }

@@ -1,7 +1,7 @@
-"""Unified HTML preprocessor — config-driven cleanup for explore path.
+"""Unified HTML preprocessor — config-driven cleanup for all paths.
 
-Replaces sample_converter._apply_extraction() Phase 1-4 with a
-single function that executes all preprocessing steps in order.
+Always executes the full 6-step preprocessing pipeline regardless of
+calling context. Replaces sample_converter._apply_extraction() Phase 1-4.
 
 Spec: unified-html-preprocessing (all 7 requirements)
 """
@@ -15,26 +15,20 @@ from typing import Optional
 def preprocess_html(
     html: str,
     config: dict,
-    context: str = "explore",
 ) -> str:
     """Preprocess HTML with config-driven cleanup operations.
+
+    Always executes the full 6-step preprocessing pipeline regardless of
+    calling context (explore / pipeline).
 
     Args:
         html: Raw HTML string.
         config: Extraction config dict from strategy frontmatter.
-        context: "explore" (full 6-step preprocessing) or
-            "pipeline" (placeholder — returns HTML unchanged; pipeline path
-            uses HtmlToMarkdownConverter (selectolax kernel) and does not call
-            this function).
 
     Returns:
         Cleaned HTML string.
     """
-    if context == "explore":
-        return _preprocess_explore(html, config)
-    else:
-        # Pipeline context: placeholder — Change 2 does not modify clean_html()
-        return html
+    return _preprocess_explore(html, config)
 
 
 def _preprocess_explore(html: str, config: dict) -> str:

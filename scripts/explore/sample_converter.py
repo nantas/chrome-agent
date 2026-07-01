@@ -128,41 +128,23 @@ def _apply_extraction(
     extraction_rules: dict,
     known_pages: set[str],
 ) -> str:
-    """Apply extraction rules from config to HTML — 4-step sequential pipeline.
+    """Apply extraction rules from config to HTML.
 
-    Steps:
-      1. extract_infobox(full_html, config) → infobox Markdown
-      2. preprocess_html(full_html, config, context="explore") → cleaned HTML
-      3. convert_html_to_markdown(cleaned_html, ...) → body Markdown
-      4. Prepend infobox + body → final Markdown
+    Delegates the core 4-step extraction pipeline to
+    converter.convert_page_full(), then applies explore-specific
+    post-processing (normalization, URL conversion, cleanup ops).
 
     Spec: sample-converter / apply-extraction-uses-shared-lib
     """
-    from scripts.lib.extraction.infobox import extract_infobox
-    from scripts.lib.extraction.preprocessor import preprocess_html
     import importlib
     _mod = importlib.import_module('scripts.lib.extraction.converter')
-    _convert_html_to_markdown = _mod.convert_html_to_markdown
+    _convert_page_full = _mod.convert_page_full
 
     base_url = extraction_rules.get("image_handling", {}).get("base_url", "")
-    wiki_domain = base_url.replace("https://", "").replace("http://", "") if base_url else ""
 
-    # Step 1: Extract infobox (read-only — returns Markdown, does not modify HTML)
-    infobox_md = extract_infobox(html, extraction_rules, wiki_domain)
-
-    # Step 2: Preprocess HTML (removes infobox container, applies cleanup)
-    cleaned_html = preprocess_html(html, extraction_rules, context="explore")
-
-    # Step 3: Convert cleaned HTML to Markdown
-    md = _convert_html_to_markdown(
-        cleaned_html,
-        wiki_domain=wiki_domain,
-        extraction_config=extraction_rules,
-    )
-
-    # Step 4: Prepend infobox if extracted
-    if infobox_md:
-        md = infobox_md + "\n\n" + md
+    # Delegate core 4-step extraction (infobox → preprocess → convert → prepend)
+    # to the shared converter kernel.
+    md = _convert_page_full(html, extraction_rules)
 
     # Post-conversion normalization (config-driven)
     normalization = extraction_rules.get("text_normalization", [])

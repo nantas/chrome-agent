@@ -156,7 +156,7 @@
 1. **用户请求** → SKILL.md / CLI → 意图路由（explore/fetch/crawl/scrape）
 2. **策略匹配** → `sites/strategies/<domain>/strategy.md` → frontmatter 解析
 3. **引擎选择** → Scrapling-first → 按需 fallback 到 obscura/cloakbrowser/devtools/cdp
-4. **MediaWiki 站点** → 自动路由到 API 管线（`scripts/pipeline/`）
+4. **MediaWiki 站点** → 自动路由到 API 管线（`.mjs` delegate 到 `scripts.pipeline.client.ApiClient`，与 pipeline 共享 fetch 内核）
 5. **输出** → `outputs/` 暂存 + `reports/` 持久报告
 
 ## 关联文档

@@ -167,24 +167,31 @@ Both modes support named handlers for specialized field processing:
 
 Handler lookup uses a **dual-key system**: first by label text, then by `data-source` alias (`ds_key = f"{data_source}({label_text})"`), enabling both human-readable and data-attribute-based handler routing.
 
-## 5. Sample Converter Integration
+## 5. Shared Orchestration Entry Point
 
-The explore path's `sample_converter.py` (`scripts/explore/sample_converter.py`) orchestrates the full two-phase pipeline:
+The shared kernel in `converter.py` exposes `convert_page_full()` as the single
+orchestration entry point for the 4-step extraction pipeline:
+
+```python
+def convert_page_full(html: str, extraction_rules: dict) -> str:
+    # 1. Extract infobox via extract_infobox()
+    # 2. Preprocess HTML via preprocess_html()  (always full 6-step cleanup, no context branch)
+    # 3. Convert to Markdown via convert_html_to_markdown()
+    # 4. Prepend infobox to body if extracted
+```
+
+All B-axis paths (explore, pipeline) route through this function.
+
+### Sample Converter Integration
+
+The explore path's `sample_converter.py` delegates the core extraction to
+`convert_page_full()`, then applies explore-specific post-processing
+(text_normalization, url_conversion, youtube_cleanup, cleanup ops):
 
 ```python
 def _apply_extraction(html, extraction_rules, known_pages):
-    # Step 1: Extract infobox (read-only, returns Markdown)
-    infobox_md = extract_infobox(html, extraction_rules, wiki_domain)
-
-    # Step 2: Preprocess HTML (removes infobox, applies cleanup)
-    cleaned_html = preprocess_html(html, extraction_rules, context="explore")
-
-    # Step 3: Convert cleaned HTML to Markdown
-    md = convert_html_to_markdown(cleaned_html, wiki_domain, extraction_config)
-
-    # Step 4: Prepend infobox + body
-    if infobox_md:
-        md = infobox_md + "\n\n" + md
+    # Delegate core 4-step extraction to shared kernel
+    md = convert_page_full(html, extraction_rules)
 
     # Post-conversion: text_normalization, url_conversion, youtube_cleanup, cleanup ops
     ...
@@ -195,7 +202,7 @@ The sample converter CLI provides two subcommands:
 | Subcommand | Description |
 |------------|-------------|
 | `apply` | Convert an existing HTML file using strategy extraction rules |
-| `fetch-and-apply` | Fetch page via MediaWiki `action=parse` API, then convert |
+| `fetch-and-apply` | Fetch page via pipeline shared `ApiClient`, then convert |
 
 ## 6. Data Flow Diagram
 

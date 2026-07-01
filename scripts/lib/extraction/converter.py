@@ -980,3 +980,42 @@ def convert_html_to_markdown(
     )
     return converter.convert_body(html)
 
+
+def convert_page_full(html: str, extraction_rules: dict) -> str:
+    """Full 4-step extraction pipeline — shared orchestration entry point.
+
+    1. Extract infobox via extract_infobox()
+    2. Preprocess HTML via preprocess_html()
+    3. Convert to Markdown via convert_html_to_markdown()
+    4. Prepend infobox to body if extracted
+
+    This is the single kernel entry point for page extraction. All B-axis
+    paths (explore, pipeline) route through this function.
+
+    Spec: extract-kernel / convert-page-full
+    """
+    from scripts.lib.extraction.infobox import extract_infobox
+    from scripts.lib.extraction.preprocessor import preprocess_html
+
+    base_url = extraction_rules.get("image_handling", {}).get("base_url", "")
+    wiki_domain = base_url.replace("https://", "").replace("http://", "") if base_url else ""
+
+    # Step 1: Extract infobox (read-only — returns Markdown, does not modify HTML)
+    infobox_md = extract_infobox(html, extraction_rules, wiki_domain)
+
+    # Step 2: Preprocess HTML (removes infobox container, applies cleanup)
+    cleaned_html = preprocess_html(html, extraction_rules)
+
+    # Step 3: Convert cleaned HTML to Markdown
+    md = convert_html_to_markdown(
+        cleaned_html,
+        wiki_domain=wiki_domain,
+        extraction_config=extraction_rules,
+    )
+
+    # Step 4: Prepend infobox if extracted
+    if infobox_md:
+        md = infobox_md + "\n\n" + md
+
+    return md
+
