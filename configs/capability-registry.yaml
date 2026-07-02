@@ -1,0 +1,88 @@
+# Capability Registry — machine-readable SSOT for all chrome-agent capabilities.
+# Every implemented capability must have an entry here.
+# doctor --check capabilities cross-validates this file against code, specs, and AGENTS.md.
+
+convert:
+  cleanup_ops:
+    - name: strip_fandom_infobox_tables
+      implemented_in: scripts/lib/extraction/preprocessor.py
+      strategy_field: extraction.cleanup
+    - name: convert_ambox_to_text
+      implemented_in: scripts/lib/extraction/preprocessor.py
+      strategy_field: extraction.cleanup
+    - name: unwrap_image_wrappers
+      implemented_in: scripts/lib/extraction/preprocessor.py
+      strategy_field: extraction.cleanup
+    - name: strip_footer
+      implemented_in: scripts/lib/extraction/preprocessor.py
+      strategy_field: extraction.cleanup
+    - name: strip_edit_links
+      implemented_in: scripts/lib/extraction/preprocessor.py
+      strategy_field: extraction.cleanup
+    - name: strip_skip_links
+      implemented_in: scripts/lib/extraction/preprocessor.py
+      strategy_field: extraction.cleanup
+    - name: strip_category_links
+      implemented_in: scripts/lib/extraction/preprocessor.py
+      strategy_field: extraction.cleanup
+    - name: convert_nested_images
+      implemented_in: scripts/lib/extraction/preprocessor.py
+      strategy_field: extraction.cleanup
+    - name: strip_empty_parens
+      implemented_in: scripts/explore/sample_converter.py
+      strategy_field: extraction.cleanup
+    - name: fix_separators
+      implemented_in: scripts/explore/sample_converter.py
+      strategy_field: extraction.cleanup
+    - name: normalize_internal
+      implemented_in: scripts/explore/sample_converter.py
+      strategy_field: extraction.cleanup
+
+extract:
+  infobox_handlers:
+    - name: text
+      implemented_in: scripts/lib/extraction/infobox.py
+      strategy_field: extraction.infobox_field_handlers
+    - name: extract_cur_id
+      implemented_in: scripts/lib/extraction/infobox.py
+      strategy_field: extraction.infobox_field_handlers
+    - name: count_images
+      implemented_in: scripts/lib/extraction/infobox.py
+      strategy_field: extraction.infobox_field_handlers
+    - name: dedup_pools
+      implemented_in: scripts/lib/extraction/infobox.py
+      strategy_field: extraction.infobox_field_handlers
+    - name: simplify_collection
+      implemented_in: scripts/lib/extraction/infobox.py
+      strategy_field: extraction.infobox_field_handlers
+
+  special_capabilities:
+    - name: card_stats
+      implemented_in: scripts/pipeline/converters/card_stats.py
+      strategy_field: capabilities
+    - name: link_fixer
+      implemented_in: scripts/pipeline/converters/link_fixer.py
+      strategy_field: capabilities
+
+fetch:
+  engines:
+    - name: mediawiki-api
+      implemented_in: scripts/pipeline/pipeline/phases/fetch.py
+    - name: scrapling-get
+      implemented_in: scripts/explore/probe_chain.py
+    - name: obscura-fetch
+      implemented_in: configs/engine-registry.json
+    - name: obscura-serve-pool
+      implemented_in: configs/engine-registry.json
+    - name: scrapling-fetch
+      implemented_in: scripts/explore/probe_chain.py
+    - name: scrapling-bulk-fetch
+      implemented_in: scripts/explore/probe_chain.py
+    - name: cloakbrowser-fetch
+      implemented_in: configs/engine-registry.json
+    - name: scrapling-stealthy-fetch
+      implemented_in: configs/engine-registry.json
+    - name: chrome-devtools-mcp
+      implemented_in: configs/engine-registry.json
+    - name: chrome-cdp
+      implemented_in: configs/engine-registry.json

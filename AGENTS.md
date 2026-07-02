@@ -21,6 +21,7 @@
 | C8 | **函数声明风格**：Node.js 顶层用 `function xxx()` 声明，不用箭头函数 | — |
 | C9 | **测试义务**：修改 `scripts/lib/`、`scripts/pipeline/pipeline/phases/`、`scripts/lib/extraction/` 时必须在 `tests/` 新增或更新对应测试；修改站点策略时必须运行 `python3 scripts/test_runner.py site-samples --domain <domain>` 确认回归通过。代码任务遵循 vertical slice TDD（详见 `08-tech-stack.md` §4 TDD 约定） | 新代码无测试覆盖 / 回归未捕获 |
 | C10 | **全局 skill/runtime 同步**（同 C4 的「改 X 后必须同步 Y」模式）：修改 tracked files——`scripts/chrome-agent-runtime.mjs`、`scripts/chrome-agent-cli.mjs`、`skills/chrome-agent/SKILL.md`——后，必须将改动同步到全局副本（`~/.agents/scripts/chrome-agent.mjs`、`~/.agents/skills/chrome-agent/SKILL.md`）并刷新 `~/.agents/scripts/.chrome-agent-installed-hash` 至当前 `git rev-parse HEAD`。详见 [chrome-agent-global-install](docs/playbooks/chrome-agent-global-install.md) 的 Case 6 与 Installed Hash Semantics | 全局副本与仓库源漂移 / doctor 误判 freshness / 其它机器拿不到改动 |
+| C11 | **能力注册同步**：新增能力实现文件后必须同步 `configs/capability-registry.yaml`；openspec change 归档前必须 `doctor --check capabilities` 通过。详见 [capability-extension](docs/playbooks/capability-extension.md) | 能力不可见 / doctor 检查失败 / change 归档被阻断 |
 
 ## 1. Service Identity
 

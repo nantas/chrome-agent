@@ -15,7 +15,7 @@
 |---|-------|--------|-----------------|----------------|
 | 1 | Target Architecture Design | Architecture meta-design (no code changes) | Independent — produces `00-target-architecture.md` | `done` |
 | 2 | Capability Map Realignment | Documentation alignment (no code changes) | Independent — updates `01-08` + AGENTS.md + specs | `done` |
-| 3 | Residual Audit & Fix | Code/test/doc drift resolution | **openspec change** — `[TBD]` | `pending` |
+| 3 | Residual Audit & Fix | Code/test/doc drift resolution | 3 openspec changes: unify-html-converter, unify-extract-fetch-kernels, migrate-discovery-to-explore | `done` |
 
 **Governance**: Stages 1 and 2 are architecture design — they produce new or
 revised source-of-truth documents. Stage 3 is a behavioural change (code+test
@@ -102,47 +102,76 @@ so every architectural layer consistently expresses the 4-dimensional model.
 ## Stage 3: Residual Audit & Fix
 
 **Goal**: Compare the target architecture against current code, tests, and
-docs. List every drift. Fix them. This is the only stage that modifies code.
+docs. List every drift. Fix them in 3 parallel openspec changes.
 
 ### Entry criteria
 
 - [x] Stage 1 complete
 - [x] Stage 2 complete
 
-### Method
+### Drift Register (from `00-target-architecture.md` §3)
 
-1. For each capability entry in `00-target-architecture.md` §3, audit the
-   codebase and produce a **drift register** (list of violations).
-2. Prioritise: security/safety > mirror non-equivalence > dead code > naming.
-3. Fix each drift with TDD: test red → implementation green → refactor.
-4. At completion, verify against the three-question cure criteria.
+| # | Capability | Drift | Type | Change |
+|---|-----------|-------|------|--------|
+| 1 | Convert | `fandom_html_to_markdown.py` 零调用者，功能已被 `converter.py` + `preprocessor` 覆盖 | 删除 | unify-html-converter |
+| 2 | Convert | `html_to_markdown.py` 是共享内核 `converter.py` 的重复实现（python regex vs selectolax），功能并入 converter.py generic 路径 | 删除+合并 | unify-html-converter |
+| 3 | Convert | 无镜像等价测试（explore convert vs pipeline convert 输出从未对比） | 缺测试 | unify-html-converter |
+| 4 | Fetch | `.mjs` mediawiki-api fetch（spawn `standalone.py`）与 pipeline `fetch.py` 两条代码路径做同一件事 | 合并 | unify-extract-fetch-kernels |
+| 5 | Extract | `preprocessor.py` 有 `context` 参数分 explore/pipeline 分支 | 删除 | unify-extract-fetch-kernels |
+| 6 | Extract | `sample_converter._apply_extraction()` 编排逻辑不在共享内核 | 移动 | unify-extract-fetch-kernels |
+| 7 | Discover | `discovery_homepage.py` + `discovery_allpages.py` 在 pipeline 而非 explore | 移动 | migrate-discovery-to-explore |
+| 8 | Discover | `pipeline/strategies/discovery.py` 应在 explore 复用 | 移动 | migrate-discovery-to-explore |
+| 9 | Discover | pipeline 不应有 discover 阶段——页面清单来自 strategy manifest | 删除 | migrate-discovery-to-explore |
+| — | Assemble | 无 drift | — | — |
 
-### Openspec change
+### Openspec Changes
 
-This stage is a formal openspec change (name TBD during Stage 3 launch).
-It follows the full lifecycle:
+3 个并行 change，执行顺序 Convert → Extract+Fetch → Discover。测试标准：回归通过。
 
-```
-proposal → specs → design → tasks → implement → verify → writeback → archive
-```
+#### Change 1: `unify-html-converter`
 
-Key deliverables within the change:
-- `proposal.md`: problem statement (reference 00-architecture-review.md)
-- `specs/`: delta specs for capabilities being modified
-- `design.md`: per-capability fix design
-- `tasks.md`: vertical slices, TDD sequence
-- `verification.md`: spec-to-implementation mapping with all three questions answerable per module
-- `writeback.md`: affected architecture docs + openspec specs to backfill
+**范围**：消除 3 份 HTML→Markdown 实现，保留唯一的 selectolax 内核。
+
+| Deliverable | 内容 |
+|-------------|------|
+| `proposal.md` | 问题陈述：3 个转换器并存（converter / html_to_markdown / fandom_html_to_markdown），B 轴和 C 轴不应通过代码分叉表达 |
+| `specs/` | delta spec：Convert 能力的 4 维坐标、kernel 唯一性、镜像等价契约 |
+| `design.md` | 删除策略：先验证测试覆盖 → 删 fandom → 删 html_to_markdown → 补 golden snapshot |
+| `tasks.md` | ① 跑 site-samples 确认现有覆盖 ② 删 fandom_html_to_markdown.py ③ 确认 generic HTML 路径 converter.py wiki_domain=None 覆盖 ④ 删 html_to_markdown.py ⑤ 添 golden snapshot 测试（cache 已有页面走 explore + pipeline 两条路径） ⑥ 全域回归 |
+| `verification.md` | golden snapshot 差异 = 0；三项自问可答 |
+
+#### Change 2: `unify-extract-fetch-kernels`
+
+**范围**：消除 preprocessor 的 context 分支 + 编排逻辑移入共享内核 + fetch 路径统一。
+
+| Deliverable | 内容 |
+|-------------|------|
+| `proposal.md` | 问题陈述：preprocessor 有 B 轴分支、_apply_extraction 不在 kernel、mjs 和 pipeline 有重复 MediaWiki fetch |
+| `specs/` | delta spec：preprocessor 统一路径、converter.convert_page_full 声明、fetch 唯一 kernel |
+| `design.md` | 步骤：删 context 参数 → 移 _apply_extraction 到 converter → fetch 路径收束 |
+| `tasks.md` | ① 全量 grep context= 调用点 ② 删 preprocessor context 参数 ③ converter.py 加 convert_page_full() ④ sample_converter 改为调用 convert_page_full ⑤ mjs mediawiki-api 路径改为调 fetch.py ⑥ 回归 |
+| `verification.md` | preprocessor 无 context 参数；sample_converter 不自行编排；mjs 不调 standalone.py 做 fetch |
+
+#### Change 3: `migrate-discovery-to-explore`
+
+**范围**：pipeline 的 discover 阶段移入 explore，pipeline 不再自行发现页面。
+
+| Deliverable | 内容 |
+|-------------|------|
+| `proposal.md` | 问题陈述：discover 职责分裂在 pipeline 和 explore 两处，违反「explore 发现→freeze→pipeline 消费」单向数据流 |
+| `specs/` | delta spec：pipeline manifest 来源 = strategy frontmatter，discover 仅在 explore |
+| `design.md` | 移动策略：discovery_*.py → explore；pipeline orchestrator 去 discover 阶段；discovery.py 策略接口探索复用 |
+| `tasks.md` | ① 确认 pipeline orchestrator 中 discover 调用点 ② 移 discovery_homepage + discovery_allpages → explore ③ 移 discovery 策略接口 ④ pipeline 去 discover phase ⑤ 确认 explore freeze 输出的 manifest 可被 pipeline 直接消费 ⑥ 全链路回归（explore → freeze → pipeline） |
+| `verification.md` | pipeline 无 discover 阶段；explore manifest → pipeline 可直达 |
 
 ### Exit criteria
 
-- [ ] Drift register complete and reviewed
-- [ ] All prioritised drifts fixed
-- [ ] Full test suite green
-- [ ] Three-question criteria verifiable for every capability
-- [ ] openspec change archived
-- [ ] `verification.md` confirms spec→code→test triangle closed for every affected requirement
-
+- [x] Drift register complete and reviewed
+- [x] All 9 drifts fixed
+- [x] Full test suite green (80 unit + 13 site-samples × 3 changes)
+- [x] Three-question criteria verifiable for every capability
+- [x] 3 openspec changes archived
+- [x] `verification.md` per change confirms spec→code→test triangle closed
 ---
 
 ## Governance Notes

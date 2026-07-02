@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 import yaml
@@ -23,6 +24,11 @@ def freeze(repo_root: str, scaffold_path: str) -> dict:
     with open(scaffold_path, "r", encoding="utf-8") as f:
         content = f.read()
 
+    # Detect if this is a new scaffold (has scaffold marker) or a re-freeze
+    is_new_scaffold = bool(
+        re.search(r"^# (Auto-generated scaffold|SCAPFOLD)", content, re.M)
+    )
+
     # Remove scaffold marker
     content = re.sub(r"^# Auto-generated scaffold — review recommended\n", "", content)
     content = re.sub(r"^# SCAPFOLD: auto-generated — review recommended\n", "", content)
@@ -36,6 +42,27 @@ def freeze(repo_root: str, scaffold_path: str) -> dict:
         return {"ok": False, "error": "Missing YAML frontmatter"}
 
     frontmatter = yaml.safe_load(match.group(1))
+
+    # Capability gate check: only for new scaffolds, not re-freezes
+    if is_new_scaffold:
+        from scripts.explore.capability_gate import check_requirements
+        cap_registry_path = os.path.join(repo_root, "configs", "capability-registry.yaml")
+        if os.path.exists(cap_registry_path):
+            with open(cap_registry_path, "r", encoding="utf-8") as f:
+                cap_registry = yaml.safe_load(f)
+            gaps = check_requirements(frontmatter, cap_registry)
+            if gaps:
+                run_dir = os.path.dirname(scaffold_path)
+                gap_path = os.path.join(run_dir, "capability-gap.yaml")
+                with open(gap_path, "w", encoding="utf-8") as f:
+                    yaml.dump(gaps, f, allow_unicode=True)
+                return {
+                    "ok": False,
+                    "error": f"{len(gaps)} capability gap(s) found",
+                    "gaps": gaps,
+                    "gap_path": gap_path,
+                }
+
     domain = frontmatter.get("domain", "")
     protection_level = frontmatter.get("protection_level", "low")
     page_types = []
@@ -109,6 +136,9 @@ def main():
     result = freeze(args.repo_root, args.scaffold_path)
     print(json.dumps(result, indent=2))
     if not result["ok"]:
+        # Exit 5 for capability gaps, 1 for other errors
+        if result.get("gaps"):
+            exit(5)
         exit(1)
 
 

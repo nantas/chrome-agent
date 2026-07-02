@@ -108,6 +108,7 @@ function parseArgs(argv) {
   let yes = false;
   let excludeCategory = [];
   let outputDir = null;
+  let check = null;
   const positionals = [];
 
   for (let i = 0; i < passthrough.length; i += 1) {
@@ -280,6 +281,15 @@ function parseArgs(argv) {
       reFetch = true;
       continue;
     }
+    if (value === "--check" && i + 1 < passthrough.length) {
+      check = passthrough[i + 1];
+      i += 1;
+      continue;
+    }
+    if (value.startsWith("--check=")) {
+      check = value.slice("--check=".length);
+      continue;
+    }
     if (value === "--output" && i + 1 < passthrough.length) {
       outputDir = passthrough[i + 1];
       i += 1;
@@ -319,6 +329,7 @@ function parseArgs(argv) {
     yes,
     excludeCategory,
     outputDir,
+    check,
     command: positionals[0] ?? null,
     target: positionals[1] ?? null,
     positionals,
@@ -3685,7 +3696,124 @@ function runEngineVersionCheck(repoRoot) {
   }
 }
 
-function runDoctor(repoRoot, repoRef, resolutionMode) {
+function runCapabilitiesCheck(repoRoot, repoRef, resolutionMode) {
+  const registryPath = path.join(repoRoot, "configs", "capability-registry.yaml");
+  if (!fs.existsSync(registryPath)) {
+    return makeResult(
+      "doctor", "runtime", repoRef,
+      "capability-registry.yaml not found",
+      [{ path: registryPath, lifecycle: "durable", description: "capability_registry", action: "missing" }],
+      "Create configs/capability-registry.yaml with capability declarations.",
+      "failure",
+      { check: "capabilities", checks: [] },
+    );
+  }
+
+  const raw = fs.readFileSync(registryPath, "utf8");
+  let registry;
+  try {
+    registry = YAML.parse(raw);
+  } catch (err) {
+    return makeResult(
+      "doctor", "runtime", repoRef,
+      `Invalid YAML in capability-registry.yaml: ${err.message}`,
+      [{ path: registryPath, lifecycle: "durable", description: "capability_registry", action: "invalid" }],
+      "Fix the YAML syntax in configs/capability-registry.yaml.",
+      "failure",
+      { check: "capabilities", checks: [] },
+    );
+  }
+
+  const warnings = [];
+  const checks = [];
+
+  // Collect all entries across categories
+  const allEntries = [];
+  for (const [category, groups] of Object.entries(registry)) {
+    for (const [group, entries] of Object.entries(groups)) {
+      for (const entry of entries) {
+        if (entry.name && entry.implemented_in) {
+          allEntries.push({ category, group, name: entry.name, implemented_in: entry.implemented_in });
+        }
+      }
+    }
+  }
+
+  // Check 1: every implemented_in path exists
+  for (const entry of allEntries) {
+    const absPath = path.join(repoRoot, entry.implemented_in);
+    const exists = fs.existsSync(absPath);
+    checks.push({
+      name: `impl_${entry.name}`,
+      ok: exists,
+      detail: `${entry.implemented_in} (${entry.category}.${entry.group})`,
+    });
+    if (!exists) {
+      warnings.push(`Stale implemented_in: ${entry.implemented_in} for ${entry.name}`);
+    }
+  }
+
+  // Check 2: every capability has a matching openspec/specs/<cap>/spec.md
+  const specsDir = path.join(repoRoot, "openspec", "specs");
+  for (const [category] of Object.entries(registry)) {
+    const specPath = path.join(specsDir, category, "spec.md");
+    const exists = fs.existsSync(specPath);
+    checks.push({
+      name: `spec_${category}`,
+      ok: exists,
+      detail: `openspec/specs/${category}/spec.md`,
+    });
+    if (!exists) {
+      warnings.push(`Missing spec for capability: ${category}`);
+    }
+  }
+
+  // Check 3: every capability has a matching row in AGENTS.md §2
+  const agentsPath = path.join(repoRoot, "AGENTS.md");
+  if (fs.existsSync(agentsPath)) {
+    const agentsContent = fs.readFileSync(agentsPath, "utf8");
+    for (const [category] of Object.entries(registry)) {
+      const found = agentsContent.includes(`| **${category}** |`);
+      checks.push({
+        name: `agents_${category}`,
+        ok: found,
+        detail: `AGENTS.md §2 row for ${category}`,
+      });
+      if (!found) {
+        warnings.push(`Missing AGENTS.md §2 row for capability: ${category}`);
+      }
+    }
+  }
+
+  const broken = checks.filter((c) => !c.ok);
+  const resultState = broken.length === 0 ? "success" : "partial_success";
+
+  let summary;
+  if (broken.length === 0) {
+    summary = "capability-registry is consistent with code, specs, and AGENTS.md.";
+  } else {
+    summary = `${broken.length} consistency issue(s) found: ${warnings.join("; ")}`;
+  }
+
+  return makeResult(
+    "doctor", "runtime", repoRef,
+    summary,
+    checks.map((c) => ({ path: c.detail, lifecycle: "durable", description: c.name, action: c.ok ? "checked" : "missing" })),
+    broken.length > 0 ? "Review capability-registry.yaml and ensure code, specs, and AGENTS.md are synchronized." : "none",
+    resultState,
+    {
+      checks: checks.map((c) => ({ name: c.name, ok: c.ok, detail: c.detail })),
+      check: "capabilities",
+    },
+  );
+}
+
+function runDoctor(repoRoot, repoRef, resolutionMode, check = null) {
+  // If --check is specified, delegate to focused check functions
+  if (check === "capabilities") {
+    return runCapabilitiesCheck(repoRoot, repoRef, resolutionMode);
+  }
+
   const runtimeDir = process.env.CHROME_AGENT_RUNTIME_DIR || path.join(os.homedir(), ".agents", "scripts");
   const binDir = process.env.CHROME_AGENT_BIN_DIR || path.join(os.homedir(), ".local", "bin");
   const runtimePath = path.join(runtimeDir, "chrome-agent.mjs");
@@ -3936,7 +4064,7 @@ async function main() {
         result = runIterate(repoRoot, repoRef, resolutionMode, parsed.target);
         break;
       case "doctor":
-        result = runDoctor(repoRoot, repoRef, resolutionMode);
+        result = runDoctor(repoRoot, repoRef, resolutionMode, parsed.check);
         break;
       case "clean":
         result = runClean(repoRoot, repoRef, parsed.scope);
