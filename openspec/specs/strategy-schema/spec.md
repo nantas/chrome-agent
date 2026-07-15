@@ -5,7 +5,7 @@
 - Capability: `strategy-schema`
 - 来源: `proposal.md`
 - 变更类型: modified
-- 用户确认摘要: grill session 确认——frontmatter 新增 `samples` 字段（page + label）. Modified by tdd-schema-alignment: C9 TDD 引用 + tech-stack TDD 约定
+- 用户确认摘要: grill session 确认——frontmatter 新增 `samples` 字段（page + label）. Modified by tdd-schema-alignment: C9 TDD 引用 + tech-stack TDD 约定. Modified by maker-taptap-cn-cdp-api-bridge: `api.platform: rest`、`requires_authentication`、`api.auth`
 
 ## 规范真源声明
 
@@ -14,6 +14,46 @@
 - 项目页面回写不得替代本文件
 
 ## MODIFIED Requirements
+
+### Requirement: REST Platform Type
+
+The system SHALL accept `rest` as a valid value for `api.platform` in strategy frontmatter, alongside the existing `mediawiki` value.
+
+#### Scenario: Strategy with rest platform
+- **WHEN** a strategy file declares `api.platform: rest`
+- **THEN** the system SHALL recognize it as a RESTful JSON API backend and route accordingly
+
+### Requirement: Requires Authentication Field
+
+The system SHALL accept an optional `requires_authentication` boolean field at the top level of strategy frontmatter, indicating whether site content is behind a login gate.
+
+#### Scenario: Authenticated site declaration
+- **WHEN** a strategy file declares `requires_authentication: true`
+- **THEN** the system SHALL treat this as an access control signal, distinct from anti-crawl measures
+
+#### Scenario: Public site (default)
+- **WHEN** a strategy file omits `requires_authentication`
+- **THEN** the system SHALL default to `false`
+
+### Requirement: API Auth Configuration
+
+The system SHALL accept an optional `api.auth` object in strategy frontmatter for `api.platform: rest`, containing `source` (token storage location), `key` (storage key name), and `header_format` (Authorization header template).
+
+#### Scenario: Strategy with auth config
+- **WHEN** a strategy file declares `api.platform: rest` with `api.auth` containing valid `source`, `key`, and `header_format`
+- **THEN** the system SHALL parse these fields and make them available to the fetch phase
+
+### Requirement: Platform Validation
+
+The `validate_api_config()` function SHALL no longer reject non-`mediawiki` platform values unconditionally. It SHALL accept `rest` as a valid platform. For `rest` platform, it SHALL NOT require MediaWiki-specific capabilities.
+
+#### Scenario: rest platform passes validation
+- **WHEN** `validate_api_config()` receives a strategy with `api.platform: rest`
+- **THEN** it SHALL return `None` (no error)
+
+#### Scenario: Unknown platform still rejected
+- **WHEN** `validate_api_config()` receives a strategy with an unknown `api.platform` value
+- **THEN** it SHALL return an error message as before
 
 ### Requirement: Samples frontmatter field
 The strategy YAML frontmatter SHALL support an optional `samples` field containing a list of sample page declarations.

@@ -52,8 +52,15 @@ def validate_api_config(api_config: Optional[dict], strategies: PipelineStrategi
         return "Strategy has no 'api' field"
     if "platform" not in api_config:
         return "Strategy 'api.platform' is missing"
-    if api_config["platform"] != "mediawiki":
-        return f"Unsupported api.platform: {api_config['platform']}"
+
+    platform = api_config["platform"]
+
+    # REST platforms: skip MediaWiki-specific validation
+    if platform == "rest":
+        return None
+
+    if platform != "mediawiki":
+        return f"Unsupported api.platform: {platform}"
 
     caps = set(api_config.get("capabilities", []))
     required = (
@@ -64,6 +71,51 @@ def validate_api_config(api_config: Optional[dict], strategies: PipelineStrategi
         missing = required - caps
         return f"Missing required capabilities: {missing}"
     return None
+
+
+def _passthrough_convert(output_dir: str, manifest: dict, domain: str,
+                         repo_root: str) -> tuple:
+    """Convert phase passthrough for REST API platforms.
+
+    Reads cached content (already Markdown) from ``.cache/chrome-cdp/<domain>/``
+    and assembles ``extraction_results.json`` without HTML-to-Markdown conversion.
+    """
+    from . import cache as cache_mod
+
+    platform = "chrome-cdp"
+    results = {}
+    stats = {"total": 0, "ok": 0, "error": 0, "failed": 0, "warnings": []}
+
+    pages = manifest.get("pages", [])
+    for page in pages:
+        title = page.get("title", "")
+        safe_path = title.replace("/", "_").replace(" ", "_")
+        stats["total"] += 1
+
+        cached = cache_mod.load_page_cache(repo_root, platform, domain, safe_path)
+        if cached and cached.get("content"):
+            results[title] = {
+                "title": title,
+                "status": "ok",
+                "content": cached["content"],
+                "rendered_html": None,
+                "images": [],
+            }
+            stats["ok"] += 1
+        else:
+            results[title] = {
+                "title": title,
+                "status": "error",
+                "error": "Not found in cache",
+                "content": "",
+                "rendered_html": None,
+                "images": [],
+            }
+            stats["failed"] += 1
+
+    log.info("Passthrough convert: %d total, %d ok, %d failed",
+             stats["total"], stats["ok"], stats["failed"])
+    return results, stats
 
 
 # ===========================================================================
@@ -96,8 +148,20 @@ def run_pipeline(args: argparse.Namespace) -> int:
         log.error("Strategy API validation failed: %s", error)
         return EXIT_STRATEGY_ERROR
 
-    # Probe API endpoint
-    if args.no_api_probe and api_config.get("base_url"):
+    # Validate backend (if declared) against known backends
+    _KNOWN_BACKENDS = {"cdp-api-bridge"}
+    declared_backend = strategy.get("backend")
+    if declared_backend and declared_backend not in _KNOWN_BACKENDS:
+        log.error("Unknown backend: %s. Known backends: %s",
+                  declared_backend, ", ".join(sorted(_KNOWN_BACKENDS)))
+        return EXIT_STRATEGY_ERROR
+
+    # Probe API endpoint (skip for REST platforms — no MediaWiki API to probe)
+    is_rest_platform = api_config.get("platform") == "rest" if api_config else False
+    if is_rest_platform:
+        base_url = None
+        log.info("REST platform detected — skipping API probe")
+    elif args.no_api_probe and api_config.get("base_url"):
         base_url = api_config["base_url"]
         log.info("Skipping probe, using strategy base_url: %s", base_url)
     else:
@@ -114,7 +178,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
     platform_variant = strategy.get("api", {}).get("platform_variant", "standard")
     log.info("Platform variant: %s", platform_variant)
 
-    client = ApiClient(base_url, rate_limit_config=rate_limit_config)
+    client = ApiClient(base_url, rate_limit_config=rate_limit_config) if base_url else None
 
     # Create output directory
     os.makedirs(args.output, exist_ok=True)
@@ -213,21 +277,30 @@ def run_pipeline(args: argparse.Namespace) -> int:
 
     # --- Fetch Phase ---
     fetch_stats = None
+    is_cdp_api = declared_backend == "cdp-api-bridge" if declared_backend else False
     if "fetch" in phases or "all" in phases:
-        try:
-            fetch_stats = run_fetch(
-                client, manifest, strategy, rate_limit_config, domain,
-                strategies.content_acquisition, repo_root,
-                re_fetch=re_fetch,
+        if is_cdp_api:
+            log.info(
+                "cdp-api-bridge backend: fetch must be performed externally. "
+                "Use fetch_cdp_api.run_fetch_cdp_api(eval_fn, ...) from the .mjs layer."
             )
-        except Exception as e:
-            log.error("Fetch phase failed: %s", e)
-            return EXIT_PHASE_B_FAILURE
+            if "fetch" in phases and "all" not in phases:
+                return EXIT_SUCCESS
+        else:
+            try:
+                fetch_stats = run_fetch(
+                    client, manifest, strategy, rate_limit_config, domain,
+                    strategies.content_acquisition, repo_root,
+                    re_fetch=re_fetch,
+                )
+            except Exception as e:
+                log.error("Fetch phase failed: %s", e)
+                return EXIT_PHASE_B_FAILURE
 
-        # Early exit for fetch-only
-        if "fetch" in phases and "all" not in phases:
-            log.info("--phase fetch complete — cache populated")
-            return EXIT_SUCCESS
+            # Early exit for fetch-only
+            if "fetch" in phases and "all" not in phases:
+                log.info("--phase fetch complete — cache populated")
+                return EXIT_SUCCESS
 
     # --- Convert Phase ---
     if "convert" in phases and "all" not in phases and not from_manifest:
@@ -238,10 +311,16 @@ def run_pipeline(args: argparse.Namespace) -> int:
     stats = None
     if "convert" in phases or "all" in phases:
         try:
-            results, stats = run_convert(
-                args.output, manifest, strategy, domain, repo_root,
-                resume_enabled=resume_enabled
-            )
+            if is_rest_platform:
+                log.info("REST platform — passthrough convert (content already Markdown)")
+                results, stats = _passthrough_convert(
+                    args.output, manifest, domain, repo_root,
+                )
+            else:
+                results, stats = run_convert(
+                    args.output, manifest, strategy, domain, repo_root,
+                    resume_enabled=resume_enabled
+                )
 
             # Save extraction results WITH content and rendered_html
             results_path = os.path.join(args.output, "extraction_results.json")

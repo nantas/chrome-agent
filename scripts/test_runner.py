@@ -30,6 +30,14 @@ from typing import Dict, List, Optional, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
+# Auto-switch to repo venv Python if available (ensures selectolax etc. are importable)
+_VENV_PYTHON = REPO_ROOT / ".venv" / "bin" / "python"
+if (
+    _VENV_PYTHON.exists()
+    and os.path.realpath(sys.executable) != os.path.realpath(str(_VENV_PYTHON))
+):
+    os.execv(str(_VENV_PYTHON), [str(_VENV_PYTHON), __file__] + sys.argv[1:])
+
 # Ensure repo root is on sys.path for imports like `scripts.*`
 _str_root = str(REPO_ROOT)
 if _str_root not in sys.path:

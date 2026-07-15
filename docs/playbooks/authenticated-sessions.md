@@ -35,3 +35,8 @@
 - Scrapling-first 仍为开场动作
 - 但某些站点（如 x.com）在 session 复用失败后可能需要立即 fallback 到 chrome-cdp
 - 当前会话延续优先级高于强推 Scrapling
+
+### maker.taptap.cn（API-backed SPA）
+- Scrapling 返回空 body（纯 JS 渲染 SPA）
+- 成功路径：CDP → Runtime.evaluate → 页面内 fetch() 调用后台 API
+- 详见 `docs/playbooks/api-backed-spa-cdp-bridge.md`

@@ -79,7 +79,7 @@ structure:
 
 # --- API 配置 ---
 api:
-  platform: mediawiki                     # 平台类型（必填，目前仅支持 "mediawiki"）
+  platform: mediawiki                     # 平台类型（必填，合法值: "mediawiki" | "rest"）
   platform_variant: standard              # 平台变体：standard | fandom | wiki-gg
   base_url: "https://example.wiki.gg/api.php"  # API 端点
   capabilities:                           # 声明 API 能力
@@ -166,6 +166,7 @@ strategy.md (YAML frontmatter)
 ├── ✅ domain: string
 ├── ✅ description: string
 ├── ✅ protection_level: "low" | "medium" | "high"
+├── ❌ requires_authentication: boolean
 ├── ❌ anti_crawl_refs: string[]
 ├── ❌ backend: string
 ├── ❌ structure
@@ -182,8 +183,15 @@ strategy.md (YAML frontmatter)
 │       │   └── selector
 │       └── requires_auth
 ├── ❌ api
-│   ├── ✅ platform: "mediawiki"
+│   ├── ✅ platform: "mediawiki" | "rest"
 │   ├── ❌ platform_variant: "standard" | "fandom" | "wiki-gg"
+│   ├── ❌ auth                    # 仅 rest 平台
+│   │   ├── ❌ source: "localStorage" | "cookie" | "sessionStorage"
+│   │   ├── ❌ key: string
+│   │   └── ❌ header_format: string
+│   ├── ❌ endpoints               # 仅 rest 平台
+│   │   ├── ❌ list { url, method }
+│   │   └── ❌ content { url, method }
 │   ├── ❌ base_url: string
 │   ├── ❌ capabilities: string[]
 │   ├── ❌ namespaces: int[]
@@ -225,6 +233,7 @@ strategy.md (YAML frontmatter)
 | `domain` | string | ✅ | 站点域名，用作运行时策略匹配键 |
 | `description` | string | ✅ | 站点描述 |
 | `protection_level` | string | ✅ | 保护等级：`low` / `medium` / `high` |
+| `requires_authentication` | boolean | ❌ | 站点内容是否在登录门后（如 OAuth2 认证），默认 `false`。与反爬措施（`anti_crawl_refs`）正交 |
 | `anti_crawl_refs` | string[] | ❌ | 引用的反爬策略 ID 列表 |
 | `backend` | string | ❌ | 后端家族标记（advisory），不参与运行时匹配 |
 | `structure` | object | ❌ | 站点结构描述（页面类型、链接关系） |
@@ -237,8 +246,10 @@ strategy.md (YAML frontmatter)
 
 | 字段 | 类型 | 必填 | 默认值 | 说明 |
 |------|------|------|--------|------|
-| `platform` | string | ✅ | — | 平台类型，当前仅支持 `"mediawiki"` |
-| `platform_variant` | string | ❌ | `"standard"` | 平台变体枚举 |
+| `platform` | string | ✅ | — | 平台类型，合法值：`"mediawiki"`（MediaWiki action=parse API）或 `"rest"`（RESTful JSON 内容 API） |
+| `platform_variant` | string | ❌ | `"standard"` | 平台变体枚举：`standard` / `fandom` / `wiki-gg`（仅 `mediawiki` 平台适用） |
+| `auth` | object | ❌ | — | 认证配置（仅 `rest` 平台适用）。子字段：`source`（token 存储位置：`localStorage`/`cookie`/`sessionStorage`）、`key`（存储键名）、`header_format`（Authorization 头模板，如 `"Bearer {token}"`） |
+| `endpoints` | object | ❌ | — | API 端点定义（仅 `rest` 平台适用）。子字段：`list`（文件清单端点）和 `content`（内容端点），各含 `url`、`method` |
 | `base_url` | string | ❌ | 自动探测 | MediaWiki API 端点 URL |
 | `capabilities` | string[] | ❌ | — | API 能力声明（用于校验） |
 | `namespaces` | int[] | ❌ | `[0]` | 命名空间过滤 |

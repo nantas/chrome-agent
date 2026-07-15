@@ -86,3 +86,5 @@ fetch:
       implemented_in: configs/engine-registry.json
     - name: chrome-cdp
       implemented_in: configs/engine-registry.json
+    - name: cdp-api-bridge
+      implemented_in: scripts/pipeline/pipeline/phases/fetch_cdp_api.py

@@ -43,6 +43,7 @@
 | F5 | `run_fetch_cdp()` | `pipeline/phases/fetch_cdp.py` | pipeline(cdp) | chrome-cdp cache | Python |
 | F6 | `probe()` | `explore/probe_chain.py` | explore | multi-engine HTML | Python |
 | F7 | `cloakbrowser_fetcher.py` | standalone | fallback | HTML rendered | Python |
+| F8 | `run_fetch_cdp_api()` | `pipeline/phases/fetch_cdp_api.py` | pipeline(cdp-api) | API JSON → Markdown | Python |
 
 **关键问题**：
 - Fetch logic split across Node.js (`.mjs`) and Python, with engine chain orchestration in `.mjs`
@@ -271,6 +272,7 @@ format_converter
 | F1 | `scripts/pipeline/pipeline/phases/fetch.py` | kernel (MediaWiki) | pipeline | MediaWiki API 批量 fetch + 重试/退避 |
 | F2 | `scripts/pipeline/pipeline/phases/fetch_cdp.py` | kernel (CDP) | pipeline(cdp) | 注意：读本地缓存，不做网络请求 |
 | F3 | `scripts/explore/probe_chain.py` | kernel (探针) | explore | 多引擎串行探测，输出可用引擎 |
+| F4 | `scripts/pipeline/pipeline/phases/fetch_cdp_api.py` | kernel (CDP API) | pipeline(cdp-api) | CDP `Runtime.evaluate` → REST API，产出 Markdown（无 HTML 中间层） |
 
 **基础设施（不注册为能力）**：
 - `scripts/chrome-agent-cli.mjs` `runEngineFetch()` — 引擎路由 + spawn 管理

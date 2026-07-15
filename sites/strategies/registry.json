@@ -254,6 +254,27 @@
                 "default"
             ],
             "file": "posthog.com/strategy.md"
+        },
+        {
+            "domain": "maker.taptap.cn",
+            "description": "TapTap 制造 — 游戏开发 IDE，React SPA + Bearer token 认证 + RESTful 内容 API",
+            "protection_level": "medium",
+            "page_types": [
+                "api_document"
+            ],
+            "pagination": [
+                "none"
+            ],
+            "entry_points": [
+                "api_list"
+            ],
+            "anti_crawl_refs": [
+                "default"
+            ],
+            "requires_authentication": true,
+            "file": "maker.taptap.cn/strategy.md",
+            "backend": "cdp-api-bridge",
+            "notes": "Scrapling returns empty body (SPA). Use CDP Runtime.evaluate with in-page fetch() + localStorage Bearer token. Pipeline support via fetch_cdp_api.py. See docs/playbooks/api-backed-spa-cdp-bridge.md."
         }
     ]
 }
