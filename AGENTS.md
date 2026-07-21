@@ -75,7 +75,7 @@ chrome-agent 的业务能力按 4 维模型（ADR 0013）组织。
 > **后端选择**：多后端平台（Twitter / Reddit / 小红书 / B站）的 active_backend 由 `agent-reach doctor --json` 决定，详见 agent-reach skill。
 > **根因**：chrome-cdp 经 remote debugging 接管 tab，每次新 target 触发用户确认弹窗 = 侵入式；外部 CLI 借用凭证独立发请求 = 非侵入式。两者不在一个体验档次，故外部 CLI 命中即优先。
 > **未在表内的平台** → 走 chrome-agent fetch / explore / crawl 后端（scrapling-first，chrome-cdp 作 fallback）。
-> **平台清单维护**：本表范围以 agent-reach 当前支持为准（15 平台，详见 `~/.agents/skills/agent-reach/SKILL.md`）；agent-reach 新增平台时本表需人工同步。
+> **平台清单维护**：本表列出 chrome-agent 路由层显式对接的 9 个外部 CLI 平台；agent-reach 完整支持范围（含搜索类、播客、RSS 等非路由表平台）详见 `~/.agents/skills/agent-reach/SKILL.md`。agent-reach 新增路由表内平台时本表需人工同步。
 
 ## 4. Directory Governance
 

@@ -42,7 +42,7 @@
 | `AGENTS.md` §3 | ✅ 成功 | 2026-07-21 | apply session | `git status`: `M AGENTS.md`；9 平台行就位 |
 | `skills/chrome-agent/SKILL.md` | ✅ 成功 | 2026-07-21 | apply session | `grep -c "^### Platform Pre-check" = 1` |
 | `~/.agents/skills/chrome-agent/SKILL.md` | ✅ 成功 | 2026-07-21 | apply session | `diff -q` = identical（C10 同步） |
-| `~/.agents/scripts/.chrome-agent-installed-hash` | ✅ 成功 | 2026-07-21 | apply session | hash == `git rev-parse HEAD` (5bf7ce0...) |
+| `~/.agents/scripts/.chrome-agent-installed-hash` | ✅ 成功 | 2026-07-21 | apply session | hash == `git rev-parse HEAD` (4b9376b...) |
 | `sites/strategies/x.com/strategy.md` | ✅ 成功 | 2026-07-21 | apply session | `git status`: `M`；frontmatter preferred 未变 |
 | `docs/playbooks/fallback-escalation.md` | ✅ 成功 | 2026-07-21 | apply session | `git status`: `M`；前置说明在 escalation 图前 |
 | `docs/playbooks/authenticated-sessions.md` | ✅ 成功 | 2026-07-21 | apply session | `git status`: `M`；指针在会话复用段前 |

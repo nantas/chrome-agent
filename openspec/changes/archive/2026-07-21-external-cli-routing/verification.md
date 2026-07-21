@@ -49,7 +49,7 @@
 | §3 路由表 | `AGENTS.md` §3 "外部能力路由" 小节 | external-cli-priority-on-match / routing-boundaries(SSOT) |
 | skill Pre-check | `skills/chrome-agent/SKILL.md` L61 `### Platform Pre-check` | platform-precheck-gate / engine-chain-fallback |
 | C10 同步 diff | `diff skills/chrome-agent/SKILL.md ~/.agents/skills/chrome-agent/SKILL.md` → identical | task 2.3.1 |
-| installed-hash | `~/.agents/scripts/.chrome-agent-installed-hash` == `git rev-parse HEAD` (5bf7ce0...) | task 2.3.2 |
+| installed-hash | `~/.agents/scripts/.chrome-agent-installed-hash` == `git rev-parse HEAD` (4b9376b...) | task 2.3.2 |
 | 边界自检 1 | `grep -iE "twitter-cli\|opencli\|agent-reach\|external-cli-routing\|yt-dlp" configs/{engine-registry.json,capability-registry.yaml} scripts/pipeline/pipeline/registry.py` → clean | routing-boundaries 边界 1 |
 | 边界自检 2 | `awk '/## 2. Capability/,/## 3./' AGENTS.md \| grep external-cli-routing` → empty | routing-boundaries 边界 2 |
 | 边界自检 3 | x.com strategy frontmatter `preferred: scrapling-fetch` / `preferred: chrome-cdp`（无 external:） | routing-boundaries 边界 3 |
