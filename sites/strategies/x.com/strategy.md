@@ -45,6 +45,8 @@ extraction:
 
 ## Overview
 
+> **抓取路由**：x.com 在 `AGENTS.md` §3 外部 CLI 清单内。搜索 / 读推文 / 用户时间线优先用 `twitter search` / `twitter tweet` / `twitter user-posts @user`（twitter-cli，纯 cookie HTTP，非侵入式：不接管浏览器 tab、不触发 Allow debugging 弹窗）。本策略的 `scrapling-fetch` / `chrome-cdp` 引擎仅作 fallback（twitter-cli 不可用、search 因 GraphQL 端点变更 404、或任务需要截图 / 页面快照等浏览器独有能力时）。
+
 x.com has two structurally different page types under the same domain. Public tweet detail pages load content without authentication, while hashtag/search pages redirect to a login wall.
 
 ## Page Structure

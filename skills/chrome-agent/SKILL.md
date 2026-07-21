@@ -58,6 +58,34 @@ When doctor returns `partial_success` and `next_action` contains a skill reload 
 
 ## Intent Routing
 
+### Platform Pre-check (before intent routing)
+
+Before routing to fetch / explore / crawl below, check whether the target
+platform is in the External CLI routing table in `AGENTS.md` §3 Governance
+Rules (Twitter/X, Reddit, XiaoHongShu, B站, Facebook, Instagram, V2EX,
+YouTube, GitHub).
+
+- **If yes and the task is read-only content retrieval / search** → prefer the
+  external CLI (`twitter` / `opencli` / `gh` / `yt-dlp`, routed via the
+  agent-reach skill). These are **non-intrusive**: they borrow credentials and
+  run their own network stack, so they do not take over the user's browser tab
+  or trigger Chrome's "Allow debugging" prompt. Route to the chrome-agent
+  backend below **only as fallback** when the external CLI is unavailable or
+  fails (see `docs/playbooks/fallback-escalation.md`).
+- **If the task needs browser-only capabilities** (screenshot, DOM interaction,
+  page-level snapshot, write operations) → skip external CLI and go straight
+  to the intent routing below, since external CLIs are read-only field
+  extractors that do not provide these.
+- **If the target is not in the §3 list, or the platform is ambiguous** →
+  proceed to the intent routing below.
+
+This check happens BEFORE the intent-based routing below. The authoritative
+behavior contract is `openspec/specs/external-cli-routing/spec.md`; the
+platform→CLI table is maintained solely in `AGENTS.md` §3 (not duplicated
+here).
+
+### Intent-based routing
+
 After doctor succeeds, route user intent to exactly one CLI workflow backend.
 
 ### Route to `fetch`

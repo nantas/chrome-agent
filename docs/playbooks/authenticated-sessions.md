@@ -6,6 +6,8 @@
 - 认证运行默认为只读，除非用户明确扩大范围（如写操作）
 - Scrapling-first 仍适用于已批准的认证工作
 
+> **外部 CLI 优先**：若目标平台在 `AGENTS.md` §3 外部 CLI 清单内（如 x.com / reddit / 小红书），应优先走外部 CLI（`twitter` / `opencli`，非侵入式：借用凭证代发 API，**不接管浏览器 tab**）。这与下方 "Scrapling session 复用" 和 "实时标签页 chrome-cdp" 路径有本质区别——后者是侵入式接管。仅当外部 CLI 不可用 / 失败时才走下方的 Scrapling/chrome-cdp 路径。行为契约：`openspec/specs/external-cli-routing/spec.md`。
+
 ## 会话复用
 
 ### Scrapling 会话路径

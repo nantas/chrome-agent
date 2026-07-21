@@ -1,5 +1,7 @@
 # Fallback 切换逻辑
 
+> **前置说明（外部 CLI 优先）**：若目标平台在 `AGENTS.md` §3 外部 CLI 清单内（Twitter/X、Reddit、小红书、B站、Facebook、Instagram、V2EX、YouTube、GitHub），应先走对应外部 CLI（`twitter` / `opencli` / `gh` / `yt-dlp`，非侵入式）。下方引擎 escalation chain **仅作 fallback**：当外部 CLI 不可用、失败、或任务需要浏览器独有能力（截图 / DOM 交互 / 页面快照 / 写操作）时才启用。行为契约：`openspec/specs/external-cli-routing/spec.md`。
+
 ## 引擎 escalation chain（rank 顺序）
 
 ```

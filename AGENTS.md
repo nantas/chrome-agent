@@ -58,6 +58,25 @@ chrome-agent 的业务能力按 4 维模型（ADR 0013）组织。
 **认证：** 需批准、只读、Scrapling-first、会话失败切 chrome-cdp。
 **报告：** 默认不产出；深度路径完整产出。
 
+**外部能力路由（External CLI 优先）：** 抓取目标落在下表平台时，优先走外部 CLI（非侵入式：借用凭证、用自有网络栈发请求，不接管用户浏览器、不触发 Chrome "Allow debugging" 弹窗），chrome-agent 后端仅在外部 CLI 不可用 / 失败 / 任务需要浏览器独有能力（截图、DOM 交互、页面级快照、写操作）时作 fallback。该分流发生在 skill 路由层（意图分发到 fetch / explore / crawl 之前），不进 `engine_preference` frontmatter、不进引擎 / 能力注册表。行为契约真源：`openspec/specs/external-cli-routing/spec.md`。
+
+| 平台 | 外部 CLI | 需浏览器? | 说明 |
+|------|----------|-----------|------|
+| Twitter/X | `twitter-cli`（命令 `twitter`） | 否 | 纯 cookie HTTP；search 偶发 404 时降级 chrome-cdp |
+| Reddit | `opencli reddit`（或 `rdt`） | 是（登录态） | 无零配置路径，必须登录 |
+| 小红书 | `opencli xiaohongshu` | 是（登录态） | 需 xsec_token：先 search 拿 URL 再 read |
+| B站 | `bili` / `opencli bilibili` | 否（bili-cli） | 不要用 yt-dlp 抓 B站（412 拦截） |
+| Facebook | `opencli facebook` | 是（登录态） | 仅当前账号可见范围 |
+| Instagram | `opencli instagram` | 是（登录态） | search 是用户搜索，读帖需先定 username |
+| V2EX | 公开 API（`curl`） | 否 | 零配置 |
+| YouTube | `yt-dlp` | 否 | 字幕 / 元数据 |
+| GitHub | `gh` | 否 | 已是仓库标准工具 |
+
+> **后端选择**：多后端平台（Twitter / Reddit / 小红书 / B站）的 active_backend 由 `agent-reach doctor --json` 决定，详见 agent-reach skill。
+> **根因**：chrome-cdp 经 remote debugging 接管 tab，每次新 target 触发用户确认弹窗 = 侵入式；外部 CLI 借用凭证独立发请求 = 非侵入式。两者不在一个体验档次，故外部 CLI 命中即优先。
+> **未在表内的平台** → 走 chrome-agent fetch / explore / crawl 后端（scrapling-first，chrome-cdp 作 fallback）。
+> **平台清单维护**：本表范围以 agent-reach 当前支持为准（15 平台，详见 `~/.agents/skills/agent-reach/SKILL.md`）；agent-reach 新增平台时本表需人工同步。
+
 ## 4. Directory Governance
 
 > 完整目录树见 [01-overview](docs/architecture/01-overview.md)，此处为入口文件速查。
