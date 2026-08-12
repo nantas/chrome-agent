@@ -212,7 +212,7 @@ The Architecture Gate (`scripts/explore/architecture_gate.py`) validates **strat
 
 #### Check 1: Strategy → Pipeline (Dead Config Detection)
 
-Scans all extraction config keys to ensure each is consumed by `html_to_markdown.py`:
+Scans all extraction config keys to ensure each is consumed by `converter.py` / `preprocessor.py`:
 
 - Checks `.get("key")`, `["key"]`, `"key" in variable`, and `if "key"` patterns in pipeline source
 - Validates each `cleanup` operation name appears in pipeline source
@@ -222,7 +222,7 @@ Scans all extraction config keys to ensure each is consumed by `html_to_markdown
 
 #### Check 2: Pipeline → Strategy (Hardcoded Value Audit)
 
-Audits `html_to_markdown.py` for site-specific values not sourced from strategy config:
+Audits `converter.py` + `preprocessor.py` for site-specific values not sourced from strategy config:
 
 | Check Type | What it detects |
 |------------|----------------|
@@ -352,7 +352,7 @@ main.py
   ├── sample_converter.py     (Phase 7a)
   │     ├── lib/extraction/infobox.py
   │     ├── lib/extraction/preprocessor.py
-  │     └── pipeline/converters/html_to_markdown.py
+  │     └── lib/extraction/converter.py
   ├── self_check.py           (Phase 7b+7c)
   ├── architecture_gate.py    (Phase 7d)
   └── ki_lifecycle.py         (Post-gate)

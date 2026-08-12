@@ -163,7 +163,7 @@ install-chrome-agent-cli.sh
 | Logging | `logging.getLogger(__name__)` pattern |
 | Type annotations | `from __future__ import annotations` enables PEP 604 syntax in type hints |
 
-**Key compatibility note**: `sample_converter.py` uses `from typing import Optional` (line 8) — no `dict | None` syntax that would break on Python 3.9. Meanwhile, `html_to_markdown.py` uses `from __future__ import annotations` (line 1) which defers type evaluation, allowing `dict | None` in annotations without runtime errors even on Python 3.9.
+**Key compatibility note**: `sample_converter.py` uses `from typing import Optional` (line 8) — no `dict | None` syntax that would break on Python 3.9. Meanwhile, `converter.py` uses `from __future__ import annotations` (line 1) which defers type evaluation, allowing `dict | None` in annotations without runtime errors even on Python 3.9.
 
 ### Shell Scripts (`.sh` files)
 
@@ -239,7 +239,7 @@ tests/
 ├── __init__.py
 ├── lib/                      ← scripts/lib/ 模块测试
 │   ├── __init__.py
-│   ├── test_html_to_markdown.py
+│   ├── test_converter_empty_domain.py
 │   ├── test_markdown_link_resolver.py
 │   └── test_cdp_image_downloader.py
 └── pipeline/                 ← scripts/pipeline/pipeline/ 模块测试
@@ -281,11 +281,11 @@ sites/strategies/<domain>/
 
 1. **样本声明**：`strategy.md` frontmatter `samples` 字段列出测试页面（`page` + `label`）
 2. **数据来源**：从 `.cache/<platform>/<domain>/` 读取缓存的 HTML
-3. **转换**：调用 `html_to_markdown()` 转换 → 链接解析后处理（见下）→ 与 golden file 对比
+3. **转换**：调用 `convert_html_to_markdown()` 转换 → 链接解析后处理（见下）→ 与 golden file 对比
 4. **I2 动态 TestCase**：为每个 `(domain, page)` 独立生成 `unittest.TestCase`，每个样本独立 pass/fail
 5. **结构断言**：转换输出先经过三内置断言（`no_raw_html_tags`、`links_resolved`、`valid_md_tables`），再与 golden diff
 6. **Golden 更新**：`--update-golden` 覆写 golden file（有意输出变更时使用）
-7. **链接解析后处理**：对特定域名（`developer.nintendo.com`）在 `html_to_markdown()` 之后调用 `markdown_link_resolver.fix_all_links()`，将 `../Pages/Page_*.html` 相对链接解析为完整 URL，确保 `assert_links_resolved` 断言通过
+7. **链接解析后处理**：对特定域名（`developer.nintendo.com`）在 `convert_html_to_markdown()` 之后调用 `markdown_link_resolver.fix_all_links()`，将 `../Pages/Page_*.html` 相对链接解析为完整 URL，确保 `assert_links_resolved` 断言通过
 
 ### 结构断言规则集
 
@@ -342,7 +342,7 @@ node --test tests/chrome-agent-runtime.test.mjs
 
 **Verified mitigations in codebase**:
 - `sample_converter.py` line 8: `from typing import Optional` ✓
-- `html_to_markdown.py` line 1: `from __future__ import annotations` ✓
+- `converter.py` line 1: `from __future__ import annotations` ✓
 
 ### Pipeline Module Naming
 

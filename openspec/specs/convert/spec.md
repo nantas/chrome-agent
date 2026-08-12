@@ -21,7 +21,7 @@ Convert 能力
 │   └── explore: scripts/explore/sample_converter.py → convert_page_full()
 ├── format_converter (D 轴 split):
 │   └── wikitext_to_md.py — 输入格式=wikitext
-└── 等价证明: tests/test_golden_convert.py (B 轴 golden snapshot)
+└── 等价证明: tests/test_convert_equivalence.py (B 轴 golden snapshot)
 ```
 
 ## 已有行为规范
@@ -49,9 +49,9 @@ Convert 能力
 
 ### Requirement: mirror-equivalence-golden-snapshot
 
-A golden snapshot test SHALL verify that explore and pipeline convert paths produce byte-identical Markdown from the same HTML input.
+A golden snapshot test SHALL verify that explore, pipeline, and pipeline(cdp) convert paths produce byte-identical Markdown from the same HTML input as the shared kernel.
 
 #### Scenario: golden-snapshot-passes
-- **WHEN** the same cached page HTML is converted via explore and pipeline paths
-- **THEN** the two outputs SHALL be identical
-- **AND** tests/test_golden_convert.py SHALL assert this
+- **WHEN** the same HTML fixture is converted via explore (`sample_converter._apply_extraction`), pipeline (`convert_single_page`), pipeline(cdp) (`convert_html_to_markdown`) and the kernel (`convert_page_full`)
+- **THEN** all outputs SHALL be identical to the kernel output (after stripping declared path-specific wrapping)
+- **AND** tests/test_convert_equivalence.py SHALL assert this with an embedded fixture that never skips

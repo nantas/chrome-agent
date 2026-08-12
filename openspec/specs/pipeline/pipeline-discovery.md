@@ -140,30 +140,6 @@ discovery phase SHALL 在运行时合并策略文件的 `api.homepage.exclude_ca
 - **WHEN** discovery 排除了 Music、Modding、Version History
 - **THEN** `assign_pages()` 接收的参数 SHALL 不包含这些分类的页面
 
-### Requirement: discovery-summary-module
-
-系统 SHALL 将 `build_discovery_summary()` 及其 5 个辅助函数从 `orchestrate.py` 提取到独立模块 `pipeline/discovery_summary.py`。
-
-#### Scenario: module-contents
-- **WHEN** `pipeline/discovery_summary.py` 被创建
-- **THEN** 文件包含 `build_discovery_summary()` 主函数和全部 5 个辅助函数
-
-### Requirement: discovery-summary-imports
-
-模块 SHALL 不依赖 `orchestrator.py` 中的任何符号。
-
-#### Scenario: no-orchestrator-dependency
-- **WHEN** `discovery_summary.py` 的 import 被审查
-- **THEN** 不存在对 `orchestrator.py` 或 `orchestrate.py` 的 import
-
-### Requirement: unit-test-compatibility
-
-`scripts/pipeline/tests/test_discovery_summary.py` 中的现有单元测试在模块移动后 SHALL 仍然通过。
-
-#### Scenario: existing-tests-pass
-- **WHEN** 执行 `python3 scripts/pipeline/tests/test_discovery_summary.py`
-- **THEN** 所有测试用例通过
-
 ### Requirement: reprocess-specified-pages
 
 系统 SHALL 提供 `reprocess_pages()` 函数，支持对指定页面列表重新执行内容获取与转换，跳过 discovery。

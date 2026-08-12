@@ -40,7 +40,7 @@ _Avoid_: 显式 setup 脚本、README 里写"先跑 xxx 再跑 yyy"
 _Avoid_: 一个 venv 全管、引擎脚本用 system python3
 
 **shared lib/extraction/**：
-共享提取库。`converter.py`（HtmlToMarkdownConverter）是 HTML→Markdown 转换的**共享内核**（intended single implementation），同时被 pipeline 直接 import、被 explore 通过 `sample_converter.py` 间接使用。`preprocessor.py` 同时被 pipeline 和 explore 直接 import。`html_to_markdown.py` 是历史遗留实现，计划消解。
+共享提取库。`converter.py`（HtmlToMarkdownConverter）是 HTML→Markdown 转换的**共享内核**（intended single implementation），同时被 pipeline 直接 import、被 explore 通过 `sample_converter.py` 间接使用。`preprocessor.py` 同时被 pipeline 和 explore 直接 import。
 _Avoid_: 在共享层外另建独立的 HTML→Markdown 实现、共享层模块被不同管线取不同入口而实为非共享
 
 ## 业务架构维度 (Business Architecture Dimensions)

@@ -104,7 +104,6 @@
 │   │   │   ├── registry.py      #     策略注册表（_STRATEGY_REGISTRY）
 │   │   │   ├── cache.py         #     持久化页面缓存
 │   │   │   ├── state.py         #     断点续传状态
-│   │   │   ├── discovery_summary.py  # 发现摘要生成
 │   │   │   ├── phases/          #     各阶段实现
 │   │   │   │   ├── fetch.py              # Phase Fetch: API 内容获取
 │   │   │   │   ├── convert.py            # Phase Convert: 内容→Markdown
