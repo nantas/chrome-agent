@@ -4,13 +4,14 @@ import { execSync } from "child_process";
 import { mkdirSync, existsSync, statSync, writeFileSync, readFileSync } from "fs";
 import { resolve, dirname, basename } from "path";
 import { fileURLToPath } from "url";
+import { sh, sleep, findTarget, cdpEval, escapeXml, extractChineseText, extractActorNames, downloadCover, generateNfo } from "./lib/fanbox-shared.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CDP = resolve(__dirname, "..", ".agents", "skills", "chrome-cdp", "scripts", "cdp.mjs");
 const BASE_DIR = process.env.FANBOX_BASE_DIR ?? "/Volumes/video/学习资料/Anime/ATD/Fanbox";
 const DETAIL_API = "https://api.fanbox.cc/post.info";
+const ACTOR_CANDIDATES = ["ULALA", "HINA", "SUIREN", "FROST", "ALICE"];
 const PROGRESS_FILE = resolve(__dirname, "fanbox-download-progress.json");
-const TODAY = new Date().toISOString().replace("T", " ").slice(0, 19);
 
 const FANBOX_COOKIE = process.env.FANBOX_COOKIE || "";
 if (!FANBOX_COOKIE) {
@@ -19,52 +20,6 @@ if (!FANBOX_COOKIE) {
 }
 
 let TARGET = null;
-
-function sh(cmd, timeout = 30000) {
-  return execSync(cmd, { timeout }).toString().trim();
-}
-
-function findTarget() {
-  const list = sh(`node "${CDP}" list`);
-  for (const line of list.split("\n")) {
-    if (line.includes("fanbox.cc")) return line.split(/\s+/)[0];
-  }
-  throw new Error("No fanbox.cc tab found.");
-}
-
-function cdpEval(expr) {
-  return sh(`node "${CDP}" eval ${TARGET} '${expr.replace(/'/g, "'\\''")}'`);
-}
-
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-function escapeXml(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-function extractChineseText(bodyText) {
-  const blocks = bodyText.split(/\n\n+/);
-  for (const block of blocks) {
-    const zhChars = [...block].filter(c => c.charCodeAt(0) >= 0x4e00 && c.charCodeAt(0) <= 0x9fff).length;
-    const totalChars = [...block].filter(c => c.trim()).length;
-    if (totalChars > 0 && zhChars / totalChars > 0.3 && block.trim().length >= 30) {
-      return block.trim();
-    }
-  }
-  return null;
-}
-
-function extractActorNames(title) {
-  const names = [];
-  const candidates = ["ULALA", "HINA", "SUIREN", "FROST", "ALICE"];
-  for (const name of candidates) {
-    if (title.toUpperCase().includes(name)) {
-      if (!names.includes(name)) names.push(name);
-    }
-  }
-  if (names.length === 0) names.push("ATD");
-  return names;
-}
 
 function fetchPostDetail(postId) {
   const expr = `(async()=>{
@@ -78,7 +33,7 @@ function fetchPostDetail(postId) {
       bodyText:post.body?post.body.text||"":""
     });
   })()`;
-  return JSON.parse(cdpEval(expr));
+  return JSON.parse(cdpEval(CDP, TARGET, expr));
 }
 
 async function fetchWithRetry(postId, maxRetries = 3) {
@@ -95,7 +50,7 @@ async function fetchWithRetry(postId, maxRetries = 3) {
     } catch (err) {
       console.log(`ERR attempt ${attempt}: ${err.message.slice(0, 60)}`);
       if (attempt < maxRetries) {
-        TARGET = findTarget();
+        TARGET = findTarget(CDP);
         await sleep(5000 * attempt);
       }
     }
@@ -103,37 +58,11 @@ async function fetchWithRetry(postId, maxRetries = 3) {
   return null;
 }
 
-function downloadCover(url, destPath) {
-  const cookie = FANBOX_COOKIE;
-  const escapedPath = destPath.replace(/'/g, "'\\''");
-  const cmd = `curl -L -s -o '${escapedPath}' -w '%{http_code}' -H 'Cookie: ${cookie}' -H 'Referer: https://www.fanbox.cc/' -H 'User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36' '${url}'`;
-  return sh(cmd, 30000);
-}
-
-function generateNfo(data) {
-  const actorXml = data.actors.map(name => `  <actor>\n    <name>${escapeXml(name)}</name>\n    <type>Actor</type>\n  </actor>`).join("\n");
-  return `<?xml version="1.0" encoding="utf-8" standalone="yes"?>
-<movie>
-  <plot><![CDATA[${escapeXml(data.plot)}]]></plot>
-  <outline />
-  <lockdata>false</lockdata>
-  <lockedfields>Name|OriginalTitle|SortName|Overview|Genres|Cast|Studios</lockedfields>
-  <dateadded>${TODAY}</dateadded>
-  <title>${escapeXml(data.title)}</title>
-${actorXml}
-  <year>${data.date.slice(0, 4)}</year>
-  <sorttitle>${escapeXml(data.sorttitle)}</sorttitle>
-  <premiered>${data.date.slice(0, 10)}</premiered>
-  <releasedate>${data.date.slice(0, 10)}</releasedate>
-  <studio>ATD</studio>
-</movie>`;
-}
-
 async function main() {
   console.log("=== FANBOX NFO Generator ===");
   console.log(`Base dir: ${BASE_DIR}\n`);
 
-  TARGET = findTarget();
+  TARGET = findTarget(CDP);
   console.log(`Tab: ${TARGET}\n`);
 
   const completed = new Set(JSON.parse(readFileSync(PROGRESS_FILE, "utf8")).completed || []);
@@ -167,7 +96,7 @@ async function main() {
     if (mp4Files.length === 0) { console.log("no mp4"); skipped++; continue; }
 
     const plot = extractChineseText(detail.bodyText) || detail.bodyText.split(/\n/).filter(l => l.trim().length > 10).join("\n\n").slice(0, 500);
-    const actors = extractActorNames(detail.title);
+    const actors = extractActorNames(detail.title, ACTOR_CANDIDATES);
 
     for (const mp4Name of mp4Files) {
       const nfoPath = `${dir}/${mp4Name}.nfo`;
@@ -189,10 +118,10 @@ async function main() {
       const coverPath = `${dir}/${mp4Files[0].replace(/\.mp4$/, "")}-poster.jpg`;
       if (!existsSync(coverPath)) {
         process.stdout.write("[cover] ");
-        const code = downloadCover(detail.coverUrl, coverPath);
+        const code = downloadCover(detail.coverUrl, coverPath, FANBOX_COOKIE);
         if (code !== "200") {
           const coverPathPng = coverPath.replace(/\.jpg$/, ".png");
-          downloadCover(detail.coverUrl, coverPathPng);
+          downloadCover(detail.coverUrl, coverPathPng, FANBOX_COOKIE);
         }
       }
     }

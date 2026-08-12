@@ -4,17 +4,18 @@ import { execSync } from "child_process";
 import { existsSync, writeFileSync, readFileSync, readdirSync } from "fs";
 import { resolve, dirname, basename, join, extname } from "path";
 import { fileURLToPath } from "url";
+import { sh, sleep, findTarget, cdpEval, cdpNav, escapeXml, extractChineseText, extractActorNames, downloadCover, generateNfo } from "./lib/fanbox-shared.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CDP = resolve(__dirname, "..", ".agents", "skills", "chrome-cdp", "scripts", "cdp.mjs");
 const BASE_DIR = process.env.FANBOX_BASE_DIR ?? "/Volumes/video/学习资料/Anime/ATD";
 const DETAIL_API = "https://api.fanbox.cc/post.info";
 const PROGRESS_FILE = resolve(__dirname, "fanbox-nfo-external-progress.json");
-const TODAY = new Date().toISOString().replace("T", " ").slice(0, 19);
 const API_DELAY_MS = 4000;
 const RATE_LIMIT_COOLDOWN_MS = 3 * 60 * 60 * 1000;
 const START_PAGE = 1;
 const CREATOR_ID = process.env.FANBOX_CREATOR_ID ?? "atdfb";
+const ACTOR_CANDIDATES = ["ULALA", "HINA", "SUIREN", "FROST", "ALICE", "CHRIS", "MOCA", "BUNNY", "PALADIN", "BIOSEEKER", "PHI", "BIO"];
 
 const FANBOX_COOKIE = process.env.FANBOX_COOKIE || "";
 if (!FANBOX_COOKIE) {
@@ -23,32 +24,6 @@ if (!FANBOX_COOKIE) {
 }
 
 let TARGET = null;
-
-function sh(cmd, timeout = 30000) {
-  return execSync(cmd, { timeout }).toString().trim();
-}
-
-function findTarget() {
-  const list = sh(`node "${CDP}" list`);
-  for (const line of list.split("\n")) {
-    if (line.includes("fanbox.cc")) return line.split(/\s+/)[0];
-  }
-  throw new Error("No fanbox.cc tab found.");
-}
-
-function cdpEval(expr) {
-  return sh(`node "${CDP}" eval ${TARGET} '${expr.replace(/'/g, "'\\''")}'`);
-}
-
-function cdpNav(url) {
-  sh(`node "${CDP}" nav ${TARGET} '${url.replace(/'/g, "'\\''")}'`);
-}
-
-function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-function escapeXml(s) {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
 
 function norm(s) {
   return s.normalize("NFKC").toLowerCase()
@@ -118,31 +93,6 @@ function findMatch(fbFileName, videos, usedPaths) {
   return null;
 }
 
-function extractChineseText(bodyText) {
-  if (!bodyText) return null;
-  const blocks = bodyText.split(/\n\n+/);
-  for (const block of blocks) {
-    const zhChars = [...block].filter(c => c.charCodeAt(0) >= 0x4e00 && c.charCodeAt(0) <= 0x9fff).length;
-    const totalChars = [...block].filter(c => c.trim()).length;
-    if (totalChars > 0 && zhChars / totalChars > 0.3 && block.trim().length >= 30) {
-      return block.trim();
-    }
-  }
-  return null;
-}
-
-function extractActorNames(title) {
-  const names = [];
-  const candidates = ["ULALA", "HINA", "SUIREN", "FROST", "ALICE", "CHRIS", "MOCA", "BUNNY", "PALADIN", "BIOSEEKER", "PHI", "BIO"];
-  for (const name of candidates) {
-    if (title.toUpperCase().includes(name)) {
-      if (!names.includes(name)) names.push(name);
-    }
-  }
-  if (names.length === 0) names.push("ATD");
-  return names;
-}
-
 function fetchPostDetail(postId) {
   const expr = `(async()=>{
     const r=await fetch("${DETAIL_API}?postId=${postId}",{credentials:"include"});
@@ -163,7 +113,7 @@ function fetchPostDetail(postId) {
       ,files:files
     });
   })()`;
-  return JSON.parse(cdpEval(expr));
+  return JSON.parse(cdpEval(CDP, TARGET, expr));
 }
 
 async function fetchWithRetry(postId, maxRetries = 2) {
@@ -181,39 +131,12 @@ async function fetchWithRetry(postId, maxRetries = 2) {
       if (msg.includes("Failed to fetch")) return "RATE_LIMITED";
       console.log(`ERR ${attempt}: ${msg.slice(0, 60)}`);
       if (attempt < maxRetries) {
-        try { TARGET = findTarget(); } catch {}
+        try { TARGET = findTarget(CDP); } catch {}
         await sleep(5000 * attempt);
       }
     }
   }
   return null;
-}
-
-function downloadCover(url, destPath) {
-  const cookie = FANBOX_COOKIE;
-  const ep = destPath.replace(/'/g, "'\\''");
-  try {
-    return sh(`curl -L -s -o '${ep}' -w '%{http_code}' -H 'Cookie: ${cookie}' -H 'Referer: https://www.fanbox.cc/' -H 'User-Agent: Mozilla/5.0' '${url}'`, 30000);
-  } catch { return "0"; }
-}
-
-function generateNfo(data) {
-  const actorXml = data.actors.map(n => `  <actor>\n    <name>${escapeXml(n)}</name>\n    <type>Actor</type>\n  </actor>`).join("\n");
-  return `<?xml version="1.0" encoding="utf-8" standalone="yes"?>
-<movie>
-  <plot><![CDATA[${escapeXml(data.plot)}]]></plot>
-  <outline />
-  <lockdata>false</lockdata>
-  <lockedfields>Name|OriginalTitle|SortName|Overview|Genres|Cast|Studios</lockedfields>
-  <dateadded>${TODAY}</dateadded>
-  <title>${escapeXml(data.title)}</title>
-${actorXml}
-  <year>${data.date.slice(0, 4)}</year>
-  <sorttitle>${escapeXml(data.sorttitle)}</sorttitle>
-  <premiered>${data.date.slice(0, 10)}</premiered>
-  <releasedate>${data.date.slice(0, 10)}</releasedate>
-  <studio>ATD</studio>
-</movie>`;
 }
 
 function loadProgress() {
@@ -234,7 +157,7 @@ async function main() {
   const progress = loadProgress();
   const usedPaths = new Set(progress.matchedFiles || []);
 
-  TARGET = findTarget();
+  TARGET = findTarget(CDP);
   console.log(`Tab: ${TARGET}\n`);
 
   let page = START_PAGE;
@@ -246,9 +169,9 @@ async function main() {
     console.log(`\n=== Page ${page} ===`);
 
     try {
-      cdpNav(url);
+      cdpNav(CDP, TARGET, url);
       await sleep(5000);
-      TARGET = findTarget();
+      TARGET = findTarget(CDP);
     } catch (err) {
       console.log(`Nav error: ${err.message.slice(0, 80)}`);
       break;
@@ -258,7 +181,7 @@ async function main() {
     let extractRetries = 0;
     while (true) {
       try {
-        const json = cdpEval(`(()=>{
+        const json = cdpEval(CDP, TARGET, `(()=>{
           const ids=new Set();
           document.querySelectorAll('a[href*="/@${CREATOR_ID}/posts/"]').forEach(a=>{
             const m=a.href.match(/@${CREATOR_ID}\\/posts\\/(\\d+)/);
@@ -276,7 +199,7 @@ async function main() {
           break;
         }
         await sleep(3000);
-        try { TARGET = findTarget(); } catch {}
+        try { TARGET = findTarget(CDP); } catch {}
       }
     }
 
@@ -306,7 +229,7 @@ async function main() {
           console.log(`Waiting ${waitMin} min (${new Date(Date.now() + RATE_LIMIT_COOLDOWN_MS).toISOString()} resume)...`);
           await sleep(RATE_LIMIT_COOLDOWN_MS);
           console.log("Cooldown done, reconnecting...");
-          try { TARGET = findTarget(); } catch (err) {
+          try { TARGET = findTarget(CDP); } catch (err) {
             console.log(`Reconnect failed: ${err.message}`);
             saveProgress(progress);
             process.exit(1);
@@ -340,7 +263,7 @@ async function main() {
 
       pageVideosChecked++;
       const plot = extractChineseText(detail.bodyText) || detail.bodyText.split(/\n/).filter(l => l.trim().length > 10).join("\n\n").slice(0, 500);
-      const actors = extractActorNames(detail.title);
+      const actors = extractActorNames(detail.title, ACTOR_CANDIDATES);
       let matched = 0;
       let firstMatchPath = null;
 
@@ -374,9 +297,9 @@ async function main() {
         const coverPath = firstMatchPath.replace(/\.[^.]+$/, "-poster.jpg");
         if (!existsSync(coverPath)) {
           process.stdout.write("  [cover] ");
-          const code = downloadCover(detail.coverUrl, coverPath);
+          const code = downloadCover(detail.coverUrl, coverPath, FANBOX_COOKIE);
           if (code !== "200") {
-            downloadCover(detail.coverUrl, coverPath.replace(/\.jpg$/, ".png"));
+            downloadCover(detail.coverUrl, coverPath.replace(/\.jpg$/, ".png"), FANBOX_COOKIE);
           }
           console.log("");
         }
