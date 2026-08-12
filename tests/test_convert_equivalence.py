@@ -43,30 +43,45 @@ RULES = {
 }
 
 # Representative MediaWiki page body: /wiki/ link, external link, heading,
-# table with rowspan/colspan, list, image.
+# table with rowspan/colspan, list, image — plus the character-level
+# troublemakers from site KI records: pipe in table cell (kernel escapes
+# to \|), literal asterisk (kernel does NOT escape; if it ever starts to,
+# explore's unconditional escape-artifact cleanup diverges from pipeline
+# and CV3 fails — intentional sentinel), parens in page title, image+link
+# concatenation (KI-5), tooltip pair, apostrophe+colon title.
 HTML = """<div class="mw-parser-output">
 <p>The <b>Bloody Gust</b> is a <a href="/wiki/Sword" title="Sword">sword</a> item.
 See <a href="https://example.com/guide">the guide</a> for details.</p>
 <h2><span class="mw-headline" id="Stats">Stats</span></h2>
 <table class="wikitable">
 <tr><th>Name</th><th>Damage</th><th>Notes</th></tr>
-<tr><td rowspan="2">Gust</td><td>10</td><td>Fast</td></tr>
+<tr><td rowspan="2">Gust</td><td>10</td><td>+10% | speed</td></tr>
 <tr><td colspan="2">Sweeping</td></tr>
 </table>
 <ul><li>First effect</li><li>Second effect</li></ul>
-<p><img src="/images/thumb/Bloody_Gust.png/32px-Bloody_Gust.png" alt="Bloody Gust" /></p>
+<p>Deals 3 * 5 damage with effect_chance. Grants [Flight].</p>
+<p>See <a href="/wiki/Item_(DLC)" title="Item (DLC)">Item (DLC)</a> and
+<a href="/wiki/Isaac%27s_Tears" title="Isaac's Tears">Isaac's Tears</a>.</p>
+<p><img src="/images/thumb/Bloody_Gust.png/32px-Bloody_Gust.png" alt="Bloody Gust" /><a href="/wiki/Guppy" title="Guppy">Guppy</a></p>
+<p><a href="/wiki/Brimstone" title="Brimstone"><span class="tooltip">Brimstone</span></a> text</p>
 <table class="navbox"><tr><td>Navigation noise</td></tr></table>
 <div id="catlinks"><div id="mw-normal-catlinks">Categories noise</div></div>
 </div>"""
 
 
 def _unwrap_pipeline_body(content: str, title: str) -> str:
-    """Strip CV4's declared wrapping (YAML frontmatter + title heading)."""
+    """Strip CV4's declared wrapping (YAML frontmatter + title heading).
+
+    The title heading is conditional: _process_html_page only prepends
+    `# {title}` when the converted body does not already start with a
+    Markdown heading (a `#`-prefix check that also matches `##`). Strip
+    it when present instead of asserting its presence.
+    """
     body = content.split("---\n", 2)[2].lstrip("\n")
     prefix = f"# {title}\n"
-    if not body.startswith(prefix):
-        raise AssertionError(f"CV4 wrapping drift: body lacks '# {title}' heading")
-    return body[len(prefix):].strip()
+    if body.startswith(prefix):
+        body = body[len(prefix):]
+    return body.strip()
 
 
 class TestConvertMirrorEquivalence(unittest.TestCase):
