@@ -29,13 +29,13 @@ convert:
       implemented_in: scripts/lib/extraction/preprocessor.py
       strategy_field: extraction.cleanup
     - name: strip_empty_parens
-      implemented_in: scripts/explore/sample_converter.py
+      implemented_in: scripts/lib/extraction/converter.py
       strategy_field: extraction.cleanup
     - name: fix_separators
-      implemented_in: scripts/explore/sample_converter.py
+      implemented_in: scripts/lib/extraction/converter.py
       strategy_field: extraction.cleanup
     - name: normalize_internal
-      implemented_in: scripts/explore/sample_converter.py
+      implemented_in: scripts/lib/extraction/converter.py
       strategy_field: extraction.cleanup
 
 extract:

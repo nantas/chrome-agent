@@ -69,6 +69,29 @@ See <a href="https://example.com/guide">the guide</a> for details.</p>
 </div>"""
 
 
+# Variant fixture that exercises the divergent post-op keys (text_normalization,
+# url_conversion, youtube_cleanup, markdown-layer cleanup ops). Before the
+# unify-convert-post-ops-into-kernel change, CV3 ran these on its output and
+# CV4 did not — so a strategy using them produced divergent Markdown per
+# execution path. This fixture binds CV3 ≡ CV4 ≡ kernel for real strategies.
+HTML_POSTOPS = """<div class="mw-parser-output">
+<p>See the <a href="/wiki/Sword">Sword</a>( ) and a <img src="/images/a.png" alt="A"/>image.</p>
+<p>Load video
+YouTube
+Some player embed
+ContinueDismiss</p>
+<p>Adjacent <a href="/wiki/X">X</a><a href="/wiki/Y">Y</a> links.</p>
+</div>"""
+
+RULES_WITH_POSTOPS = {
+    "image_handling": {"base_url": f"https://{DOMAIN}"},
+    "cleanup": ["strip_footer", "strip_empty_parens", "fix_separators", "normalize_internal"],
+    "text_normalization": ["fix_spaces", "normalize_blank_lines"],
+    "url_conversion": {"enabled": True},
+    "youtube_cleanup": {"enabled": True},
+}
+
+
 def _unwrap_pipeline_body(content: str, title: str) -> str:
     """Strip CV4's declared wrapping (YAML frontmatter + title heading).
 
@@ -95,6 +118,22 @@ class TestConvertMirrorEquivalence(unittest.TestCase):
             "B-axis drift: explore sample_converter != convert kernel",
         )
 
+    def test_cv3_explore_matches_kernel_with_postops(self) -> None:
+        """CV3 ≡ kernel for a strategy that enables the divergent post-op keys.
+
+        Before unify-convert-post-ops-into-kernel, CV3 inlined the post-ops
+        while convert_page_full did not, so this would fail. Now both route
+        through convert_page_full → apply_post_conversion_ops.
+        Spec: cv3-and-cv4-honor-same-post-ops-for-real-strategies.
+        """
+        via_explore = _apply_extraction(HTML_POSTOPS, RULES_WITH_POSTOPS, set())
+        via_kernel = convert_page_full(HTML_POSTOPS, RULES_WITH_POSTOPS)
+        self.assertEqual(
+            via_explore,
+            via_kernel,
+            "B-axis drift: explore != kernel when post-op keys are enabled",
+        )
+
     def test_cv4_pipeline_mirror_matches_kernel(self) -> None:
         """pipeline convert_single_page body ≡ convert_page_full."""
         result = convert_single_page(
@@ -116,6 +155,38 @@ class TestConvertMirrorEquivalence(unittest.TestCase):
             via_pipeline,
             via_kernel,
             "B-axis drift: pipeline convert phase != convert kernel",
+        )
+
+    def test_cv4_pipeline_mirror_matches_kernel_with_postops(self) -> None:
+        """CV4 ≡ kernel for a strategy that enables the divergent post-op keys.
+
+        Before unify-convert-post-ops-into-kernel, CV4 skipped post-ops while
+        the kernel (via convert_page_full) ran them — so pipeline production
+        output diverged from explore samples for these strategies. This is
+        the core evidence of the defect: it FAILS until CV4 calls
+        apply_post_conversion_ops.
+        Spec: cv3-and-cv4-honor-same-post-ops-for-real-strategies.
+        """
+        result = convert_single_page(
+            {"html": HTML_POSTOPS},
+            {"title": TITLE, "target_directory": ""},
+            [],
+            DOMAIN,
+            [],
+            {},
+            ExactTitleLinkResolver(),
+            SimpleSubstitutionTemplateProcessor(),
+            RULES_WITH_POSTOPS,
+            {},
+        )
+        self.assertEqual(result["status"], "ok", result.get("error"))
+        via_pipeline = _unwrap_pipeline_body(result["content"], TITLE)
+        via_kernel = convert_page_full(HTML_POSTOPS, RULES_WITH_POSTOPS).strip()
+        self.assertEqual(
+            via_pipeline,
+            via_kernel,
+            "B-axis drift: pipeline != kernel when post-op keys are enabled "
+            "(CV4 must call apply_post_conversion_ops)",
         )
 
     def test_cv5_generic_mirror_matches_kernel(self) -> None:

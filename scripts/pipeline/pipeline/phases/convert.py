@@ -14,7 +14,7 @@ from ...strategies import (
     SimpleSubstitutionTemplateProcessor,
 )
 from ...strategies import LinkResolver, TemplateProcessor
-from scripts.lib.extraction.converter import HtmlToMarkdownConverter
+from scripts.lib.extraction.converter import HtmlToMarkdownConverter, apply_post_conversion_ops
 from scripts.lib.extraction.preprocessor import preprocess_html
 from ...strategies import convert_wikitext_to_markdown
 from ...client import PageNotFoundError
@@ -164,12 +164,23 @@ def _process_html_page(raw: dict, title: str, source_dir: str, source_url: str,
     converter.build_link_index(manifest_pages, redirect_map)
 
     # Preprocess HTML with the same pipeline as explore so that cleanup
-    # operations run identically in both paths — explore samples then
-    # serve as a valid quality proxy for pipeline production output.
+    # operations run identically in both paths — and now, with CV4 also
+    # applying the markdown-layer post-conversion ops below, explore samples
+    # serve as a valid quality proxy for pipeline production output for
+    # strategies that configure text_normalization / url_conversion /
+    # youtube_cleanup / markdown-layer cleanup ops.
+    # Spec: convert-kernel-three-layer-interface,
+    #       cv3-and-cv4-honor-same-post-ops-for-real-strategies.
     # NOTE: extract_card_stats() below still uses the raw `html` (needs the intact
     # infobox structure), so the preprocessed result stays in a local var.
     cleaned_html = preprocess_html(html, extraction_config or {})
     md_content = converter.convert_body(cleaned_html, source_dir=source_dir)
+
+    # Apply the same config-driven markdown-layer post-ops the kernel runs
+    # (convert_page_full does this as its final step). CV4 uses the class entry
+    # directly for link-index state, so it calls apply_post_conversion_ops
+    # explicitly to stay equivalent to CV3 / the kernel.
+    md_content = apply_post_conversion_ops(md_content, extraction_config or {})
 
     # Build frontmatter
     frontmatter = {"title": title, "source_url": source_url}

@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 from typing import Optional
 
-import re
 import urllib.request
 import urllib.parse
 
@@ -130,78 +129,22 @@ def _apply_extraction(
 ) -> str:
     """Apply extraction rules from config to HTML.
 
-    Delegates the core 4-step extraction pipeline to
-    converter.convert_page_full(), then applies explore-specific
-    post-processing (normalization, URL conversion, cleanup ops).
+    Thin delegate to converter.convert_page_full() — the shared kernel owns
+    the full pipeline (infobox → preprocess → convert → prepend → post-op
+    transforms). This mirror contains no transform logic (invariant I2).
 
-    Spec: sample-converter / apply-extraction-uses-shared-lib
+    Spec: convert-kernel-three-layer-interface / apply-extraction-uses-shared-lib
     """
     import importlib
     _mod = importlib.import_module('scripts.lib.extraction.converter')
     _convert_page_full = _mod.convert_page_full
 
-    base_url = extraction_rules.get("image_handling", {}).get("base_url", "")
-
-    # Delegate core 4-step extraction (infobox → preprocess → convert → prepend)
-    # to the shared converter kernel.
-    md = _convert_page_full(html, extraction_rules)
-
-    # Post-conversion normalization (config-driven)
-    normalization = extraction_rules.get("text_normalization", [])
-    if "fix_spaces" in normalization:
-        md = re.sub(r"([a-zA-Z])(\d+(?:\.\d+)*)([a-zA-Z])", r"\1 \2 \3", md)
-        md = re.sub(r"([a-z])\.([A-Z])", r"\1. \2", md)
-        md = re.sub(r"(\!\[[^\]]*\]\([^)]+\))(\!\[)", r"\1 \2", md)
-    if "normalize_blank_lines" in normalization:
-        md = re.sub(r"\n{3,}", "\n\n", md)
-    if "deduplicate_words" in normalization:
-        md = re.sub(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\s+\1\b", r"\1", md)
-
-    # Remove empty headers
-    md = re.sub(r"#{1,6}\s*\n", "\n", md)
-
-    # URL conversion (config-driven)
-    url_cfg = extraction_rules.get("url_conversion", {})
-    if url_cfg.get("enabled") and base_url:
-        md = re.sub(
-            r"!\[([^\]]*)\]\((/images/[^)]+)\)",
-            rf"![\1]({base_url}\2)", md,
-        )
-        md = re.sub(
-            r"\[([^\]]*)\]\((/wiki/[^)]+)\)",
-            rf"[\1]({base_url}\2)", md,
-        )
-
-    # YouTube embed cleanup (config-driven)
-    yt_cfg = extraction_rules.get("youtube_cleanup", {})
-    if yt_cfg.get("enabled"):
-        md = re.sub(
-            r"Load video\s*\nYouTube\s*\n.*?ContinueDismiss",
-            "", md, flags=re.S,
-        )
-
-    # Clean escape artifacts
-    md = md.replace(r"\*\*\*", "***")
-    md = re.sub(r"\\(\*+)", r"\1", md)
-
-    # Post-conversion cleanup ops (gated by cleanup list, not text_normalization)
-    cleanup = extraction_rules.get("cleanup", [])
-    if "strip_empty_parens" in cleanup:
-        md = re.sub(r"\(\s*\)", "", md)
-
-    if "fix_separators" in cleanup:
-        md = re.sub(r"(\!\[[^\]]*\]\([^)]+\))\s*(?=\[)", r"\1 ", md)
-        md = re.sub(r"(\[[^\]]+\]\([^)]+\))\s*(?=\[)", r"\1 ", md)
-        md = re.sub(r"  +", " ", md)
-
-    if "normalize_internal" in cleanup:
-        if base_url:
-            md = re.sub(
-                r"\[([^\]]*)\]\(/wiki/([^)]+)\)",
-                rf"[\1]({base_url}/wiki/\2)", md,
-            )
-
-    return md.strip()
+    # Delegate the full extraction pipeline (infobox → preprocess → convert →
+    # prepend → post-conversion ops) to the shared kernel. Post-op transforms
+    # live in the kernel's apply_post_conversion_ops (invariant I2: a mirror
+    # orchestrates, contains no transform logic).
+    # Spec: convert-kernel-three-layer-interface / apply-extraction-uses-shared-lib.
+    return _convert_page_full(html, extraction_rules)
 
 
 def convert(

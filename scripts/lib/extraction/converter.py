@@ -1017,5 +1017,102 @@ def convert_page_full(html: str, extraction_rules: dict) -> str:
     if infobox_md:
         md = infobox_md + "\n\n" + md
 
+    # Step 5: Apply config-driven markdown-layer post-conversion ops.
+    # The single source of truth for these transforms — both CV3 (via this
+    # function) and CV4 (explicit call after convert_body) route through it.
+    # Spec: convert-kernel-three-layer-interface / unify-convert-post-ops-into-kernel.
+    md = apply_post_conversion_ops(md, extraction_rules)
+
     return md
+
+
+# ------------------------------------------------------------------
+# Public API — markdown-layer post-conversion transforms (single impl)
+# ------------------------------------------------------------------
+
+def apply_post_conversion_ops(md: str, extraction_rules: dict) -> str:
+    """Apply config-driven markdown-layer post-conversion transforms.
+
+    The single source of truth for post-conversion ops (text normalization,
+    url conversion, youtube cleanup, escape-artifact cleanup, and the
+    markdown-layer cleanup ops strip_empty_parens / fix_separators /
+    normalize_internal). Called by `convert_page_full` (CV3 path) and
+    explicitly by CV4 `_process_html_page` after `convert_body`, so both
+    B-axis execution paths honor the identical transform set.
+
+    Escape-artifact cleanup (``\\***`` → ``***``, ``\\*+`` → ``*+``) is
+    unconditional — a uniform safety net. The prior CV3-only unconditional
+    cleanup (which served as a divergence canary) is subsumed: with both
+    paths routing here, byte-equality equivalence proof is the canary.
+
+    Spec: convert-kernel-three-layer-interface,
+          scenarios post-ops-have-one-implementation-in-kernel,
+          convert-page-full-includes-post-op-step,
+          escape-artifact-cleanup-is-uniform-safety-net.
+
+    Args:
+        md: Converted Markdown (post infobox-prepend).
+        extraction_rules: Extraction config dict from strategy frontmatter.
+
+    Returns:
+        Transformed Markdown (stripped).
+    """
+    base_url = extraction_rules.get("image_handling", {}).get("base_url", "")
+
+    # Post-conversion normalization (config-driven)
+    normalization = extraction_rules.get("text_normalization", [])
+    if "fix_spaces" in normalization:
+        md = re.sub(r"([a-zA-Z])(\d+(?:\.\d+)*)([a-zA-Z])", r"\1 \2 \3", md)
+        md = re.sub(r"([a-z])\.([A-Z])", r"\1. \2", md)
+        md = re.sub(r"(\!\[[^\]]*\]\([^)]+\))(\!\[)", r"\1 \2", md)
+    if "normalize_blank_lines" in normalization:
+        md = re.sub(r"\n{3,}", "\n\n", md)
+    if "deduplicate_words" in normalization:
+        md = re.sub(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\s+\1\b", r"\1", md)
+
+    # Remove empty headers (unconditional)
+    md = re.sub(r"#{1,6}\s*\n", "\n", md)
+
+    # URL conversion (config-driven)
+    url_cfg = extraction_rules.get("url_conversion", {})
+    if url_cfg.get("enabled") and base_url:
+        md = re.sub(
+            r"!\[([^\]]*)\]\((/images/[^)]+)\)",
+            rf"![\1]({base_url}\2)", md,
+        )
+        md = re.sub(
+            r"\[([^\]]*)\]\((/wiki/[^)]+)\)",
+            rf"[\1]({base_url}\2)", md,
+        )
+
+    # YouTube embed cleanup (config-driven)
+    yt_cfg = extraction_rules.get("youtube_cleanup", {})
+    if yt_cfg.get("enabled"):
+        md = re.sub(
+            r"Load video\s*\nYouTube\s*\n.*?ContinueDismiss",
+            "", md, flags=re.S,
+        )
+
+    # Clean escape artifacts (unconditional safety net)
+    md = md.replace(r"\*\*\*", "***")
+    md = re.sub(r"\\(\*+)", r"\1", md)
+
+    # Post-conversion cleanup ops (gated by cleanup list, not text_normalization)
+    cleanup = extraction_rules.get("cleanup", [])
+    if "strip_empty_parens" in cleanup:
+        md = re.sub(r"\(\s*\)", "", md)
+
+    if "fix_separators" in cleanup:
+        md = re.sub(r"(\!\[[^\]]*\]\([^)]+\))\s*(?=\[)", r"\1 ", md)
+        md = re.sub(r"(\[[^\]]+\]\([^)]+\))\s*(?=\[)", r"\1 ", md)
+        md = re.sub(r"  +", " ", md)
+
+    if "normalize_internal" in cleanup:
+        if base_url:
+            md = re.sub(
+                r"\[([^\]]*)\]\(/wiki/([^)]+)\)",
+                rf"[\1]({base_url}/wiki/\2)", md,
+            )
+
+    return md.strip()
 
