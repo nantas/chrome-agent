@@ -215,12 +215,23 @@ format_converter
 | CV2 | `pipeline/converters/wikitext_to_md.py` | format_converter | pipeline | generic | wikitext | — |
 | CV3 | `explore/sample_converter.py` | **mirror** of CV1 | explore | config_driven | html_mediawiki | `tests/test_convert_equivalence.py` |
 | CV4 | `pipeline/pipeline/phases/convert.py` | **mirror** of CV1 | pipeline | config_driven | html_mediawiki | `tests/test_convert_equivalence.py` |
+| CV4-standalone | `pipeline/standalone.py::fetch_and_convert` | **variant** of CV4 | pipeline-standalone | config_driven | html_mediawiki | `tests/test_standalone_convert.py` + CV4 证明 |
 | CV5 | `pipeline/pipeline/phases/convert_html.py` | **mirror** of CV1 | pipeline(cdp) | generic | html_generic | `tests/test_convert_equivalence.py` |
 
 **从基线删除**：
 - `lib/extraction/html_to_markdown.py` — 功能并入 CV1 的 generic 路径
 - `pipeline/converters/fandom_html_to_markdown.py` — 死代码，fandom 走 CV1 + preprocessor config
 - `chrome-agent-cli.mjs:1137` `htmlToMarkdown()` — 归类为基础设施回退，不注册
+
+**内核三层接口**（CV1 的三个公开入口，分层有意，非漂移）：
+
+| 入口 | 层 | 适用条件 | 调用者 |
+|------|------|---------|--------|
+| `HtmlToMarkdownConverter`（类） | 实现层 | 需实例状态（link index、source_dir 渲染） | CV4（声明，因管线需 link-index 状态） |
+| `convert_html_to_markdown()`（函数） | 无状态便捷入口 | 一次性转换、不需 link index | CV5、`test_runner.py` |
+| `convert_page_full()`（函数） | 声明的单一全页编排入口 | infobox→preprocess→convert→prepend 完整流水 | CV3、声明为 CV1 |
+
+镜像可直接用类入口（当需实例状态时）；这不违反单一内核契约，前提是有等价证明覆盖该路径。CV3/CV4/CV5 的等价证明统一为 `tests/test_convert_equivalence.py`（相对 `convert_page_full` 内核）。CV4-standalone 是 CV4 的薄壳变体（组转 raw/page_info 后委托 `convert_single_page`），等价性继承自 CV4。详见 spec `convert-kernel-three-layer-interface`。
 
 ---
 

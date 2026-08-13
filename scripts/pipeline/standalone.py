@@ -10,9 +10,7 @@ from typing import Optional
 from urllib.parse import unquote, urlparse
 
 from .client import ApiClient, probe_api_endpoint
-from scripts.lib.extraction.converter import HtmlToMarkdownConverter
 from .converters.wikitext_to_md import convert_wikitext_to_markdown
-from .converters.card_stats import extract_card_stats
 from .strategies import (
     SimpleSubstitutionTemplateProcessor,
     ExactTitleLinkResolver,
@@ -59,42 +57,33 @@ def fetch_and_convert(url: str, domain: str, output: str,
         except Exception:
             images = []
 
-        converter = HtmlToMarkdownConverter(wiki_domain=domain, extraction_config=extraction_config)
-        if manifest_pages:
-            converter.build_link_index(manifest_pages, redirect_map=None)
-        md_content = converter.convert_body(html, source_dir="")
-
-        # Build frontmatter
-        frontmatter = {"title": title, "source_url": url}
-        if images:
-            from urllib.parse import quote as url_quote
-            img_name = images[0].replace(" ", "_")
-            frontmatter["image"] = img_name
-
-        # Card stats
-        card_stats = extract_card_stats(html, domain=domain)
-
-        # Assemble
-        fm_lines = ["---"]
-        for key, value in frontmatter.items():
-            if isinstance(value, str) and ('\n' in value or ':' in value or '"' in value):
-                fm_lines.append(f'{key}: "{value}"')
-            else:
-                fm_lines.append(f"{key}: {value}")
-        fm_lines.append("---\n")
-
-        body = md_content.strip()
-        if body and not body.startswith("#"):
-            body = f"# {title}\n\n{body}"
-
-        if card_stats:
-            first_section = body.find("\n## ")
-            if first_section >= 0:
-                body = body[:first_section] + "\n\n" + card_stats + body[first_section:]
-            else:
-                body = body + "\n\n" + card_stats
-
-        full_content = "\n".join(fm_lines) + body + "\n"
+        # Delegate the full conversion core to the CV4 mirror
+        # (convert_single_page → preprocess → convert → frontmatter → card stats).
+        # This makes standalone output byte-equivalent to the pipeline subcommand
+        # for the same page+config, including config-driven preprocess cleanup
+        # (previously skipped here — see fold-standalone-into-convert-mirror).
+        from .pipeline.phases.convert import convert_single_page
+        raw = {
+            "html": html,
+            "images": images,
+            "content_acquisition": "html_rendered",
+        }
+        page_info = {
+            "title": title,
+            "target_directory": "",
+            "target_filename": os.path.basename(output),
+        }
+        result = convert_single_page(
+            raw, page_info, manifest_pages or [], domain,
+            [], {},
+            ExactTitleLinkResolver(domain),
+            SimpleSubstitutionTemplateProcessor(),
+            extraction_config,
+            redirect_map=None,
+        )
+        if result.get("status") != "ok":
+            raise RuntimeError(f"Convert failed for {title}: {result.get('error', 'unknown')}")
+        full_content = result["content"]
 
     elif mode == "wikitext":
         data = client.parse(page=title, prop="wikitext", redirects=True)
@@ -123,7 +112,7 @@ def fetch_and_convert(url: str, domain: str, output: str,
 def reconvert_file(filepath: str, domain: str,
                    manifest_pages: Optional[list[dict]] = None,
                    extraction_config: Optional[dict] = None) -> str:
-    """Re-convert an existing file using HtmlToMarkdownConverter.
+    """Re-convert an existing file via the convert kernel.
 
     Args:
         filepath: Path to the file to reconvert
@@ -155,13 +144,11 @@ def reconvert_file(filepath: str, domain: str,
         # Re-fetch from API
         return fetch_and_convert(source_url, domain, filepath, mode="html", manifest_pages=manifest_pages)
 
-    # If no source_url, just re-convert the existing HTML-like content
-    converter = HtmlToMarkdownConverter(wiki_domain=domain, extraction_config=extraction_config)
-    if manifest_pages:
-        converter.build_link_index(manifest_pages, redirect_map=None)
-
-    cleaned = converter.clean_html(body)
-    md_content = converter.convert(cleaned, source_dir="")
+    # If no source_url, re-convert the existing HTML-like body via the kernel
+    # full-orchestration entry (infobox → preprocess → convert → prepend), so the
+    # in-place reconvert honors extraction_config identically to pipeline output.
+    from scripts.lib.extraction.converter import convert_page_full
+    md_content = convert_page_full(body, extraction_config or {})
 
     # Re-assemble with frontmatter
     fm_lines = ["---"]

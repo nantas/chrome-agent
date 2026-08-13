@@ -74,3 +74,27 @@ The proof SHALL live in `tests/test_convert_equivalence.py`.
 #### Scenario: test-never-skips
 - **WHEN** the test runs on a fresh checkout without `.cache/`
 - **THEN** it SHALL execute (not skip), because the HTML fixture is embedded in the test file
+
+### Requirement: standalone-orchestrator-delegates-to-cv4-mirror
+
+The standalone orchestrator (`standalone.py::fetch_and_convert`) SHALL be a thin shell variant of the CV4 mirror (`convert.py::convert_single_page`). For HTML-mode conversion it SHALL construct a `raw` content dict (`{"html", "images", "content_acquisition": "html_rendered"}`) and a `page_info` dict, then delegate to `convert_single_page` for the full conversion core (preprocess → convert → frontmatter → card stats), rather than reimplementing that orchestration. This guarantees the three standalone-backed subcommands (`fetch`, `reprocess`, `reconvert` via source_url re-fetch) produce output byte-equivalent to the `pipeline` subcommand for the same page and config.
+
+#### Scenario: fetch-subcommand-applies-preprocess
+- **WHEN** the `fetch` subcommand converts a page whose HTML contains an element removed by `preprocess_html` (e.g. `#catlinks` under `cleanup: ["strip_footer"]`) and `extraction_config` carries that cleanup op
+- **THEN** the output Markdown SHALL NOT contain the removed element, matching the `pipeline` subcommand's behavior
+
+#### Scenario: reconvert-without-source-url-uses-kernel-entry
+- **WHEN** `reconvert_file` is called on a file whose frontmatter lacks `source_url` (the in-place body-reconvert branch)
+- **THEN** it SHALL convert the body via the kernel full-orchestration entry `convert_page_full(body, {})`, not via direct `clean_html` + `convert` calls
+
+#### Scenario: wikitext-mode-unchanged
+- **WHEN** `fetch_and_convert` is called with `mode="wikitext"`
+- **THEN** it SHALL continue routing through `convert_wikitext_to_markdown` unchanged
+
+### Requirement: convert-kernel-three-layer-interface
+
+The convert shared kernel (`lib/extraction/converter.py`) exposes three public entry points, each with a declared purpose: (1) `HtmlToMarkdownConverter` class — implementation layer, the only entry carrying instance state (`build_link_index`, `source_dir`-aware rendering), used directly by CV4; (2) `convert_html_to_markdown()` function — stateless convenience entry, used by CV5 and `test_runner.py`; (3) `convert_page_full()` function — the declared single full-page orchestration kernel entry, used by CV3 and declared as CV1. A mirror MAY use the class entry directly when it needs instance state; this is not a violation of the single-kernel contract provided an equivalence proof covers the path. `tests/test_convert_equivalence.py` SHALL remain the proof for CV3/CV4/CV5 against `convert_page_full`.
+
+#### Scenario: cv4-class-entry-is-declared-and-proven
+- **WHEN** a future review inspects CV4's direct use of `HtmlToMarkdownConverter`
+- **THEN** `00-target-architecture.md` §3.1 SHALL declare it as the class entry (intentional, for link-index state), and `tests/test_convert_equivalence.py::test_cv4_pipeline_mirror_matches_kernel` SHALL prove equivalence to the kernel
