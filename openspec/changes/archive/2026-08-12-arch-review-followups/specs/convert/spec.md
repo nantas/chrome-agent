@@ -1,59 +1,25 @@
-# Specification: convert
+# Specification Delta
 
-## Capability 对齐
+## Capability 对齐（已确认）
 
 - Capability: `convert`
-- 4 维坐标: `(capability=convert, execution_path=shared, strategy_variant=config_driven, input_format=html_mediawiki|html_generic)`
-- 共享内核: `scripts/lib/extraction/converter.py` — `HtmlToMarkdownConverter` (selectolax)
-- 变体机制: 站点特定行为通过 `strategy.md` 的 `extraction.cleanup` / `extraction.image_filtering` 配置驱动，**永不建 `*_html_to_markdown.py`**
+- 来源: `proposal.md` / 已确认 capabilities
+- 变更类型: `modified`
+- 用户确认摘要: 仅 convert（Modified）；fanbox 不归属任何能力，仅作 tasks 实现记录
 
-## 架构声明
+## 规范真源声明
 
-```
-Convert 能力
-├── kernel: converter.py (selectolax) — 唯一 HTML→MD 实现
-│   ├── 入口: convert_page_full() — 4 步编排
-│   ├── 入口: convert_html_to_markdown() — 独立转换
-│   └── wiki_domain="" 支持 generic HTML
-├── mirrors (薄壳，委托 kernel):
-│   ├── pipeline: scripts/pipeline/pipeline/phases/convert.py
-│   ├── pipeline(cdp): scripts/pipeline/pipeline/phases/convert_html.py
-│   └── explore: scripts/explore/sample_converter.py → convert_page_full()
-├── format_converter (D 轴 split):
-│   └── wikitext_to_md.py — 输入格式=wikitext
-└── 等价证明: tests/test_convert_equivalence.py (B 轴 golden snapshot)
-```
+- 本文件是该 capability 在本次 change 中的行为规范真源
+- design / tasks / verification 必须引用本文件
+- 项目页面回写不得替代本文件
 
-## 已有行为规范
-
-本 spec 的能力声明引用以下已有规范：
-
-| 规范 | 内容 |
-|------|------|
-| `openspec/specs/pipeline-converters/spec.md` | HtmlToMarkdownConverter 表渲染、链接处理、块标签完整性 |
-| `openspec/specs/pipeline-convert-phase/spec.md` | 增量写、跳过已转换、输出格式 |
-| `openspec/specs/convert-target-conflict-detection/spec.md` | 转换目标冲突检测 |
-
-冲突时以 `openspec/specs/pipeline-converters/spec.md` 为行为真源。
-
-## ADDED Requirements
-
-### Requirement: unify-html-converter-kernel
-
-`scripts/lib/extraction/converter.py` (selectolax) SHALL be the sole HTML-to-Markdown implementation. No `*_html_to_markdown.py` files SHALL exist as forks or alternate implementations.
-
-#### Scenario: only-one-converter-exists
-- **WHEN** checking the codebase for HTML-to-MD implementations
-- **THEN** only `converter.py` SHALL implement HTML→Markdown logic
-- **AND** no `html_to_markdown.py` or `fandom_html_to_markdown.py` SHALL exist
+## MODIFIED Requirements
 
 ### Requirement: mirror-equivalence-golden-snapshot
 
 A golden snapshot test SHALL verify that explore, pipeline, and pipeline(cdp) convert paths produce byte-identical Markdown from the same HTML input as the shared kernel (`convert_page_full`). The proof SHALL be a self-contained test with an embedded HTML fixture that exercises the recurring troublemakers (MediaWiki `/wiki/` links, rowspan/colspan tables, pipe characters in table cells, literal asterisks, parenthesized/apostrophe page titles, image+link concatenation, tooltip link pairs) so it never skips due to a missing external cache.
 
 Mirrors add declared path-specific wrapping around the conversion core (config-driven post-ops in explore; YAML frontmatter + title heading in pipeline). The snapshot SHALL strip that declared wrapping before comparison, so the assertion targets the conversion core, not the wrapping.
-
-The proof SHALL live in `tests/test_convert_equivalence.py`.
 
 #### Scenario: cv3-explore-mirror-matches-kernel
 - **WHEN** the embedded fixture is converted via explore (`sample_converter._apply_extraction` with the minimal ruleset) and via the kernel (`convert_page_full` with the same ruleset)
