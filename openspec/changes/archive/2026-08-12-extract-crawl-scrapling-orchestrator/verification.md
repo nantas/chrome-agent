@@ -35,7 +35,7 @@
 ## C10 同步证据
 
 - `cp scripts/chrome-agent-runtime.mjs ~/.agents/scripts/chrome-agent.mjs`（runtime 内容本 change 未变，副本已确认 IDENTICAL）
-- `git rev-parse HEAD > ~/.agents/scripts/.chrome-agent-installed-hash`（归档 commit 后刷新至新 HEAD）
+- `git rev-parse HEAD > ~/.agents/scripts/.chrome-agent-installed-hash`（最终同步至 `9cd9a3a`；首归档 `04a35fb` 后因 opsx-verify 修复 commit 再次触 C10）
 - `doctor --check capabilities`：全 `[durable] (checked)`，`next_action: none`
 - 顺带闭合既有漂移（原 `8111a3f`）
 
