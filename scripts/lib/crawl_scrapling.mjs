@@ -325,7 +325,7 @@ api.writeTextFile(manifestPath, JSON.stringify(manifest, null, 2));
 const finalArtifacts = [api.absoluteArtifact(manifestPath, "disposable", "Crawl manifest")];
 
 if (markdown) {
-  finalArtifacts.push(...collectMarkdownArtifacts(runDir));
+  finalArtifacts.push(...api.collectMarkdownArtifacts(runDir));
   // Ensure merged file gets a descriptive label if found by api.collectMarkdownArtifacts
   for (const { url } of (phase2Result?.failed ?? [])) {
     const idx = manifest.visited.indexOf(url);

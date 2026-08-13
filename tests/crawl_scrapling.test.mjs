@@ -115,6 +115,26 @@ test("minimal successful traversal visits the start page and writes a manifest",
   assert.equal(manifest.bounded_by.unrestricted_recursive_spider, false);
 });
 
+test("markdown:true (default) path collects markdown artifacts and does not throw ReferenceError", async () => {
+  // Regression guard: the default crawl path runs with markdown === true and
+  // SHALL call api.collectMarkdownArtifacts(runDir) into finalArtifacts. Before
+  // the fix this threw ReferenceError (bare-identifier call). See spec scenario
+  // markdown-true-branch-produces-artifacts-not-reference-error.
+  const mdArtifact = { path: "/run/crawl-output.md", lifecycle: "disposable", description: "merged crawl output" };
+  const api = stubApi({
+    collectMarkdownArtifacts: () => [mdArtifact],
+    convertTraversalToMarkdown: () => ({ successful: [{ url: "https://example.com/home" }], failed: [], mergedPath: "/run/crawl-output.md" }),
+  });
+  const ctx = baseCtx();
+  const result = await runCrawlScrapling(ctx, { markdown: true }, api);
+
+  assert.equal(result.result, "success");
+  // The sentinel markdown artifact MUST appear in finalArtifacts — proves the
+  // api.collectMarkdownArtifacts branch was reached and returned its value.
+  assert.ok(result.artifacts.some((a) => a.path === mdArtifact.path),
+    "markdown:true path must include the artifact returned by api.collectMarkdownArtifacts");
+});
+
 test("no circular import: module does not import from cli.mjs", async () => {
   const fs = await import("node:fs");
   const src = fs.readFileSync(new URL("../scripts/lib/crawl_scrapling.mjs", import.meta.url), "utf8");
@@ -122,4 +142,81 @@ test("no circular import: module does not import from cli.mjs", async () => {
   const hasCycle = importLines.some((l) => l.includes("chrome-agent-cli"));
   assert.equal(hasCycle, false,
     "crawl_scrapling.mjs must not import from cli.mjs (would create a cycle)");
+});
+
+/** Static call-site discipline check.
+ *
+ * Spec: crawl-scrapling-orchestrator-is-a-seam-module,
+ *       scenario all-bundled-helpers-called-via-api-prefix.
+ *
+ * crawl_scrapling.mjs is an independent ESM module whose helpers arrive via
+ * an injected `api` bundle. A bare-identifier call to a bundled helper
+ * (e.g. `collectMarkdownArtifacts(x)` instead of `api.collectMarkdownArtifacts(x)`)
+ * resolves to nothing in module scope and throws ReferenceError at runtime.
+ * This test reads the bundle definition from cli.mjs, then greps the seam
+ * module for any bundled key used bare and fails if one exists.
+ *
+ * ponytail: ceiling — string literals are not stripped; no bundled key
+ * currently appears in a string literal in this module. Refine if one ever does.
+ */
+async function readCrawlApiKeys() {
+  const fs = await import("node:fs");
+  const cliSrc = fs.readFileSync(new URL("../scripts/chrome-agent-cli.mjs", import.meta.url), "utf8");
+  // Locate the crawlApi bundle block via brace matching.
+  const start = cliSrc.indexOf("crawlApi = {");
+  if (start === -1) throw new Error("crawlApi bundle not found in cli.mjs");
+  let i = cliSrc.indexOf("{", start);
+  let depth = 0;
+  const blockStart = i;
+  for (; i < cliSrc.length; i++) {
+    const c = cliSrc[i];
+    if (c === "{") depth++;
+    else if (c === "}") { depth--; if (depth === 0) break; }
+  }
+  const block = cliSrc.slice(blockStart + 1, i);
+  // Keys: shorthand `foo,` → foo; keyed `foo: bar` → foo.
+  const keys = [];
+  for (const raw of block.split(",")) {
+    const entry = raw.trim();
+    if (!entry) continue;
+    const m = entry.match(/^([A-Za-z_$][\w$]*)/);
+    if (m) keys.push(m[1]);
+  }
+  return keys;
+}
+
+test("all bundled helpers are called via the api. prefix (no bare-identifier calls)", async () => {
+  const fs = await import("node:fs");
+  const bundledKeys = await readCrawlApiKeys();
+  const modSrc = fs.readFileSync(new URL("../scripts/lib/crawl_scrapling.mjs", import.meta.url), "utf8");
+  const lines = modSrc.split("\n");
+
+  const violations = [];
+  lines.forEach((line, idx) => {
+    const stripped = line.trim();
+    // skip comment lines (//, *, block-comment continuation)
+    if (stripped.startsWith("//") || stripped.startsWith("*")) return;
+    for (const key of bundledKeys) {
+      const re = new RegExp("(?<![\\w$])" + key.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&") + "(?![\\w$])", "g");
+      let m;
+      while ((m = re.exec(line)) !== null) {
+        // Determine whether the key has a namespace base (api., console., path., …)
+        // or is a bare identifier. The bug class is a bare-identifier call:
+        // resolves to nothing in module scope → ReferenceError.
+        let prefix = line.slice(0, m.index).replace(/\s+$/, "");
+        // strip a trailing spread operator — `...key` is bare, `...api.key` is not
+        if (prefix.endsWith("...")) prefix = prefix.slice(0, -3).replace(/\s+$/, "");
+        // qualified: any dotted base (api.key, console.log, path.join, …)
+        if (prefix.endsWith(".")) continue;
+        // local declaration of this name (function/const/let/var/import) — not a call
+        if (new RegExp("\\b(function|const|let|var)\\s+" + key + "\\b|\\bimport\\b").test(line)) continue;
+        violations.push({ key, line: idx + 1, text: stripped });
+      }
+    }
+  });
+
+  assert.deepEqual(violations, [],
+    "crawl_scrapling.mjs must call every bundled helper via `api.` prefix. " +
+    "Bare calls throw ReferenceError at runtime (see spec all-bundled-helpers-called-via-api-prefix). " +
+    "Violations:\n" + violations.map((v) => `  L${v.line}: ${v.key} — ${v.text}`).join("\n"));
 });
