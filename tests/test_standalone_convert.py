@@ -61,5 +61,49 @@ class TestFetchAndConvertAppliesPreprocess(unittest.TestCase):
         )
 
 
+class TestReconvertFileWithoutSourceUrl(unittest.TestCase):
+    """reconvert_file no-source_url branch SHALL use the kernel entry.
+
+    Spec: fold-standalone-into-convert-mirror / scenario
+    reconvert-without-source-url-uses-kernel-entry. The branch SHALL convert
+    the body via convert_page_full (preprocess runs), not via direct
+    clean_html+convert (preprocess skipped, #catlinks would survive).
+    """
+
+    def test_in_place_reconvert_applies_preprocess(self) -> None:
+        frontmatter = "---\ntitle: Test Page\n---\n"
+        body_html = (
+            '<div class="mw-parser-output">'
+            "<p>some content</p>"
+            '<div id="catlinks"><div id="mw-normal-catlinks">Categories:shouldBeRemoved</div></div>'
+            "</div>"
+        )
+        extraction_config = {"cleanup": ["strip_footer"]}
+
+        with tempfile.TemporaryDirectory() as tmp:
+            fpath = os.path.join(tmp, "page.md")
+            with open(fpath, "w", encoding="utf-8") as f:
+                f.write(frontmatter + body_html)
+
+            standalone.reconvert_file(
+                fpath, "example.wiki.gg", extraction_config=extraction_config,
+            )
+
+            with open(fpath, "r", encoding="utf-8") as f:
+                content = f.read()
+
+        # #catlinks content MUST be stripped → body went through convert_page_full
+        # (preprocess_html ran), not a bare clean_html+convert.
+        self.assertNotIn(
+            "shouldBeRemoved",
+            content,
+            "reconvert_file no-source_url branch did not route through "
+            "convert_page_full — #catlinks survived, suggesting a regression "
+            "to bare clean_html+convert.",
+        )
+        # Frontmatter preserved.
+        self.assertIn("title: Test Page", content)
+
+
 if __name__ == "__main__":
     unittest.main()
