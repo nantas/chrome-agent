@@ -16,7 +16,7 @@
 | spec scenario | 实现位置 | 证据 |
 |---------------|----------|------|
 | fetch-subcommand-applies-preprocess | `standalone.py::fetch_and_convert` HTML 分支委托 `convert_single_page`；测试 `tests/test_standalone_convert.py::TestFetchAndConvertAppliesPreprocess` | RED 阶段确认漂移（'shouldBeRemoved' 存在）→ GREEN 阶段修复（'shouldBeRemoved' 不存在） |
-| reconvert-without-source-url-uses-kernel-entry | `standalone.py::reconvert_file` 无 source_url 分支改用 `convert_page_full(body, extraction_config or {})` | grep 确认无 `clean_html`+`convert` 裸调用残留 |
+| reconvert-without-source-url-uses-kernel-entry | `standalone.py::reconvert_file` 无 source_url 分支改用 `convert_page_full(body, extraction_config or {})` | `tests/test_standalone_convert.py::TestReconvertFileWithoutSourceUrl::test_in_place_reconvert_applies_preprocess`（commit b590eb1，mutation-checked） |
 | wikitext-mode-unchanged | `fetch_and_convert` wikitext 分支仍走 `convert_wikitext_to_markdown` | 该分支未改 |
 
 ### `convert-kernel-three-layer-interface`
@@ -41,4 +41,8 @@
 - [x] 全量测试绿
 - [x] spec→code 映射完整
 - [x] 漂移修复 RED→GREEN 证据
-- [ ] doctor --check capabilities（归档时执行）
+- [x] doctor --check capabilities（归档时执行，全 `[durable] (checked)`，`next_action: none`）
+
+## 归档后跟进（post-archive follow-up）
+
+`/opsx-verify` 在归档后审查时标出一条 WARNING：`reconvert-without-source-url-uses-kernel-entry` scenario 有实现但无测试覆盖。该缺口由后续提交 `b590eb1` 闭合（新增 `TestReconvertFileWithoutSourceUrl`，以 `#catlinks`+`strip_footer` 为判别器，mutation check 确认退化到裸 `clean_html+convert` 会 FAIL）。本节为审计轨迹补记——归档时该 scenario 证据原为 grep，现更新为真实测试指针。
