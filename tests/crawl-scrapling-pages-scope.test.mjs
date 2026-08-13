@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const repoRoot = process.cwd();
-const cliJs = path.join(repoRoot, "scripts", "chrome-agent-cli.mjs");
+const cliJs = path.join(repoRoot, "scripts", "lib", "crawl_scrapling.mjs");
 const source = fs.readFileSync(cliJs, "utf8");
 
 test("runCrawlScrapling has local pages binding", async (t) => {
