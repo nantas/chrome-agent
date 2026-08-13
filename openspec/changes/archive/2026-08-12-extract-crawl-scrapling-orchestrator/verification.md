@@ -46,3 +46,15 @@
 - [x] 行为保真（集成回归 + smoke）
 - [x] C10 全局同步（runtime 副本 + hash）
 - [x] doctor --check capabilities（C11）
+
+## 独立验证发现（post-archive audit）
+
+归档后由独立 opsx-verify 复核，发现并修复 **2 个 CRITICAL 回归**（本 change 引入，非既有）：
+
+1. **`log is not defined`**：原 `runCrawlScrapling` 内 `log.info` 引用一个 cli.mjs 从未声明的 `log`（既有 latent bug，仅 from-manifest 分支惰性触发）。提取成 `crawlApi` 后，`{ log, ... }` 对象字面量**急切求值**未定义绑定 → runCrawl 开头构建 crawlApi 即崩，所有 crawl 命令必崩。修复：`log: console`。
+2. **`crawlApi is not defined`**：3 个调用点中 2 个在 `runCrawlMediawikiApi`（非 runCrawl），该函数无 crawlApi 变量 → mediawiki 路径崩。修复：crawlApi 提升为模块级（顶层 const，helper 经 function hoisting 可见）。
+
+**修复后验证**：
+- 无策略域名 → strategy_gap 正确（不再崩）
+- 有策略域名 → 进入遍历，`scrapling_preflight:available`，api bundle 正确驱动
+- 全量 node 9 文件 + python 全绿，cli smoke OK

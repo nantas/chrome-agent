@@ -2124,21 +2124,21 @@ function buildCrawlReport({ targetUrl, repoRef, resolutionMode, strategy, events
   return `${lines.join("\n")}\n`;
 }
 
+// Bundle of helpers injected into the extracted crawl orchestrator
+// (crawl_scrapling.mjs) so it has no circular import back into cli.mjs.
+// Spec: extract-crawl-scrapling-orchestrator.
+    const crawlApi = {
+      fs,
+      writeTextFile, absoluteArtifact, makeResult, generateHandoff,
+      buildCrawlReport, selectFetcher, pagePatternMatches, collectLinksFromHtml,
+      runEngineFetch, convertTraversalToMarkdown, findAvailablePort,
+      startObscuraServe, concurrentFetch, stopObscuraServe, runObscuraPreflight,
+      collectMarkdownArtifacts, urlToStructuredPath, nextPaginationUrl,
+      scraplingCacheDir, ensureDir, isScraplingCached, saveScraplingCache,
+      scraplingSlugFromUrl, loadScraplingCache, runScraplingPreflight,
+      log: console, buildScraplingExtractionArgs,
+    };
 async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {}) {
-  // Bundle of helpers injected into the extracted crawl orchestrator
-  // (crawl_scrapling.mjs) so it has no circular import back into cli.mjs.
-  // Spec: extract-crawl-scrapling-orchestrator.
-  const crawlApi = {
-    fs,
-    writeTextFile, absoluteArtifact, makeResult, generateHandoff,
-    buildCrawlReport, selectFetcher, pagePatternMatches, collectLinksFromHtml,
-    runEngineFetch, convertTraversalToMarkdown, findAvailablePort,
-    startObscuraServe, concurrentFetch, stopObscuraServe, runObscuraPreflight,
-    collectMarkdownArtifacts, urlToStructuredPath, nextPaginationUrl,
-    scraplingCacheDir, ensureDir, isScraplingCached, saveScraplingCache,
-    scraplingSlugFromUrl, loadScraplingCache, runScraplingPreflight,
-    log, buildScraplingExtractionArgs,
-  };
   const {
     entryPoint: entryPointOverride = null,
     maxPages = null,
