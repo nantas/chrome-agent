@@ -259,42 +259,29 @@ let parallelFallbackReason = null;
 
 if (markdown && visited.size > 0 && phase !== "fetch" && phase2Result === null) {
   if (parallel) {
-    const obscuraPreflight = api.pool.runObscuraPreflight(repoRoot, true);
-    if (obscuraPreflight.ok && obscuraPreflight.workerOk) {
-      try {
-        const port = await api.pool.findAvailablePort();
-        const serveHandle = await api.pool.startObscuraServe(obscuraPreflight.path, workers, port);
-        const fetchResults = await api.pool.concurrentFetch(serveHandle, [...visited], 15);
-        api.pool.stopObscuraServe(serveHandle);
-
-        const prefetchedHtml = {};
-        for (const r of fetchResults) {
-          if (r.html) {
-            prefetchedHtml[r.url] = r.html;
-          }
+    const poolOutcome = await api.pool.withObscuraPool(repoRoot, [...visited], workers, 15, async (fetchResults) => {
+      const prefetchedHtml = {};
+      for (const r of fetchResults) {
+        if (r.html) {
+          prefetchedHtml[r.url] = r.html;
         }
-
-        phase2Result = api.convert.convertTraversalToMarkdown(repoRoot, runDir, manifest, {
-          fetcherFn: (url) => {
-            const page = pages.find((p) => api.traversal.pagePatternMatches(p, url));
-            return api.engine.selectFetcher(strategy, page);
-          },
-          strategy,
-          concurrency,
-          merge,
-          cleanupHtml: !keepHtml,
-          outputName: "crawl-output",
-          prefetchedHtml,
-        });
-        extractionMethod = "obscura-serve-pool";
-      } catch (err) {
-        console.warn(`Obscura parallel fetch failed: ${err.message}. Falling back to Scrapling serial.`);
-        parallelFallbackReason = err.message;
       }
-    } else {
-      console.warn("Obscura preflight failed or worker binary missing. Falling back to Scrapling serial.");
-      parallelFallbackReason = "obscura_preflight_unavailable";
-    }
+      return api.convert.convertTraversalToMarkdown(repoRoot, runDir, manifest, {
+        fetcherFn: (url) => {
+          const page = pages.find((p) => api.traversal.pagePatternMatches(p, url));
+          return api.engine.selectFetcher(strategy, page);
+        },
+        strategy,
+        concurrency,
+        merge,
+        cleanupHtml: !keepHtml,
+        outputName: "crawl-output",
+        prefetchedHtml,
+      });
+    });
+    phase2Result = poolOutcome.result;
+    extractionMethod = poolOutcome.extractionMethod;
+    parallelFallbackReason = poolOutcome.fallbackReason;
   }
 
   if (!phase2Result) {

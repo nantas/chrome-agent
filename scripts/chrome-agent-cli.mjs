@@ -1003,6 +1003,41 @@ function runObscuraFetch(repoRoot, targetUrl, outputPath, extraArgs = []) {
   };
 }
 
+/** withObscuraPool — single owner of the obscura serve-pool lifecycle.
+ *
+ * Preflight → guard ok+workerOk → findAvailablePort → startObscuraServe →
+ * concurrentFetch → stopObscuraServe (stop-on-throw) → fallback reason.
+ * The caller provides only the per-command fetch/conversion logic via `fn`,
+ * which receives the concurrentFetch results and returns its per-command
+ * output (e.g. phase2Result, results[]). When preflight fails or serve throws,
+ * fn is not called and a fallbackReason is returned so the caller can fall
+ * back to serial scrapling.
+ *
+ * Spec: pool-lifecycle-single-orchestration.
+ *
+ * Returns { result, extractionMethod, fallbackReason }:
+ *   - extractionMethod "obscura-serve-pool" on success (result = fn return)
+ *   - extractionMethod "scrapling" + fallbackReason on preflight fail / throw
+ */
+async function withObscuraPool(repoRoot, urls, workers, timeout, fn) {
+  const obscuraPreflight = runObscuraPreflight(repoRoot, true);
+  if (!(obscuraPreflight.ok && obscuraPreflight.workerOk)) {
+    console.warn("Obscura preflight failed or worker binary missing. Falling back to Scrapling serial.");
+    return { result: null, extractionMethod: "scrapling", fallbackReason: "obscura_preflight_unavailable" };
+  }
+  try {
+    const port = await findAvailablePort();
+    const serveHandle = await startObscuraServe(obscuraPreflight.path, workers, port);
+    const fetchResults = await concurrentFetch(serveHandle, urls, timeout);
+    stopObscuraServe(serveHandle);
+    const result = await fn(fetchResults);
+    return { result, extractionMethod: "obscura-serve-pool", fallbackReason: null };
+  } catch (err) {
+    console.warn(`Obscura parallel fetch failed: ${err.message}. Falling back to Scrapling serial.`);
+    return { result: null, extractionMethod: "scrapling", fallbackReason: err.message };
+  }
+}
+
 function isPortAvailable(port) {
   return new Promise((resolve) => {
     const server = net.createServer();
@@ -1723,22 +1758,13 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
     const depsCheck = runExplorePythonDepsCheck(repoRoot);
     if (!depsCheck.ok) {
     // Handoff: Python deps missing for explore pipeline is internal
-    const handoff = generateHandoff({ command: "explore", target: targetUrl, repoRef, runDir: null, error: { reason: "explore_deps_missing", summary: `Deep discovery pipeline dependencies are missing: ${depsCheck.detail}` } });
-    return makeResult(
-      "explore",
-      targetUrl,
-      repoRef,
-      `Deep discovery pipeline dependencies are missing: ${depsCheck.detail}`,
-      [],
-      `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
-      "failure",
-      {
-        workflow: "platform_analysis",
-        engine_path: "strategy_registry -> strategy_gap -> preflight_failed",
-        handoff_path: handoff.path,
-        handoff_summary: handoff.summary,
-      },
-    );
+    return internalFailure({
+      command: "explore", target: targetUrl, repoRef, runDir: null,
+      reason: "explore_deps_missing", summary: `Deep discovery pipeline dependencies are missing: ${depsCheck.detail}`,
+      resultMsg: `Deep discovery pipeline dependencies are missing: ${depsCheck.detail}`,
+      enginePath: "strategy_registry -> strategy_gap -> preflight_failed",
+      workflow: "platform_analysis",
+    });
     }
 
     ensureDir(runDir);
@@ -1759,42 +1785,27 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
         discoveryResult = JSON.parse(ddResult.stdout);
       } catch (parseErr) {
         // Handoff: deep discovery returned invalid JSON is internal
-        const handoff = generateHandoff({ command: "explore", target: targetUrl, repoRef, runDir, error: { reason: "deep_discovery_failure", summary: `Deep discovery pipeline returned invalid JSON: ${String(parseErr.message).slice(0, 200)}`, stderr: (ddResult.stdout || "").slice(0, 2000) } });
-        return makeResult(
-          "explore",
-          targetUrl,
-          repoRef,
-          `Deep discovery pipeline returned invalid JSON: ${String(parseErr.message).slice(0, 200)}`,
-          [],
-          `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
-          "failure",
-          {
-            workflow: "platform_analysis",
-            engine_path: "strategy_registry -> strategy_gap -> deep_discovery_failed",
-            handoff_path: handoff.path,
-            handoff_summary: handoff.summary,
-          },
-        );
+        return internalFailure({
+          command: "explore", target: targetUrl, repoRef, runDir,
+          reason: "deep_discovery_failure", summary: `Deep discovery pipeline returned invalid JSON: ${String(parseErr.message).slice(0, 200)}`,
+          stderr: (ddResult.stdout || "").slice(0, 2000),
+          resultMsg: `Deep discovery pipeline returned invalid JSON: ${String(parseErr.message).slice(0, 200)}`,
+          enginePath: "strategy_registry -> strategy_gap -> deep_discovery_failed",
+          workflow: "platform_analysis",
+        });
       }
     } else {
       const stderr = (ddResult.stderr || "").slice(0, 500);
       // Handoff: deep discovery pipeline failure is internal
-      const handoff = generateHandoff({ command: "explore", target: targetUrl, repoRef, runDir, error: { reason: "deep_discovery_failure", exitCode: ddResult.status, summary: `Deep discovery pipeline failed (exit ${ddResult.status ?? "unknown"}): ${stderr}`, stderr: (ddResult.stderr || "").slice(0, 2000) } });
-      return makeResult(
-        "explore",
-        targetUrl,
-        repoRef,
-        `Deep discovery pipeline failed (exit ${ddResult.status ?? "unknown"}): ${stderr}`,
-        [],
-        `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
-        "failure",
-        {
-          workflow: "platform_analysis",
-          engine_path: "strategy_registry -> strategy_gap -> deep_discovery_failed",
-          handoff_path: handoff.path,
-          handoff_summary: handoff.summary,
-        },
-      );
+      return internalFailure({
+        command: "explore", target: targetUrl, repoRef, runDir,
+        reason: "deep_discovery_failure", exitCode: ddResult.status,
+        summary: `Deep discovery pipeline failed (exit ${ddResult.status ?? "unknown"}): ${stderr}`,
+        stderr: (ddResult.stderr || "").slice(0, 2000),
+        resultMsg: `Deep discovery pipeline failed (exit ${ddResult.status ?? "unknown"}): ${stderr}`,
+        enginePath: "strategy_registry -> strategy_gap -> deep_discovery_failed",
+        workflow: "platform_analysis",
+      });
     }
 
     // Legacy fallback if deep discovery unavailable — removed
@@ -1990,29 +2001,14 @@ function runFetch(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride) 
       summary: `Fetch failed after ${fetcher} dispatch.`,
     };
     if (isInternalFailure("fetch", fetchErrorInfo)) {
-      const handoff = generateHandoff({
-        command: "fetch",
-        target: targetUrl,
-        repoRef,
-        runDir,
-        error: fetchErrorInfo,
-        strategy,
-      });
-      return makeResult(
-        "fetch",
-        targetUrl,
-        repoRef,
-        `Fetch failed after ${fetcher} dispatch.`,
+      return internalFailure({
+        command: "fetch", target: targetUrl, repoRef, runDir, strategy,
+        reason: fetchErrorInfo.reason, summary: fetchErrorInfo.summary,
+        stderr: fetchErrorInfo.stderr,
+        resultMsg: `Fetch failed after ${fetcher} dispatch.`,
+        enginePath: `scrapling:${fetcher} -> preflight:${fetchResult.preflight?.status ?? "unknown"} -> failed`,
         artifacts,
-        `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
-        "failure",
-        {
-          workflow: "content_retrieval",
-          engine_path: `scrapling:${fetcher} -> preflight:${fetchResult.preflight?.status ?? "unknown"} -> failed`,
-          handoff_path: handoff.path,
-          handoff_summary: handoff.summary,
-        },
-      );
+      });
     }
     return makeResult(
       "fetch",
@@ -2143,7 +2139,7 @@ function buildCrawlReport({ targetUrl, repoRef, resolutionMode, strategy, events
       },
       pool: {
         findAvailablePort, startObscuraServe, concurrentFetch,
-        stopObscuraServe, runObscuraPreflight,
+        stopObscuraServe, runObscuraPreflight, withObscuraPool,
       },
       traversal: { pagePatternMatches, collectLinksFromHtml, nextPaginationUrl },
       convert: { convertTraversalToMarkdown, collectMarkdownArtifacts, urlToStructuredPath },
@@ -2227,26 +2223,66 @@ async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {})
   return runCrawlScrapling({ repoRoot, repoRef, resolutionMode, runDir, reportPath, manifestPath, emitReport, targetUrl, strategy, doc, startPage, matchingPage, entryPoints }, opts, crawlApi);
 }
 
-function crawlInternalError({ targetUrl, repoRef, resolutionMode, strategy, runDir, reportPath, emitReport, eventMsg, resultMsg, handoffReason, handoffSummary, enginePath }) {
-  if (emitReport) {
+/** internalFailure — single builder for internal-failure result construction.
+ *
+ * All cli.mjs command handlers SHALL route internal-failure emission through
+ * this builder rather than inlining generateHandoff(...) + makeResult("failure",
+ * {...}) per call site. Spec: failure-envelope-single-implementation.
+ *
+ * Union of fields the 11 prior inline blocks passed:
+ *  - command: "crawl" | "explore" | "fetch" | "scrape" | ...
+ *  - target, repoRef, runDir: identity
+ *  - reason, summary, stderr, exitCode: handoff error envelope
+ *  - resultMsg: the failure summary shown to the operator
+ *  - enginePath: the engine_path metadata field
+ *  - workflow: defaults to "content_retrieval" (explore uses "platform_analysis")
+ *  - strategy: optional, passed to generateHandoff when present
+ *  - artifacts: extra artifacts (beyond any report); reportPath/emitReport add a report artifact
+ *  - reportPath/emitReport/eventMsg/resolutionMode: crawl-style report emission (optional)
+ */
+function internalFailure({
+  command, target: targetUrl, repoRef, runDir,
+  reason, summary, stderr, exitCode,
+  resultMsg, enginePath,
+  workflow = "content_retrieval",
+  strategy,
+  artifacts = [],
+  // crawl-style report emission (optional; explore/fetch/scrape omit)
+  reportPath, emitReport = false, eventMsg, resolutionMode,
+}) {
+  const allArtifacts = [...artifacts];
+  if (emitReport && reportPath) {
     const report = buildCrawlReport({
       targetUrl, repoRef, resolutionMode, strategy,
       events: [eventMsg],
       result: "failure",
     });
     writeTextFile(reportPath, report);
+    allArtifacts.push(absoluteArtifact(reportPath, "durable", `${command.charAt(0).toUpperCase() + command.slice(1)} failure report`));
   }
-  const artifacts = [];
-  if (emitReport) {
-    artifacts.push(absoluteArtifact(reportPath, "durable", "Crawl failure report"));
-  }
-  const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: handoffReason, summary: handoffSummary }, strategy });
+  const error = { reason, summary };
+  if (stderr !== undefined) error.stderr = stderr;
+  if (exitCode !== undefined) error.exitCode = exitCode;
+  const handoff = generateHandoff({ command, target: targetUrl, repoRef, runDir, error, strategy });
   return makeResult(
-    "crawl", targetUrl, repoRef, resultMsg, artifacts,
+    command, targetUrl, repoRef, resultMsg, allArtifacts,
     `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
     "failure",
-    { workflow: "content_retrieval", engine_path: enginePath, handoff_path: handoff.path, handoff_summary: handoff.summary },
+    { workflow, engine_path: enginePath, handoff_path: handoff.path, handoff_summary: handoff.summary },
   );
+}
+
+/** crawlInternalError — thin crawl-prefixed wrapper over internalFailure.
+ *  Preserved for the crawl call sites that emit a report; delegates to the
+ *  single builder. Spec: failure-envelope-single-implementation. */
+function crawlInternalError({ targetUrl, repoRef, resolutionMode, strategy, runDir, reportPath, emitReport, eventMsg, resultMsg, handoffReason, handoffSummary, enginePath }) {
+  return internalFailure({
+    command: "crawl", target: targetUrl, repoRef, runDir, strategy,
+    reason: handoffReason, summary: handoffSummary,
+    resultMsg, enginePath,
+    reportPath, emitReport, eventMsg, resolutionMode,
+    artifacts: [],
+  });
 }
 
 function runCrawlMediawikiApi(repoRoot, repoRef, resolutionMode, runDir, reportPath, manifestPath, emitReport, targetUrl, strategy, doc, startPage, matchingPage, entryPoints, opts) {
@@ -2592,22 +2628,14 @@ async function runScrape(repoRoot, repoRef, resolutionMode, targetUrl, opts) {
       artifacts.push(absoluteArtifact(reportPath, "durable", "Scrape preflight report"));
     }
     // Handoff: Scrapling preflight failure is internal
-    const handoff = generateHandoff({ command: "scrape", target: targetUrl, repoRef, runDir, error: { reason: "preflight_failure", summary: `Scrapling CLI preflight failed (${preflight.status ?? "unknown"}).`, stderr: `${preflight.stdout ?? ""}${preflight.stderr ?? ""}`.trim() } });
-    return makeResult(
-      "scrape",
-      targetUrl,
-      repoRef,
-      "Scrape stopped because Scrapling CLI preflight failed.",
+    return internalFailure({
+      command: "scrape", target: targetUrl, repoRef, runDir,
+      reason: "preflight_failure", summary: `Scrapling CLI preflight failed (${preflight.status ?? "unknown"}).`,
+      stderr: `${preflight.stdout ?? ""}${preflight.stderr ?? ""}`.trim(),
+      resultMsg: "Scrape stopped because Scrapling CLI preflight failed.",
+      enginePath: `scrapling_preflight:${preflight.status ?? "unavailable"} -> blocked`,
       artifacts,
-      `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
-      "failure",
-      {
-        workflow: "content_retrieval",
-        engine_path: `scrapling_preflight:${preflight.status ?? "unavailable"} -> blocked`,
-        handoff_path: handoff.path,
-        handoff_summary: handoff.summary,
-      },
-    );
+    });
   }
 
   // Phase 1: Traversal
@@ -2664,38 +2692,25 @@ async function runScrape(repoRoot, repoRef, resolutionMode, targetUrl, opts) {
 
   if (markdown && visited.size > 0) {
     if (parallel) {
-      const obscuraPreflight = runObscuraPreflight(repoRoot, true);
-      if (obscuraPreflight.ok && obscuraPreflight.workerOk) {
-        try {
-          const port = await findAvailablePort();
-          const serveHandle = await startObscuraServe(obscuraPreflight.path, workers, port);
-          const fetchResults = await concurrentFetch(serveHandle, [...visited], 15);
-          stopObscuraServe(serveHandle);
-
-          const prefetchedHtml = {};
-          for (const r of fetchResults) {
-            if (r.html) {
-              prefetchedHtml[r.url] = r.html;
-            }
+      const poolOutcome = await withObscuraPool(repoRoot, [...visited], workers, 15, async (fetchResults) => {
+        const prefetchedHtml = {};
+        for (const r of fetchResults) {
+          if (r.html) {
+            prefetchedHtml[r.url] = r.html;
           }
-
-          phase2Result = convertTraversalToMarkdown(repoRoot, runDir, manifest, {
-            fetcherFn: () => fetcherOverride || "get",
-            concurrency,
-            merge,
-            cleanupHtml: !keepHtml,
-            outputName: "scrape-output",
-            prefetchedHtml,
-          });
-          extractionMethod = "obscura-serve-pool";
-        } catch (err) {
-          console.warn(`Obscura parallel fetch failed: ${err.message}. Falling back to Scrapling serial.`);
-          parallelFallbackReason = err.message;
         }
-      } else {
-        console.warn("Obscura preflight failed or worker binary missing. Falling back to Scrapling serial.");
-        parallelFallbackReason = "obscura_preflight_unavailable";
-      }
+        return convertTraversalToMarkdown(repoRoot, runDir, manifest, {
+          fetcherFn: () => fetcherOverride || "get",
+          concurrency,
+          merge,
+          cleanupHtml: !keepHtml,
+          outputName: "scrape-output",
+          prefetchedHtml,
+        });
+      });
+      phase2Result = poolOutcome.result;
+      extractionMethod = poolOutcome.extractionMethod;
+      parallelFallbackReason = poolOutcome.fallbackReason;
     }
 
     if (!phase2Result) {
@@ -3057,41 +3072,31 @@ async function runBatch(repoRoot, repoRef, resolutionMode, urls, opts = {}) {
   ensureDir(targetRunDir);
   const manifestPath = path.join(targetRunDir, "manifest.json");
 
-  // Try Obscura first
-  const obscuraPreflight = runObscuraPreflight(repoRoot, true);
+  // Try Obscura first (serve-pool lifecycle owned by withObscuraPool)
   let results = [];
   let extractionMethod = "scrapling";
   let fallbackReason = null;
 
-  if (obscuraPreflight.ok && obscuraPreflight.workerOk) {
-    try {
-      const port = await findAvailablePort();
-      const serveHandle = await startObscuraServe(obscuraPreflight.path, workers, port);
-      const fetchResults = await concurrentFetch(serveHandle, urls, timeout);
-      stopObscuraServe(serveHandle);
-
-      for (let i = 0; i < fetchResults.length; i += 1) {
-        const r = fetchResults[i];
-        const htmlPath = path.join(targetRunDir, `${String(i + 1).padStart(2, "0")}.html`);
-        if (r.html) {
-          fs.writeFileSync(htmlPath, r.html, "utf8");
-        }
-        results.push({
-          url: r.url,
-          htmlPath: r.html ? htmlPath : null,
-          elapsed_ms: r.elapsed_ms,
-          error: r.error,
-        });
+  const poolOutcome = await withObscuraPool(repoRoot, urls, workers, timeout, async (fetchResults) => {
+    const batchResults = [];
+    for (let i = 0; i < fetchResults.length; i += 1) {
+      const r = fetchResults[i];
+      const htmlPath = path.join(targetRunDir, `${String(i + 1).padStart(2, "0")}.html`);
+      if (r.html) {
+        fs.writeFileSync(htmlPath, r.html, "utf8");
       }
-      extractionMethod = "obscura-serve-pool";
-    } catch (err) {
-      console.warn(`Obscura batch fetch failed: ${err.message}. Falling back to Scrapling serial.`);
-      fallbackReason = err.message;
+      batchResults.push({
+        url: r.url,
+        htmlPath: r.html ? htmlPath : null,
+        elapsed_ms: r.elapsed_ms,
+        error: r.error,
+      });
     }
-  } else {
-    console.warn("Obscura preflight failed. Falling back to Scrapling serial fetch.");
-    fallbackReason = "obscura_preflight_unavailable";
-  }
+    return batchResults;
+  });
+  results = poolOutcome.result ?? [];
+  extractionMethod = poolOutcome.extractionMethod;
+  fallbackReason = poolOutcome.fallbackReason;
 
   // Fallback to Scrapling serial
   if (extractionMethod === "scrapling") {
@@ -3849,14 +3854,14 @@ async function runCrawlSitemapDiscovery(repoRoot, repoRef, resolutionMode, runDi
   const fetchOk = sitemapFetch.status === 0 && httpCode >= 200 && httpCode < 400;
   if (!fetchOk) {
     const fetchErr = `curl exited ${sitemapFetch.status} with HTTP ${httpCode}: ${sitemapFetch.stderr || ""}`;
-    const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: "sitemap_unreachable", summary: `Sitemap URL ${sitemapUrl} returned HTTP ${httpCode || "error"}.`, stderr: fetchErr }, strategy });
-    return makeResult("crawl", targetUrl, repoRef,
-      "Sitemap unreachable.",
-      [absoluteArtifact(tempPath, "disposable", "Sitemap fetch attempt")],
-      `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
-      "failure",
-      { workflow: "content_retrieval", engine_path: "sitemap_discovery -> sitemap_unreachable", handoff_path: handoff.path, handoff_summary: handoff.summary }
-    );
+    return internalFailure({
+      command: "crawl", target: targetUrl, repoRef, runDir, strategy,
+      reason: "sitemap_unreachable", summary: `Sitemap URL ${sitemapUrl} returned HTTP ${httpCode || "error"}.`,
+      stderr: fetchErr,
+      resultMsg: "Sitemap unreachable.",
+      enginePath: "sitemap_discovery -> sitemap_unreachable",
+      artifacts: [absoluteArtifact(tempPath, "disposable", "Sitemap fetch attempt")],
+    });
   }
 
   // Parse sitemap
@@ -3864,14 +3869,14 @@ async function runCrawlSitemapDiscovery(repoRoot, repoRef, resolutionMode, runDi
   const parsed = parseSitemapXml(sitemapContent);
 
   if (parsed.error) {
-    const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: "sitemap_parse_error", summary: "Sitemap XML could not be parsed.", stderr: parsed.reason || "" }, strategy });
-    return makeResult("crawl", targetUrl, repoRef,
-      "Sitemap parse error.",
-      [absoluteArtifact(tempPath, "disposable", "Sitemap content")],
-      `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
-      "failure",
-      { workflow: "content_retrieval", engine_path: "sitemap_discovery -> parse_error", handoff_path: handoff.path, handoff_summary: handoff.summary }
-    );
+    return internalFailure({
+      command: "crawl", target: targetUrl, repoRef, runDir, strategy,
+      reason: "sitemap_parse_error", summary: "Sitemap XML could not be parsed.",
+      stderr: parsed.reason || "",
+      resultMsg: "Sitemap parse error.",
+      enginePath: "sitemap_discovery -> parse_error",
+      artifacts: [absoluteArtifact(tempPath, "disposable", "Sitemap content")],
+    });
   }
 
   // Sub-sitemap partial-failure tracking (populated only on the index path).
@@ -3888,14 +3893,14 @@ async function runCrawlSitemapDiscovery(repoRoot, repoRef, resolutionMode, runDi
     const subSitemaps = parsed.sitemaps || [];
     subSitemapTotal = subSitemaps.length;
     if (subSitemaps.length === 0) {
-      const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: "sitemap_index_empty", summary: "Sitemap index declared but listed no sub-sitemaps.", stderr: "" }, strategy });
-      return makeResult("crawl", targetUrl, repoRef,
-        "Sitemap index empty.",
-        [absoluteArtifact(tempPath, "disposable", "Sitemap index")],
-        `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
-        "failure",
-        { workflow: "content_retrieval", engine_path: "sitemap_discovery -> index_empty", handoff_path: handoff.path, handoff_summary: handoff.summary }
-      );
+      return internalFailure({
+        command: "crawl", target: targetUrl, repoRef, runDir, strategy,
+        reason: "sitemap_index_empty", summary: "Sitemap index declared but listed no sub-sitemaps.",
+        stderr: "",
+        resultMsg: "Sitemap index empty.",
+        enginePath: "sitemap_discovery -> index_empty",
+        artifacts: [absoluteArtifact(tempPath, "disposable", "Sitemap index")],
+      });
     }
     // Inject a curl-based fetcher so resolveSitemapIndex stays a pure,
     // unit-testable function. Partial-failure behavior (one/all sub-sitemap
@@ -3915,14 +3920,14 @@ async function runCrawlSitemapDiscovery(repoRoot, repoRef, resolutionMode, runDi
 
     if (subSitemapErrors.length === subSitemaps.length) {
       const failedList = subSitemapErrors.map((e) => `${e.url} (${e.reason})`).join("; ");
-      const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: "sitemap_all_subs_failed", summary: `All ${subSitemaps.length} sub-sitemaps failed to fetch/parse.`, stderr: failedList }, strategy });
-      return makeResult("crawl", targetUrl, repoRef,
-        "All sub-sitemaps failed.",
-        [absoluteArtifact(tempPath, "disposable", "Sitemap index")],
-        `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
-        "failure",
-        { workflow: "content_retrieval", engine_path: "sitemap_discovery -> all_subs_failed", handoff_path: handoff.path, handoff_summary: handoff.summary }
-      );
+      return internalFailure({
+        command: "crawl", target: targetUrl, repoRef, runDir, strategy,
+        reason: "sitemap_all_subs_failed", summary: `All ${subSitemaps.length} sub-sitemaps failed to fetch/parse.`,
+        stderr: failedList,
+        resultMsg: "All sub-sitemaps failed.",
+        enginePath: "sitemap_discovery -> all_subs_failed",
+        artifacts: [absoluteArtifact(tempPath, "disposable", "Sitemap index")],
+      });
     }
 
     if (subSitemapErrors.length > 0) {
@@ -3971,14 +3976,14 @@ async function runCrawlSitemapDiscovery(repoRoot, repoRef, resolutionMode, runDi
   }
 
   if (finalUrls.length === 0) {
-    const handoff = generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: "sitemap_no_pattern_match", summary: `Sitemap returned ${discoveredUrls.length} URLs; none remained after page_pattern include + exclude_patterns filtering.`, stderr: "" }, strategy });
-    return makeResult("crawl", targetUrl, repoRef,
-      "No URLs matched page_pattern.",
-      [absoluteArtifact(tempPath, "disposable", "Sitemap content")],
-      `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
-      "failure",
-      { workflow: "content_retrieval", engine_path: "sitemap_discovery -> no_pattern_match", handoff_path: handoff.path, handoff_summary: handoff.summary }
-    );
+    return internalFailure({
+      command: "crawl", target: targetUrl, repoRef, runDir, strategy,
+      reason: "sitemap_no_pattern_match", summary: `Sitemap returned ${discoveredUrls.length} URLs; none remained after page_pattern include + exclude_patterns filtering.`,
+      stderr: "",
+      resultMsg: "No URLs matched page_pattern.",
+      enginePath: "sitemap_discovery -> no_pattern_match",
+      artifacts: [absoluteArtifact(tempPath, "disposable", "Sitemap content")],
+    });
   }
 
   // Auto-group URLs into page_manifest entries

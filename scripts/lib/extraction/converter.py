@@ -51,19 +51,12 @@ class HtmlToMarkdownConverter:
         self._redirect_map: dict[str, str] = {}
         # Image skip patterns from config
         self._skip_patterns: list[str] = self.config.get("image_filtering", {}).get("skip_patterns", [])
-        # Infobox config: read extraction.infox settings
-        infobox_cfg = self.config.get("infobox", {})
-        self._infobox_enabled = infobox_cfg.get("enabled", False)
-        self._infobox_selector = infobox_cfg.get("selector", "aside.portable-infobox")
-        self._infobox_field_selector = infobox_cfg.get("field_selector", "div.pi-data")
-        self._infobox_label_selector = infobox_cfg.get("label_selector", "h3.pi-data-label")
-        self._infobox_value_selector = infobox_cfg.get("value_selector", "div.pi-data-value")
-        # Parse infobox selector for tag + class matching
-        sel_parts = self._infobox_selector.lstrip(".").split(".")
-        self._infobox_tag = sel_parts[0]
-        self._infobox_class_list = sel_parts[1:] if len(sel_parts) > 1 else []
-        # Infobox field handlers from config
-        self._infobox_handlers: dict = self.config.get("infobox_field_handlers", {})
+        # NOTE: infobox rendering during conversion is dead code (removed — see
+        # cleanup-cli-and-converter-dead-code / pipeline-infobox REMOVED). Infobox
+        # extraction is owned by scripts/lib/extraction/infobox.py (SSOT), called
+        # from convert_page_full Step 1 + preprocess_html strips the container.
+        # Any `infobox` config keys passed here are accepted for backward compat
+        # but no longer read.
 
     def build_link_index(self, manifest_pages: list[dict],
                           redirect_map: dict[str, str] | None = None):
@@ -271,27 +264,6 @@ class HtmlToMarkdownConverter:
             return self._normalize_text(node.text(deep=True, separator=" ", strip=False))
 
         if tag in {"div", "section", "article", "span"}:
-            # Check for portable infobox data-source field
-            if tag == "div" and self._infobox_handlers:
-                ds = node.attributes.get("data-source")
-                if ds:
-                    handler_cfg = self._infobox_handlers.get(ds)
-                    if handler_cfg and isinstance(handler_cfg, dict):
-                        handler_name = handler_cfg.get("handler", "text")
-                    elif isinstance(handler_cfg, str):
-                        handler_name = handler_cfg
-                    else:
-                        handler_name = "text"
-                    label_node = None
-                    for child in self._child_nodes(node):
-                        cls = child.attributes.get("class", "") or ""
-                        if "pi-data-label" in cls:
-                            label_node = child
-                            break
-                    label_text = self._render_inline_children(label_node, source_dir=source_dir) if label_node else ds
-                    raw_value = node.html if hasattr(node, 'html') else ""
-                    value = self._apply_infobox_handler(handler_name, raw_value)
-                    return f"| **{label_text}** | {value} |"
             if self._has_block_children(node):
                 return self._render_blocks(self._child_nodes(node), source_dir=source_dir)
             return self._render_inline_children(node, source_dir=source_dir)
@@ -340,13 +312,10 @@ class HtmlToMarkdownConverter:
         if tag in {"strong", "b", "em", "i", "code", "a"}:
             return self._render_inline(node, source_dir=source_dir)
 
-        # Infobox container detection — render as complete Markdown table
-        if self._infobox_enabled and tag == self._infobox_tag:
-            cls = node.attributes.get("class", "") or ""
-            if all(c in cls for c in self._infobox_class_list):
-                result = self._render_infobox_table(node, source_dir=source_dir)
-                if result:
-                    return result
+        # Infobox container rendering during conversion is removed (dead code —
+        # see cleanup-cli-and-converter-dead-code / pipeline-infobox REMOVED).
+        # The container is stripped by preprocess_html before convert_body runs;
+        # infobox extraction is owned by infobox.py (SSOT) via convert_page_full Step 1.
 
         if self._has_block_children(node):
             return self._render_blocks(self._child_nodes(node), source_dir=source_dir)
@@ -386,136 +355,6 @@ class HtmlToMarkdownConverter:
                 inline_parts.append(rendered)
         header = f"{indent}{prefix} {self._render_inline_part_list(inline_parts)}" if inline_parts else f"{indent}{prefix}"
         return [header, *nested_lines]
-
-    # ------------------------------------------------------------------
-    # Infobox table rendering
-    # ------------------------------------------------------------------
-
-    def _render_infobox_table(self, node, source_dir: str = "") -> str:
-        """Render an infobox container as a complete Markdown table.
-
-        Delegates to the shared lib.extraction.infobox module.
-        """
-        from scripts.lib.extraction.infobox import extract_infobox
-
-        return extract_infobox(
-            node,
-            self.config,
-            self.wiki_domain,
-            source_dir=source_dir,
-            field_selector=self._infobox_field_selector,
-            label_selector=self._infobox_label_selector,
-            value_selector=self._infobox_value_selector,
-            infobox_handlers=self._infobox_handlers,
-            render_inline_children_fn=self._render_inline_children,
-            apply_handler_fn=self._apply_infobox_handler,
-        )
-
-    # ------------------------------------------------------------------
-    # Infobox field handlers
-    # ------------------------------------------------------------------
-
-    def _apply_infobox_handler(self, handler_name: str, raw_html: str) -> str:
-        """Apply a named infobox field handler to raw HTML value."""
-        if handler_name == "text" or not handler_name:
-            return self._strip_html(raw_html)
-        if handler_name == "image":
-            return self._extract_image_value(raw_html)
-        if handler_name == "count_images":
-            return self._count_images(raw_html)
-        if handler_name == "extract_cur_id":
-            return self._extract_cur_id(raw_html)
-        if handler_name == "dedup_pools":
-            return self._dedup_pools(raw_html)
-        if handler_name == "simplify_collection":
-            return self._simplify_collection(raw_html)
-        if handler_name == "extract_tags":
-            return self._extract_tags(raw_html)
-        # Unknown handler — fall back to text
-        log.warning("Unknown infobox handler: %s, falling back to text", handler_name)
-        return self._strip_html(raw_html)
-
-    @staticmethod
-    def _strip_html(html: str) -> str:
-        """Strip all HTML tags, return plain text."""
-        text = re.sub(r'<[^>]+>', '', html)
-        text = re.sub(r'\s+', ' ', text).strip()
-        return text
-
-    def _extract_image_value(self, html: str) -> str:
-        """Extract primary image as Markdown."""
-        m = re.search(r'<img[^>]+src="([^"]+)"[^>]*(?:alt="([^"]*)")?', html)
-        if not m:
-            return self._strip_html(html)
-        src, alt = m.group(1), (m.group(2) or "image")
-        if src.startswith("/"):
-            src = f"https://{self.wiki_domain}{src}"
-        return f"![{alt}]({src})"
-
-    @staticmethod
-    def _count_images(html: str) -> str:
-        """Count images grouped by alt text pattern."""
-        imgs = re.findall(r'<img[^>]+alt="([^"]*)"', html)
-        if not imgs:
-            return "0"
-        from collections import Counter
-        counts = Counter(imgs)
-        parts = [f"{n}× {alt}" for alt, n in counts.items()]
-        return ", ".join(parts)
-
-    @staticmethod
-    def _extract_cur_id(html: str) -> str:
-        """Extract current ID from infobox-nav-cur span."""
-        m = re.search(r'<span[^>]*class="[^"]*infobox-nav-cur[^"]*"[^>]*>(.*?)</span>', html, re.DOTALL)
-        if m:
-            return re.sub(r'<[^>]+>', '', m.group(1)).strip()
-        # Fallback: first code/text content
-        text = re.sub(r'<[^>]+>', '', html).strip()
-        return text
-
-    def _dedup_pools(self, html: str) -> str:
-        """Deduplicate item pool links, keep text-based, skip icon-only."""
-        links = re.findall(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html, re.DOTALL)
-        seen_urls = set()
-        result = []
-        for href, inner in links:
-            if href in seen_urls:
-                continue
-            inner_text = re.sub(r'<[^>]+>', '', inner).strip()
-            if not inner_text:
-                # Icon-only — skip
-                continue
-            seen_urls.add(href)
-            if href.startswith("/"):
-                href = f"https://{self.wiki_domain}{href}"
-            result.append(f"[{inner_text}]({href})")
-        return ", ".join(result) if result else self._strip_html(html)
-
-    def _simplify_collection(self, html: str) -> str:
-        """Simplify collection grid to a single page link."""
-        links = re.findall(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', html, re.DOTALL)
-        for href, inner in links:
-            inner_text = re.sub(r'<[^>]+>', '', inner).strip()
-            if inner_text:
-                if href.startswith("/"):
-                    href = f"https://{self.wiki_domain}{href}"
-                return f"See [{inner_text}]({href})"
-        return self._strip_html(html)
-
-    def _extract_tags(self, html: str) -> str:
-        """Extract tag tooltips from icon links."""
-        links = re.findall(r'<a[^>]+href="([^"]+)"[^>]+title="([^"]*)"[^>]*>', html)
-        if not links:
-            links = re.findall(r'<a[^>]+title="([^"]*)"[^>]+href="([^"]+)"[^>]*>', html)
-            links = [(h, t) for t, h in links]
-        result = []
-        for href, title in links:
-            if not title:
-                continue
-            if href.startswith("/"):
-                href = f"https://{self.wiki_domain}{href}"
-            result.append(f"[{title}]({href})")
-        return ", ".join(result) if result else self._strip_html(html)
 
     # ------------------------------------------------------------------
     # Table rendering

@@ -129,22 +129,6 @@ def extract_infobox(html_or_node, config, wiki_domain, **kwargs) -> str
 - **WHEN** 无字段被提取
 - **THEN** 输出为空字符串
 
-### Requirement: render-infobox-table-uses-shared-lib
-
-`HtmlToMarkdownConverter._render_infobox_table()` SHALL 调用 `lib.extraction.infobox.extract_infobox()`。
-
-#### Scenario: infobox rendering during conversion
-- **WHEN** `_render_infobox_table(node)` 被调用
-- **THEN** SHALL 调用 `extract_infobox()` 并传递相同参数
-
-#### Scenario: backward compatible callback signature
-- **WHEN** 以 `render_inline_children_fn` 和 `apply_handler_fn` 回调调用
-- **THEN** 输出 SHALL 与原 `infox_renderer` 行为一致
-
-### Requirement: handler-implementation-stays-in-converter
-
-`_apply_infobox_handler()` 和所有 handler 方法 SHALL 保留在 `html_to_markdown.py` 中，通过回调传递给 `extract_infobox()`。
-
 ### Requirement: infox-renderer-module-deprecated
 
 `infox_renderer.py` 已被 `lib/extraction/infobox.extract_infobox()` 替代。原调用点 `from .infox_renderer import render_infobox_table` 已替换为 `from scripts.lib.extraction.infobox import extract_infobox`。
