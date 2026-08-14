@@ -157,7 +157,9 @@ test("runCrawlScrapling (incl. --phase convert cache fastpath) has no hardcoded 
 
   // The --phase convert cache fastpath must route cached HTML conversion
   // through the helper too (strategy is in scope in runCrawlScrapling).
-  assert.match(slice, /api\.buildScraplingExtractionArgs\(/, "runCrawlScrapling must call the helper (via api bundle)");
+  // After narrow-crawl-scrapling-seam-surface, the call is grouped:
+  // api.cache.buildScraplingExtractionArgs (named concern object).
+  assert.match(slice, /api\.cache\.buildScraplingExtractionArgs\(/, "runCrawlScrapling must call the helper (via api.cache bundle)");
   const literalMatches = slice.match(/\[["']--ai-targeted["']\]/g);
   assert.equal(literalMatches, null, "runCrawlScrapling must not hardcode ['--ai-targeted']");
 });

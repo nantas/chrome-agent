@@ -32,10 +32,10 @@ export async function runCrawlScrapling(ctx, opts, api) {
 const pages = doc?.structure?.pages ?? [];
 let events = [];
 let fallbackReason = null;
-const preflight = api.runScraplingPreflight(repoRoot, true);
+const preflight = api.cache.runScraplingPreflight(repoRoot, true);
 if (!preflight.ok) {
   if (emitReport) {
-    const report = api.buildCrawlReport({
+    const report = api.report.buildCrawlReport({
       targetUrl,
       repoRef,
       resolutionMode,
@@ -43,15 +43,15 @@ if (!preflight.ok) {
       events: ["Scrapling CLI preflight failed before crawl traversal."],
       result: "failure",
     });
-    api.writeTextFile(reportPath, report);
+    api.report.writeTextFile(reportPath, report);
   }
   const artifacts = [];
   if (emitReport) {
-    artifacts.push(api.absoluteArtifact(reportPath, "durable", "Crawl preflight report"));
+    artifacts.push(api.report.absoluteArtifact(reportPath, "durable", "Crawl preflight report"));
   }
   // Handoff: Scrapling preflight failure is internal
-  const handoff = api.generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: "preflight_failure", summary: `Scrapling CLI preflight failed (${preflight.status ?? "unknown"}).`, stderr: `${preflight.stdout ?? ""}${preflight.stderr ?? ""}`.trim() }, strategy });
-  return api.makeResult(
+  const handoff = api.handoff.generateHandoff({ command: "crawl", target: targetUrl, repoRef, runDir, error: { reason: "preflight_failure", summary: `Scrapling CLI preflight failed (${preflight.status ?? "unknown"}).`, stderr: `${preflight.stdout ?? ""}${preflight.stderr ?? ""}`.trim() }, strategy });
+  return api.report.makeResult(
     "crawl",
     targetUrl,
     repoRef,
@@ -75,7 +75,7 @@ if (fromManifest && api.fs.existsSync(fromManifest)) {
     const loadedManifest = JSON.parse(api.fs.readFileSync(fromManifest, "utf8"));
     const loadedVisited = loadedManifest.visited ?? [];
     for (const url of loadedVisited) {
-      const page = pages.find((p) => api.pagePatternMatches(p, url));
+      const page = pages.find((p) => api.traversal.pagePatternMatches(p, url));
       if (page) {
         queue.push({ url, page, paginationIndex: 1 });
       }
@@ -112,19 +112,19 @@ while (queue.length > 0 && (maxPages == null || visited.size < maxPages)) {
     }
   }
   visited.add(item.url);
-  const fetcher = api.selectFetcher(strategy, item.page);
+  const fetcher = api.engine.selectFetcher(strategy, item.page);
   const pageSlug = `${String(visited.size).padStart(2, "0")}-${item.page.id}`;
   const outputPath = path.join(runDir, `${pageSlug}.html`);
-  const fetchResult = api.runEngineFetch(repoRoot, fetcher, item.url, outputPath);
+  const fetchResult = api.engine.runEngineFetch(repoRoot, fetcher, item.url, outputPath);
 
   if (fetchResult.ok) {
-    artifacts.push(api.absoluteArtifact(outputPath, "disposable", `Crawled page ${item.page.id}`));
+    artifacts.push(api.report.absoluteArtifact(outputPath, "disposable", `Crawled page ${item.page.id}`));
     events.push(`Fetched ${item.url} via ${fetcher} for page ${item.page.id}.`);
   } else {
     failures += 1;
     const errorPath = path.join(runDir, `${pageSlug}.stderr.log`);
-    api.writeTextFile(errorPath, fetchResult.stderr || "Scrapling crawl fetch failed.");
-    artifacts.push(api.absoluteArtifact(errorPath, "disposable", `Crawl error for ${item.page.id}`));
+    api.report.writeTextFile(errorPath, fetchResult.stderr || "Scrapling crawl fetch failed.");
+    artifacts.push(api.report.absoluteArtifact(errorPath, "disposable", `Crawl error for ${item.page.id}`));
     events.push(`Failed ${item.url} via ${fetcher} for page ${item.page.id}.`);
     continue;
   }
@@ -135,9 +135,9 @@ while (queue.length > 0 && (maxPages == null || visited.size < maxPages)) {
       events.push(`Skipped undeclared target page ${link.target} from ${item.page.id}.`);
       continue;
     }
-    const discovered = api.collectLinksFromHtml(outputPath, item.url, link.selector);
+    const discovered = api.traversal.collectLinksFromHtml(outputPath, item.url, link.selector);
     for (const url of discovered) {
-      if (api.pagePatternMatches(nextPage, url) && !visited.has(url)) {
+      if (api.traversal.pagePatternMatches(nextPage, url) && !visited.has(url)) {
         queue.push({ url, page: nextPage, paginationIndex: 1 });
       }
     }
@@ -149,7 +149,7 @@ while (queue.length > 0 && (maxPages == null || visited.size < maxPages)) {
   if (item.page.pagination && item.page.pagination !== "none" && (maxPages == null || queue.length + visited.size < maxPages)) {
     if (item.page.pagination.mechanism === "url_parameter") {
       const nextPageNumber = item.paginationIndex + 1;
-      const nextUrl = api.nextPaginationUrl(item.url, item.page.pagination, nextPageNumber);
+      const nextUrl = api.traversal.nextPaginationUrl(item.url, item.page.pagination, nextPageNumber);
       if (nextUrl && !visited.has(nextUrl) && (maxPages == null || queue.length + visited.size < maxPages)) {
         queue.push({ url: nextUrl, page: item.page, paginationIndex: nextPageNumber });
         events.push(`Queued bounded pagination URL ${nextUrl} from ${item.page.id}.`);
@@ -183,13 +183,13 @@ let phase2Result = null;
 
 // --- Scrapling --phase fetch: save visited pages to cache, skip conversion ---
 if (phase === "fetch" && visited.size > 0) {
-  const domainCacheDir = api.scraplingCacheDir(repoRoot, crawlDomain);
-  api.ensureDir(domainCacheDir);
+  const domainCacheDir = api.cache.scraplingCacheDir(repoRoot, crawlDomain);
+  api.cache.ensureDir(domainCacheDir);
   let cacheWriteCount = 0;
   let cacheSkipCount = 0;
   for (const url of visited) {
-    const slug = api.scraplingSlugFromUrl(url);
-    if (!reFetch && api.isScraplingCached(repoRoot, crawlDomain, slug)) {
+    const slug = api.cache.scraplingSlugFromUrl(url);
+    if (!reFetch && api.cache.isScraplingCached(repoRoot, crawlDomain, slug)) {
       cacheSkipCount++;
       events.push(`Skipping cache write for ${url} (already cached)`);
       continue;
@@ -207,7 +207,7 @@ if (phase === "fetch" && visited.size > 0) {
       }
     }
     if (htmlContent) {
-      api.saveScraplingCache(repoRoot, crawlDomain, slug, htmlContent, {
+      api.cache.saveScraplingCache(repoRoot, crawlDomain, slug, htmlContent, {
         url, fetcher: "scrapling",
       });
       cacheWriteCount++;
@@ -224,18 +224,18 @@ if (phase === "convert" && fromManifest) {
   let convertOk = 0;
   let convertFail = 0;
   for (const url of urls) {
-    const slug = api.scraplingSlugFromUrl(url);
-    const cached = api.loadScraplingCache(repoRoot, crawlDomain, slug);
+    const slug = api.cache.scraplingSlugFromUrl(url);
+    const cached = api.cache.loadScraplingCache(repoRoot, crawlDomain, slug);
     if (!cached) {
       events.push(`Cache miss for ${url} — skipping`);
       convertFail++;
       continue;
     }
     const tmpHtmlPath = path.join(runDir, `_cached_${slug}.html`);
-    api.writeTextFile(tmpHtmlPath, cached.html);
-    const mdPath = api.urlToStructuredPath(url, runDir);
-    const cachedArgs = api.buildScraplingExtractionArgs(strategy, "get");
-    const scraplingResult = api.runEngineFetch(repoRoot, "get", `file://${tmpHtmlPath}`, mdPath, cachedArgs);
+    api.report.writeTextFile(tmpHtmlPath, cached.html);
+    const mdPath = api.convert.urlToStructuredPath(url, runDir);
+    const cachedArgs = api.cache.buildScraplingExtractionArgs(strategy, "get");
+    const scraplingResult = api.engine.runEngineFetch(repoRoot, "get", `file://${tmpHtmlPath}`, mdPath, cachedArgs);
     if (scraplingResult.ok) {
       convertOk++;
       events.push(`Converted cached ${url} to Markdown`);
@@ -259,13 +259,13 @@ let parallelFallbackReason = null;
 
 if (markdown && visited.size > 0 && phase !== "fetch" && phase2Result === null) {
   if (parallel) {
-    const obscuraPreflight = api.runObscuraPreflight(repoRoot, true);
+    const obscuraPreflight = api.pool.runObscuraPreflight(repoRoot, true);
     if (obscuraPreflight.ok && obscuraPreflight.workerOk) {
       try {
-        const port = await api.findAvailablePort();
-        const serveHandle = await api.startObscuraServe(obscuraPreflight.path, workers, port);
-        const fetchResults = await api.concurrentFetch(serveHandle, [...visited], 15);
-        api.stopObscuraServe(serveHandle);
+        const port = await api.pool.findAvailablePort();
+        const serveHandle = await api.pool.startObscuraServe(obscuraPreflight.path, workers, port);
+        const fetchResults = await api.pool.concurrentFetch(serveHandle, [...visited], 15);
+        api.pool.stopObscuraServe(serveHandle);
 
         const prefetchedHtml = {};
         for (const r of fetchResults) {
@@ -274,10 +274,10 @@ if (markdown && visited.size > 0 && phase !== "fetch" && phase2Result === null) 
           }
         }
 
-        phase2Result = api.convertTraversalToMarkdown(repoRoot, runDir, manifest, {
+        phase2Result = api.convert.convertTraversalToMarkdown(repoRoot, runDir, manifest, {
           fetcherFn: (url) => {
-            const page = pages.find((p) => api.pagePatternMatches(p, url));
-            return api.selectFetcher(strategy, page);
+            const page = pages.find((p) => api.traversal.pagePatternMatches(p, url));
+            return api.engine.selectFetcher(strategy, page);
           },
           strategy,
           concurrency,
@@ -298,10 +298,10 @@ if (markdown && visited.size > 0 && phase !== "fetch" && phase2Result === null) 
   }
 
   if (!phase2Result) {
-    phase2Result = api.convertTraversalToMarkdown(repoRoot, runDir, manifest, {
+    phase2Result = api.convert.convertTraversalToMarkdown(repoRoot, runDir, manifest, {
       fetcherFn: (url) => {
-        const page = pages.find((p) => api.pagePatternMatches(p, url));
-        return api.selectFetcher(strategy, page);
+        const page = pages.find((p) => api.traversal.pagePatternMatches(p, url));
+        return api.engine.selectFetcher(strategy, page);
       },
       strategy,
       concurrency,
@@ -319,27 +319,27 @@ if (markdown && visited.size > 0 && phase !== "fetch" && phase2Result === null) 
   };
 }
 
-api.writeTextFile(manifestPath, JSON.stringify(manifest, null, 2));
+api.report.writeTextFile(manifestPath, JSON.stringify(manifest, null, 2));
 
 // Rebuild artifacts based on output mode
-const finalArtifacts = [api.absoluteArtifact(manifestPath, "disposable", "Crawl manifest")];
+const finalArtifacts = [api.report.absoluteArtifact(manifestPath, "disposable", "Crawl manifest")];
 
 if (markdown) {
-  finalArtifacts.push(...api.collectMarkdownArtifacts(runDir));
-  // Ensure merged file gets a descriptive label if found by api.collectMarkdownArtifacts
+  finalArtifacts.push(...api.convert.collectMarkdownArtifacts(runDir));
+  // Ensure merged file gets a descriptive label if found by api.convert.collectMarkdownArtifacts
   for (const { url } of (phase2Result?.failed ?? [])) {
     const idx = manifest.visited.indexOf(url);
     if (idx >= 0) {
       const errorPath = path.join(runDir, `${String(idx + 1).padStart(2, "0")}.md.error.log`);
       if (api.fs.existsSync(errorPath)) {
-        finalArtifacts.push(api.absoluteArtifact(errorPath, "disposable", `Conversion error for ${url}`));
+        finalArtifacts.push(api.report.absoluteArtifact(errorPath, "disposable", `Conversion error for ${url}`));
       }
     }
   }
 } else {
   for (const file of api.fs.readdirSync(runDir)) {
     if (file.endsWith(".html")) {
-      finalArtifacts.push(api.absoluteArtifact(path.join(runDir, file), "disposable", `Crawled page ${file}`));
+      finalArtifacts.push(api.report.absoluteArtifact(path.join(runDir, file), "disposable", `Crawled page ${file}`));
     }
   }
 }
@@ -353,7 +353,7 @@ const finalExtractionMethod = extractionMethod;
 const finalFallbackReason = parallelFallbackReason ?? fallbackReason;
 
 if (emitReport) {
-  const report = api.buildCrawlReport({
+  const report = api.report.buildCrawlReport({
     targetUrl,
     repoRef,
     resolutionMode,
@@ -370,8 +370,8 @@ if (emitReport) {
     extractionMethod: finalExtractionMethod,
     fallbackReason: finalFallbackReason,
   });
-  api.writeTextFile(reportPath, report);
-  finalArtifacts.unshift(api.absoluteArtifact(reportPath, "durable", "Crawl report"));
+  api.report.writeTextFile(reportPath, report);
+  finalArtifacts.unshift(api.report.absoluteArtifact(reportPath, "durable", "Crawl report"));
 }
 
 const summary =
@@ -385,7 +385,7 @@ const nextAction =
     ? "Review the crawl report, strategy selectors, or authentication requirements before retrying."
     : "Inspect the crawl outputs. Extend the site strategy if more bounded traversal is needed.";
 
-return api.makeResult("crawl", targetUrl, repoRef, summary, finalArtifacts, nextAction, resultState, {
+return api.report.makeResult("crawl", targetUrl, repoRef, summary, finalArtifacts, nextAction, resultState, {
   workflow: "content_retrieval",
   engine_path: `strategy_registry -> bounded_crawl -> scrapling_preflight:${preflight.status ?? "unknown"}${markdown ? ` -> markdown_conversion(${phase2Result?.successful.length ?? 0}/${visited.size})` : ""}`,
   extraction_method: finalExtractionMethod,

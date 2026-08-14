@@ -2126,17 +2126,27 @@ function buildCrawlReport({ targetUrl, repoRef, resolutionMode, strategy, events
 
 // Bundle of helpers injected into the extracted crawl orchestrator
 // (crawl_scrapling.mjs) so it has no circular import back into cli.mjs.
-// Spec: extract-crawl-scrapling-orchestrator.
+// Organized as named concern objects (not a flat grab-bag) so the seam reads
+// as a contract: each group = one responsibility.
+// Spec: crawl-scrapling-orchestrator-is-a-seam-module /
+//       scenario seam-surface-uses-named-concern-groups.
     const crawlApi = {
       fs,
-      writeTextFile, absoluteArtifact, makeResult, generateHandoff,
-      buildCrawlReport, selectFetcher, pagePatternMatches, collectLinksFromHtml,
-      runEngineFetch, convertTraversalToMarkdown, findAvailablePort,
-      startObscuraServe, concurrentFetch, stopObscuraServe, runObscuraPreflight,
-      collectMarkdownArtifacts, urlToStructuredPath, nextPaginationUrl,
-      scraplingCacheDir, ensureDir, isScraplingCached, saveScraplingCache,
-      scraplingSlugFromUrl, loadScraplingCache, runScraplingPreflight,
-      log: console, buildScraplingExtractionArgs,
+      log: console,
+      report: { makeResult, absoluteArtifact, writeTextFile, buildCrawlReport },
+      handoff: { generateHandoff },
+      engine: { runEngineFetch, selectFetcher },
+      cache: {
+        scraplingCacheDir, ensureDir, isScraplingCached, saveScraplingCache,
+        scraplingSlugFromUrl, loadScraplingCache, buildScraplingExtractionArgs,
+        runScraplingPreflight,
+      },
+      pool: {
+        findAvailablePort, startObscuraServe, concurrentFetch,
+        stopObscuraServe, runObscuraPreflight,
+      },
+      traversal: { pagePatternMatches, collectLinksFromHtml, nextPaginationUrl },
+      convert: { convertTraversalToMarkdown, collectMarkdownArtifacts, urlToStructuredPath },
     };
 async function runCrawl(repoRoot, repoRef, resolutionMode, targetUrl, opts = {}) {
   const {

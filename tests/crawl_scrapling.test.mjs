@@ -41,55 +41,73 @@ function baseCtx(overrides = {}) {
   };
 }
 
-/** Build a stub `api`. Pure helpers use lightweight real-ish implementations;
- *  side-effecting helpers are captured/stubbed via the given overrides. */
-function stubApi(overrides = {}) {
+/** Build a stub `api` as named concern objects (matches the crawlApi bundle
+ *  shape in cli.mjs). Pure helpers use lightweight real-ish implementations;
+ *  side-effecting helpers are stubbed. `overrides` is a flat map of
+ *  {group: {helper: fn}} for per-test stubbing. */
+function stubApi(groupOverrides = {}) {
   const written = {};
-  return {
+  const api = {
     fs: {
       readFileSync: (p) => written[p] ?? "",
       readdirSync: () => [],
       existsSync: (p) => p in written,
       unlinkSync: () => {},
     },
-    // result/file builders — real-ish passthroughs (pure)
-    makeResult: (command, target, repoRef, summary, artifacts, nextAction, result = "success", extra = {}) =>
-      ({ result, command, target, summary, artifacts, next_action: nextAction, ...extra }),
-    absoluteArtifact: (filePath, lifecycle, description) => ({ path: filePath, lifecycle, description }),
-    writeTextFile: (p, content) => { written[p] = content; },
     log: { info() {}, warn() {} },
-    generateHandoff: (ctx) => ({ path: "/run/handoff.md", summary: "stub-handoff" }),
-    buildCrawlReport: ({ events, result }) => `# report\nresult: ${result}\n${(events || []).join("\n")}`,
-    // traversal helpers — stubbed per-test
-    pagePatternMatches: () => true,
-    selectFetcher: () => "scrapling-get",
-    runScraplingPreflight: () => ({ ok: true, status: "available" }),
-    runEngineFetch: () => ({ ok: true, stderr: "" }),
-    collectLinksFromHtml: () => [],
-    convertTraversalToMarkdown: () => ({ successful: [], failed: [], mergedPath: null }),
-    collectMarkdownArtifacts: () => [],
-    buildScraplingExtractionArgs: () => [],
-    // unused in tested paths but referenced by signature breadth
-    runObscuraPreflight: () => ({ ok: false }),
-    findAvailablePort: async () => 0,
-    startObscuraServe: async () => ({}),
-    concurrentFetch: async () => [],
-    stopObscuraServe: () => {},
-    urlToStructuredPath: (u) => "/run/out.md",
-    nextPaginationUrl: () => null,
-    scraplingCacheDir: () => "/cache",
-    ensureDir: () => {},
-    isScraplingCached: () => false,
-    saveScraplingCache: () => {},
-    scraplingSlugFromUrl: (u) => "slug",
-    loadScraplingCache: () => null,
-    ...overrides,
+    report: {
+      // result/file builders — real-ish passthroughs (pure)
+      makeResult: (command, target, repoRef, summary, artifacts, nextAction, result = "success", extra = {}) =>
+        ({ result, command, target, summary, artifacts, next_action: nextAction, ...extra }),
+      absoluteArtifact: (filePath, lifecycle, description) => ({ path: filePath, lifecycle, description }),
+      writeTextFile: (p, content) => { written[p] = content; },
+      buildCrawlReport: ({ events, result }) => `# report\nresult: ${result}\n${(events || []).join("\n")}`,
+    },
+    handoff: {
+      generateHandoff: () => ({ path: "/run/handoff.md", summary: "stub-handoff" }),
+    },
+    engine: {
+      selectFetcher: () => "scrapling-get",
+      runEngineFetch: () => ({ ok: true, stderr: "" }),
+    },
+    cache: {
+      runScraplingPreflight: () => ({ ok: true, status: "available" }),
+      scraplingCacheDir: () => "/cache",
+      ensureDir: () => {},
+      isScraplingCached: () => false,
+      saveScraplingCache: () => {},
+      scraplingSlugFromUrl: () => "slug",
+      loadScraplingCache: () => null,
+      buildScraplingExtractionArgs: () => [],
+    },
+    pool: {
+      runObscuraPreflight: () => ({ ok: false }),
+      findAvailablePort: async () => 0,
+      startObscuraServe: async () => ({}),
+      concurrentFetch: async () => [],
+      stopObscuraServe: () => {},
+    },
+    traversal: {
+      pagePatternMatches: () => true,
+      collectLinksFromHtml: () => [],
+      nextPaginationUrl: () => null,
+    },
+    convert: {
+      convertTraversalToMarkdown: () => ({ successful: [], failed: [], mergedPath: null }),
+      collectMarkdownArtifacts: () => [],
+      urlToStructuredPath: () => "/run/out.md",
+    },
   };
+  // Apply per-group overrides: groupOverrides = { cache: { runScraplingPreflight: fn }, ... }
+  for (const [group, helperOverrides] of Object.entries(groupOverrides)) {
+    if (api[group]) Object.assign(api[group], helperOverrides);
+  }
+  return api;
 }
 
 test("preflight failure returns failure result and emits a handoff report path", async () => {
   const api = stubApi({
-    runScraplingPreflight: () => ({ ok: false, status: "unavailable", stdout: "", stderr: "boom" }),
+    cache: { runScraplingPreflight: () => ({ ok: false, status: "unavailable", stdout: "", stderr: "boom" }) },
   });
   const ctx = baseCtx();
   const result = await runCrawlScrapling(ctx, { markdown: false }, api);
@@ -122,8 +140,10 @@ test("markdown:true (default) path collects markdown artifacts and does not thro
   // markdown-true-branch-produces-artifacts-not-reference-error.
   const mdArtifact = { path: "/run/crawl-output.md", lifecycle: "disposable", description: "merged crawl output" };
   const api = stubApi({
-    collectMarkdownArtifacts: () => [mdArtifact],
-    convertTraversalToMarkdown: () => ({ successful: [{ url: "https://example.com/home" }], failed: [], mergedPath: "/run/crawl-output.md" }),
+    convert: {
+      collectMarkdownArtifacts: () => [mdArtifact],
+      convertTraversalToMarkdown: () => ({ successful: [{ url: "https://example.com/home" }], failed: [], mergedPath: "/run/crawl-output.md" }),
+    },
   });
   const ctx = baseCtx();
   const result = await runCrawlScrapling(ctx, { markdown: true }, api);
@@ -144,25 +164,15 @@ test("no circular import: module does not import from cli.mjs", async () => {
     "crawl_scrapling.mjs must not import from cli.mjs (would create a cycle)");
 });
 
-/** Static call-site discipline check.
+
+/** Read the crawlApi bundle from cli.mjs as a {group: [helper]} map.
  *
- * Spec: crawl-scrapling-orchestrator-is-a-seam-module,
- *       scenario all-bundled-helpers-called-via-api-prefix.
- *
- * crawl_scrapling.mjs is an independent ESM module whose helpers arrive via
- * an injected `api` bundle. A bare-identifier call to a bundled helper
- * (e.g. `collectMarkdownArtifacts(x)` instead of `api.collectMarkdownArtifacts(x)`)
- * resolves to nothing in module scope and throws ReferenceError at runtime.
- * This test reads the bundle definition from cli.mjs, then greps the seam
- * module for any bundled key used bare and fails if one exists.
- *
- * ponytail: ceiling — string literals are not stripped; no bundled key
- * currently appears in a string literal in this module. Refine if one ever does.
+ * The bundle is organized as named concern objects; this parses each group
+ * and its member helpers. Used by the discipline tests below.
  */
-async function readCrawlApiKeys() {
+async function readCrawlApiGroups() {
   const fs = await import("node:fs");
   const cliSrc = fs.readFileSync(new URL("../scripts/chrome-agent-cli.mjs", import.meta.url), "utf8");
-  // Locate the crawlApi bundle block via brace matching.
   const start = cliSrc.indexOf("crawlApi = {");
   if (start === -1) throw new Error("crawlApi bundle not found in cli.mjs");
   let i = cliSrc.indexOf("{", start);
@@ -174,49 +184,81 @@ async function readCrawlApiKeys() {
     else if (c === "}") { depth--; if (depth === 0) break; }
   }
   const block = cliSrc.slice(blockStart + 1, i);
-  // Keys: shorthand `foo,` → foo; keyed `foo: bar` → foo.
-  const keys = [];
-  for (const raw of block.split(",")) {
-    const entry = raw.trim();
-    if (!entry) continue;
-    const m = entry.match(/^([A-Za-z_$][\w$]*)/);
-    if (m) keys.push(m[1]);
+  // Parse groups: `groupName: { a, b, c }`.
+  const groups = {};
+  const groupRe = /([A-Za-z_$][\w$]*)\s*:\s*\{([^}]*)\}/g;
+  let gm;
+  while ((gm = groupRe.exec(block)) !== null) {
+    const groupName = gm[1];
+    groups[groupName] = [];
+    for (const member of gm[2].split(",")) {
+      const m = member.trim().match(/^([A-Za-z_$][\w$]*)/);
+      if (m) groups[groupName].push(m[1]);
+    }
   }
-  return keys;
+  return groups;
 }
 
-test("all bundled helpers are called via the api. prefix (no bare-identifier calls)", async () => {
+/** Flatten groups into a helper→group map (helpers are unique across groups). */
+async function readCrawlApiHelperToGroup() {
+  const groups = await readCrawlApiGroups();
+  const map = {};
+  for (const [g, helpers] of Object.entries(groups)) {
+    for (const h of helpers) map[h] = g;
+  }
+  return map;
+}
+
+test("all bundled helpers are called via the api.<group>. prefix (no bare-identifier calls)", async () => {
+  // C4 invariant, preserved: a bare-identifier call to a bundled helper
+  // resolves to nothing in module scope → ReferenceError at runtime.
   const fs = await import("node:fs");
-  const bundledKeys = await readCrawlApiKeys();
+  const helperToGroup = await readCrawlApiHelperToGroup();
   const modSrc = fs.readFileSync(new URL("../scripts/lib/crawl_scrapling.mjs", import.meta.url), "utf8");
   const lines = modSrc.split("\n");
 
-  const violations = [];
+  const bareViolations = [];
   lines.forEach((line, idx) => {
     const stripped = line.trim();
-    // skip comment lines (//, *, block-comment continuation)
     if (stripped.startsWith("//") || stripped.startsWith("*")) return;
-    for (const key of bundledKeys) {
-      const re = new RegExp("(?<![\\w$])" + key.replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&") + "(?![\\w$])", "g");
+    for (const key of Object.keys(helperToGroup)) {
+      const re = new RegExp("(?<![\\w$.])" + key.replace(/[.*+?^${}()|[\]\\\\]/g, "\\\\$&") + "(?![\\w$])", "g");
       let m;
       while ((m = re.exec(line)) !== null) {
-        // Determine whether the key has a namespace base (api., console., path., …)
-        // or is a bare identifier. The bug class is a bare-identifier call:
-        // resolves to nothing in module scope → ReferenceError.
-        let prefix = line.slice(0, m.index).replace(/\s+$/, "");
-        // strip a trailing spread operator — `...key` is bare, `...api.key` is not
-        if (prefix.endsWith("...")) prefix = prefix.slice(0, -3).replace(/\s+$/, "");
-        // qualified: any dotted base (api.key, console.log, path.join, …)
-        if (prefix.endsWith(".")) continue;
-        // local declaration of this name (function/const/let/var/import) — not a call
+        const before = line.slice(0, m.index).replace(/\s+$/, "").replace(/\.{3}$/, "");
+        if (before.endsWith(".")) continue; // qualified (api.x, console.x, …)
         if (new RegExp("\\b(function|const|let|var)\\s+" + key + "\\b|\\bimport\\b").test(line)) continue;
-        violations.push({ key, line: idx + 1, text: stripped });
+        bareViolations.push({ key, line: idx + 1, text: stripped });
       }
     }
   });
 
-  assert.deepEqual(violations, [],
-    "crawl_scrapling.mjs must call every bundled helper via `api.` prefix. " +
-    "Bare calls throw ReferenceError at runtime (see spec all-bundled-helpers-called-via-api-prefix). " +
-    "Violations:\n" + violations.map((v) => `  L${v.line}: ${v.key} — ${v.text}`).join("\n"));
+  assert.deepEqual(bareViolations, [],
+    "crawl_scrapling.mjs must call every bundled helper via `api.<group>.` prefix. " +
+    "Bare calls throw ReferenceError at runtime (C4 invariant). Violations:\n" +
+    bareViolations.map((v) => `  L${v.line}: ${v.key} — ${v.text}`).join("\n"));
+});
+
+test("seam surface uses named concern groups (no flat api.<helper> calls to groupable helpers)", async () => {
+  // Spec: crawl-scrapling-orchestrator-is-a-seam-module,
+  //       scenario seam-surface-uses-named-concern-groups.
+  // A flat `api.<helper>` call where <helper> belongs to a declared group is
+  // FORBIDDEN — it must be `api.<group>.<helper>`.
+  const fs = await import("node:fs");
+  const helperToGroup = await readCrawlApiHelperToGroup();
+  const modSrc = fs.readFileSync(new URL("../scripts/lib/crawl_scrapling.mjs", import.meta.url), "utf8");
+
+  const flatViolations = [];
+  for (const [helper, group] of Object.entries(helperToGroup)) {
+    const re = new RegExp("\\bapi\\." + helper.replace(/[.*+?^${}()|[\]\\\\]/g, "\\\\$&") + "(?![A-Za-z0-9_])", "g");
+    let m;
+    while ((m = re.exec(modSrc)) !== null) {
+      flatViolations.push({ helper, shouldUse: `api.${group}.${helper}` });
+    }
+  }
+
+  assert.deepEqual(flatViolations, [],
+    "crawl_scrapling.mjs must use api.<group>.<helper>, not flat api.<helper>. " +
+    "Spec: seam-surface-uses-named-concern-groups. Violations:\n" +
+    flatViolations.map((v) => `  ${v.helper} should be ${v.shouldUse}`).join("\n"));
 });
