@@ -52,9 +52,9 @@
 
 ## 4. 验证与回写收敛
 
-- [ ] 4.1 派 subagent 跑 `/opsx-verify`：独立核对 spec-to-implementation 一致性、纪律测试有效性、byte-identical 不变性（历史教训：4 次验证均抓到真实问题，不跳过）
-- [ ] 4.2 C10 同步（归档前执行）：
+- [x] 4.1 派 subagent 跑 `/opsx-verify`：独立核对 spec-to-implementation 一致性、纪律测试有效性、byte-identical 不变性（历史教训：4 次验证均抓到真实问题，不跳过）
+- [x] 4.2 C10 同步（归档前执行）：
   - `cp scripts/chrome-agent-cli.mjs ~/.agents/scripts/chrome-agent.mjs`（或按 `docs/playbooks/chrome-agent-global-install.md` Case 6 的正确路径）
   - 刷新 `~/.agents/scripts/.chrome-agent-installed-hash` 至当前 `git rev-parse HEAD`
   - `node scripts/chrome-agent-cli.mjs doctor` 复核 freshness
-- [ ] 4.3 `openspec archive extract-scrape-orchestrator`（若遇 spec 结构拒绝，按 handoff 已知坑修复：改 `## ADDED Requirements` → 合并入库；或 `--skip-specs`）
+- [x] 4.3 `openspec archive extract-scrape-orchestrator`（若遇 spec 结构拒绝，按 handoff 已知坑修复：改 `## ADDED Requirements` → 合并入库；或 `--skip-specs`）
