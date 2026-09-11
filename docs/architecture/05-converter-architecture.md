@@ -167,11 +167,21 @@ Both modes support named handlers for specialized field processing:
 
 Handler lookup accepts label text, `data-source(label)` aliases and bare `data-source` keys. BS4 and selectolax rendering preserve supplied inline-renderer and source-directory context; pool deduplication includes the link target so equal labels do not erase distinct destinations.
 
+### Table Cell Escaping（两路径一致）
+
+Infobox 值经常多段（多段能力描述、多条价格），Markdown 表格单元格不能含裸换行/裸竖线。两条渲染路径在写入表格行前统一执行 `\n → <br>`、`| → \|`，保证每个数据行是单行。回归守护：`tests/test_convert_equivalence.py::TestOutputQualityFollowups`（kernel + pipeline 双路径断言）。
+
 ## 5. Shared Orchestration Entry Point
 
 `convert_page_full(html, extraction_rules, *, converter=None, source_dir="")` owns five steps: extract enabled infobox → preprocess HTML → convert body → prepend nonempty infobox → apply shared post-ops once. Extraction/removal share the default `aside.portable-infobox` selector. Disabled extraction leaves infobox content to ordinary body conversion without a duplicate table.
 
 CV3 delegates directly. CV4 injects its converter with link-index/redirect state and source directory; frontmatter, title and card stats remain pipeline wrapping. The two-argument form remains supported. Conflicting extraction rules are rejected. Infobox URL context uses configured image base URL, then converter domain, then the empty generic domain; this resolution retains the caller's link index.
+
+### CV4 页面包装约定（title / hero 图）
+
+- **H1 判定**：仅首个非空行以 `# `（ATX H1）开头才视为"已有标题"；以小节标题（`## Infobox`、`## Overview`）开头的正文仍前置 `# {title}`。转换器把 `<h1>` 降级为 `##`（MediaWiki 页题惯例），因此 HTML 路径正常产出恰好一个 H1。
+- **hero 图 URL**：从页面渲染标记解析（`_resolve_hero_image_url`）——优先 infobox 容器（`extraction.infobox.selector`）内首个图片，其次正文首个图片；协议相对 `//` 归一为 `https:`；跳过 `data:` 占位；无可用图则省略注入。不从 wiki 域名构造文件路径（`/images/{name}` 与 `/Special:Redirect/file/{name}` 在 Cloudflare 保护的 Fandom 站返回 challenge 页）。wikitext 路径 raw 无 `html` 键只有 `rendered_html`，解析以 `html or rendered_html` 为输入，动态页 hero 不丢。
+- **`CONVERTER_CONTRACT_REVISION` 纪律**：转换语义发生配置外变化必须 bump（fingerprint 不含 converter 源码，不 bump 会静默复用旧 markdown）。跳号需注明理由（如 2→4：本地缓存已有中间版本指纹需一并失效）。
 
 The explore sample converter receives post-ops from the shared entry; it does not apply a second copy. Equivalence is tested by `tests/test_convert_equivalence.py` using self-contained infobox, body, link and post-op fixtures.
 

@@ -159,6 +159,16 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
 | **输出** | Stats dict |
 | **副作用** | 写入输出目录文件 |
 
+### L6 验证 — 图片可用性校验的 URL→`File:` 解析
+
+`validate_images`（`scripts/pipeline/strategies/__init__.py`）从输出 Markdown 的图片 URL 推导待核验的 `File:` 名，三级解析（`_image_file_title`）：
+
+1. 含 `Special:Redirect/file/`：取前缀后、`?` 前部分；
+2. 含 `/revision/` 的 Fandom CDN URL（`static.wikia.nocookie.net/.../<name>.png/revision/latest/scale-to-width-down/111?cb=...`）：取 `/revision/` 前路径末段（真实文件名，而非尺寸参数）；
+3. 其余 URL：取路径末段。
+
+修复前 CDN 变换后缀被当作文件名（`111?cb=...`），单站产生 ~17k 条 `api_missing` 误报。回归守护：`tests/test_validate_images_filename.py`。
+
 ## 缓存机制
 
 缓存由 `scripts/pipeline/pipeline/cache.py` 管理，实现 Fetch 与 Convert 解耦。新文件为 `.cache/<platform>/<domain>/v2-<sha256(exact-title)>.json`，包含原始 `title`、schema version、acquisition 标记、来源及相应载荷。枚举读取 metadata，不从文件名反解标题。唯一临时文件加原子替换保证完整写入；安全旧文件候选仅在 title 精确相等时可读，读取不会迁移或重命名旧文件。详见 [ADR 0014](../adr/0014-mediawiki-cache-identity.md)。CDP 调用方仍决定自己的 title 身份，但通过同一存储层保存。

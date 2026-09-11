@@ -29,17 +29,17 @@
 
 ### 提交拆分（design 决策 4）
 
-- [ ] 2.9 Commit ①：`infobox.py` + `convert.py` + `strategies/__init__.py` + 两处测试文件（代码修复）。
-- [ ] 2.10 Commit ②：`sites/strategies/growagarden.fandom.com/*`（含 freeze-report.json）。
-- [ ] 2.11 Commit ③：`sites/strategies/mobalytics.gg/*` + registry.json 的 mobalytics hunk。
+- [x] 2.9 Commit ①：`infobox.py` + `convert.py` + `strategies/__init__.py` + 两处测试文件（代码修复）。
+- [x] 2.10 Commit ②：`sites/strategies/growagarden.fandom.com/*`（含 freeze-report.json）。
+- [x] 2.11 Commit ③：`sites/strategies/mobalytics.gg/*` + registry.json 的 mobalytics hunk。
 
 ## 3. 收敛与验证准备
 
-- [ ] 3.1 全量回归证据：`unit`（170+ 新增）、`site-samples` 全域、`chrome-agent doctor`；C10 免除声明（无 `.mjs` 改动）。
-- [ ] 3.2 L6 行为变化记录：Fandom 域 unavailable 条目减少属预期，写入 verification。
+- [x] 3.1 全量回归证据：`unit`（170+ 新增）、`site-samples` 全域、`chrome-agent doctor`；C10 免除声明（无 `.mjs` 改动）。
+- [x] 3.2 L6 行为变化记录：Fandom 域 unavailable 条目减少属预期，写入 verification。
 
 ## 4. 验证与回写收敛
 
-- [ ] 4.1 基于真实实现结果生成或更新 verification.md（覆盖 spec-to-implementation 与 task-to-evidence）。
-- [ ] 4.2 基于 verification.md 结论生成或更新 writeback.md（目标、字段映射、前置条件）。
-- [ ] 4.3 执行 writeback.md 中定义的回写目标，并记录可审计证据（链接、时间、执行人、结果）。
+- [x] 4.1 基于真实实现结果生成或更新 verification.md（覆盖 spec-to-implementation 与 task-to-evidence）。
+- [x] 4.2 基于 verification.md 结论生成或更新 writeback.md（目标、字段映射、前置条件）。
+- [x] 4.3 执行 writeback.md 中定义的回写目标，并记录可审计证据（链接、时间、执行人、结果）。
