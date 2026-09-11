@@ -143,7 +143,7 @@ api:
     - Celebrity Co-Host
   content_profile:
     discovery_strategy: "allpages"
-    content_acquisition: "hybrid_wikitext_plus_rendered"
+    content_acquisition: "html_rendered"
     link_resolver: "short_name_with_cross_namespace"
     template_processor: "fandom_infobox"
     list_page_assembler: "hybrid_frontmatter_and_rendered"
@@ -155,11 +155,8 @@ api:
       Eggs: "Eggs"
       Cosmetics: "Cosmetics"
       NPCs: "NPCs"
-      Events: "Events"
       Update Log: "Update_Log"
       Mechanics: "Game_Features"
-      Seed Packs: "Packs"
-      Chests: "Chests"
       Season Pass: "Season_Pass"
     page_categories:
       Crops: "Crops"
@@ -169,14 +166,14 @@ api:
       Cosmetics: "Cosmetics"
       Crates: "Cosmetics"
       NPC: "NPCs"
-      Events: "Events"
       Update Log: "Update_Log"
       Currencies: "Currencies"
       Game Features: "Game_Features"
       Shops: "Shops"
-      Packs: "Packs"
+      Events: "Events"
       Seed Packs: "Packs"
       Chests: "Chests"
+      Packs: "Packs"
       Season Pass: "Season_Pass"
       Containers: "Cosmetics"
     category_filters:
@@ -223,7 +220,8 @@ extraction:
     content: "#mw-content-text"
     nav: ".mw-parser-output"
   infobox:
-    selector: ".portable-infobox, .infobox, table.item-table-header"
+    enabled: true
+    selector: ".portable-infobox, .infobox > table, table.item-table-header"
   cleanup:
     - strip_fandom_infobox_tables
     - convert_ambox_to_text
@@ -236,10 +234,19 @@ extraction:
     - fix_separators
     - normalize_internal
     - strip_empty_parens
+  cleanup_selectors:
+    - ".mw-editsection"
+    - ".toc"
+    - "#toc"
+    - ".hatnote"
+    - ".wds-tab__content:has(table) ~ .wds-tab__content:has(table)"
   lazyload:
     enabled: true
-    placeholder_pattern: "data:image/gif;base64"
+    placeholder_pattern: "data:image/"
     real_src_attr: "data-src"
+  image_filtering:
+    skip_patterns:
+      - "^data:image/"
   image_handling:
     base_url: "https://growagarden.fandom.com"
   text_normalization:
@@ -345,13 +352,19 @@ because it overlaps heavily with real entity pages.
 
 ## Acquisition
 
-`hybrid_wikitext_plus_rendered`: `prop=wikitext` is the primary source (templates are
-consistent, so tier/drop-rate/price/passive-ability extract structurally). Rendered HTML
-is fetched only for pages containing dynamic parser functions (`{{#invoke}}`, `#dpl`,
-`#lst`), which is where list pages and the `Mechanics` tables live.
+`html_rendered`: rendered HTML via `action=parse&prop=text` is the primary source.
 
-This differs from the sibling `neonabyss.fandom.com` strategy, which used
-`html_rendered` and produced image-heavy output. Wikitext-primary avoids that.
+The wikitext path was evaluated first and rejected on measured evidence. `{{Crop}}`,
+`{{Pets}}` and friends are plain templates with no dynamic parser functions, so
+`hybrid_wikitext_plus_rendered` routed entity pages down the wikitext converter — which
+never runs `extract_infobox`. The result across the corpus: **0 pages with a structured
+`## Infobox` table and 431 pages carrying raw template residue** such as `- 375` /
+`}}` where the seed-price fields should be. The rendered-HTML path runs
+`extract_infobox`, turning the same markup into a key/value table (Tier, Seed Chance,
+Seed Price, Price-Floor/Average Value and Weight, growth times) and then removes the
+infobox container so the fields do not duplicate as body sections. Since that parameter
+table is the primary design-analysis payload, the HTML path is the correct trade even
+though it costs one rendered-HTML request per page.
 
 ## Images
 
@@ -384,6 +397,19 @@ rather than adding pipeline config.
   `Currencies`, `Events` carry no categories of their own. Those bound for a directory
   are pinned via `list_pages`; `Crates` is the one that still falls through to `Misc`
   because `Cosmetics` already holds that directory's index slot.
+- **Tabber list-page row duplication**: the summary pages (`Crops`, `Pets`, `Gears`,
+  `Eggs`, `Cosmetics`, `NPCs`) render their enumerations as Fandom tabbers
+  (`div.wds-tabber`) whose panels are filtered views of one list with identical table
+  headers. Without treatment, `Crops` emitted 2,509 rows for 560 entities. The
+  `cleanup_selectors` entry `.wds-tab__content:has(table) ~ .wds-tab__content:has(table)`
+  keeps the first table-bearing panel of each tabber and drops the redundant ones, which
+  is lossless: every entity row already appears in the first panel, and the discarded
+  grouping (rarity / harvest type / shop / event) is recoverable from each entity page's
+  own categories and `Obtainment` section. The `:has(table)` scope is essential — entity
+  pages such as `Apple` use a non-table image tabber (Produce / Crop / Seed) that must be
+  preserved. Result: `Crops` 2,509 → 954 rows. The pipeline's existing
+  `split_card_list_pages` cannot be reused here because it is hardcoded to Slay the Spire
+  2 card markup (`#cardsContainer`, `.card-box`).
 - **Rarity and type categories are layered, not exclusive**: a single crop carries
   `Crops` plus up to a dozen subtype/rarity categories. Classification uses the first
   matching key, which is always the family category.

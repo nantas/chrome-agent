@@ -1,0 +1,22 @@
+{
+  "domain": "growagarden.fandom.com",
+  "protection_level": "high",
+  "page_types": [
+    "static_article"
+  ],
+  "entry_points": [
+    "wiki_main_page",
+    "summary_crops",
+    "summary_pets",
+    "summary_gears",
+    "summary_eggs",
+    "summary_mechanics"
+  ],
+  "anti_crawl_refs": [
+    "default",
+    "rate-limit-api"
+  ],
+  "strategy_path": "/Users/nantasmac/projects/agentic/chrome-agent/sites/strategies/growagarden.fandom.com/strategy.md",
+  "registry_path": "/Users/nantasmac/projects/agentic/chrome-agent/sites/strategies/registry.json",
+  "status": "frozen"
+}
