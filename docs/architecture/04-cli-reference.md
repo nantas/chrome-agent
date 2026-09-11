@@ -199,7 +199,7 @@ chrome-agent bootstrap-strategy <url> --from <domain> [--profile <name>]
 | `--from <domain>` | string | 必填 | 参考策略域名 |
 | `--profile <name>` | string | — | 清理配置覆盖 |
 
-**行为**：从已有策略文件复制并适配新站点。自动更新 `registry.json`。
+**行为**：继承经过校验的平台机制，生成不进入生产 registry 的 draft；填写目标字段和 `lifecycle.review_evidence` 后 freeze。
 
 **实现**：`runBootstrapStrategy()`（`chrome-agent-cli.mjs:2967`）
 
@@ -273,99 +273,13 @@ python3 -m scripts.pipeline <subcommand> [args]
 | `fix-links` | 修复输出目录中的链接 |
 | `reconvert` | 重新转换单个文件 |
 
-### 管线阶段流程图
+### 当前 MediaWiki 阶段与确认门
 
-```
-python3 -m scripts.pipeline pipeline --strategy <path> --output <dir> <url>
-    │
-    │  --discovery auto|allpages|homepage   --phase all|discover|fetch|convert|assemble
-    │
-    │
-    ├─── 参数解析 ─────────────────────────────────────────────────────────────────
-    │    │
-    │    ├── --from-manifest ?
-    │    │       ├── Yes → 跳过发现，直接进入 fetch/convert/assemble
-    │    │       └── No  → 执行发现阶段
-    │    │
-    │    └── --discovery + api.homepage 配置
-    │            │
-    │            ├── "auto" + api.homepage set → homepage discovery
-    │            ├── "auto" + no api.homepage   → allpages discovery
-    │            ├── "homepage"                  → homepage discovery (forced)
-    │            └── "allpages"                   → allpages discovery (forced)
-    │
-    ├─── 五阶段执行 ──────────────────────────────────────────────────────────────
-    │    │
-    │    ┌───────────────────┐
-    │    │ 1. Discovery       │  --phase discover
-    │    │    homepage or     │  (default: auto)
-    │    │    allpages        │
-    │    │    → manifest.json │
-    │    └────────┬──────────┘
-    │             │
-    │    ┌────────▼──────────┐
-    │    │ 2. Fetch           │  --phase fetch
-    │    │    API 内容获取     │  (concurrency: rate_limit)
-    │    │    → .cache/*.json │
-    │    └────────┬──────────┘
-    │             │
-    │    ┌────────▼──────────┐
-    │    │ 3. Convert         │  --phase convert
-    │    │    HTML/Wikitext→MD│  (local only, no network)
-    │    │    → results.json  │
-    │    └────────┬──────────┘
-    │             │
-    │    ┌────────▼──────────┐
-    │    │ 4. Assembly        │  --phase assemble
-    │    │    目录+索引+link-fix│ + L6 验证 (--validate)
-    │    │    → <domain>/*.md │
-    │    └────────┬──────────┘
-    │             │
-    │             ▼
-    │        输出目录完成
-    │
-    └────────────────────────────────────────────────────────────────────────
-```
-<!-- Source: scripts/pipeline/pipeline/orchestrator.py:76 run_pipeline() -->
+`crawl --discovery-only`（兼容 `--phase discover`）调用 explore 页面枚举入口，复用已冻结策略的 allpages/homepage 内核，生成 manifest/summary 后停止；不会重跑站点测绘。普通 crawl 缺清单时先发现并等待确认，完整成功且显式 `--yes` 才继续，partial 必须另行确认。discovery-only 不受 --yes 改为抽取。
 
-### pipeline 子命令参数
+确认后使用 `crawl <url> --from-manifest <path>`。pipeline 入口保持 `python3 -m scripts.pipeline`，只接受 all/fetch/convert/assemble；直接 --phase discover 将报错。清单在 API probe 前验证，不完整或语义冲突不会降级为 Scrapling 首页抓取。
 
-通过 `_add_pipeline_args()` 定义（`scripts/pipeline/cli.py:165`）：
-
-| 参数 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| `url` | positional | 必填 | 目标 Wiki URL |
-| `--strategy` | string | 必填 | 策略文件路径 |
-| `--output` | string | 必填 | 输出目录 |
-| `--concurrency` | int | None | 并发请求数（覆盖策略配置） |
-| `--batch-delay-ms` | int | None | 批次间延迟 |
-| `--max-retries` | int | None | 最大重试次数 |
-| `--backoff-multiplier` | float | None | 退避乘数 |
-| `--jitter` | flag | None | 启用抖动 |
-| `--phase` | string[] | `all` | 执行阶段：`all`, `discover`, `fetch`, `convert`, `assemble` |
-| `--re-fetch` | flag | false | 强制重新获取（忽略缓存） |
-| `--discovery` | string | `auto` | 发现策略：`auto`, `allpages`, `homepage` |
-| `--no-api-probe` | flag | false | 跳过 API 端点探测 |
-| `--resume` | flag | true | 启用断点续传 |
-| `--no-resume` | flag | — | 禁用断点续传 |
-| `--resume-flush-interval` | int | 100 | 状态刷新间隔 |
-| `--no-auto-fix-links` | flag | false | 跳过自动链接修复 |
-| `--validate` | flag | false | 运行 L6 验证 |
-| `--exclude-category` | string[] | — | 排除分类（可重复） |
-| `--from-manifest` | string | — | 已有 manifest 路径 |
-| `--max-pages` | int | None | 最大提取页数 |
-
-### --phase 阶段组合
-
-| 值 | 行为 |
-|------|------|
-| `all`（默认） | 执行完整管线 |
-| `discover` | 仅发现阶段，输出 manifest |
-| `fetch` | 仅获取阶段（依赖已有 manifest 或 `--from-manifest`） |
-| `convert` | 仅转换阶段（需要 `--from-manifest`） |
-| `assemble` | 仅装配阶段（从 `extraction_results.json` 加载） |
-
-多阶段可组合：`--phase fetch convert assemble`
+新清单 schema_version=2；旧无版本清单仅无歧义内存兼容，不改页集合、路径或源文件。详情见 [discover-kernel](../../openspec/specs/discover-kernel/spec.md) 与 [CLI规范](../../openspec/specs/cli/cli-workflows.md)。
 
 ## JSON 输出格式
 

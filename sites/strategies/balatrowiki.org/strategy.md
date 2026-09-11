@@ -1,4 +1,7 @@
 ---
+samples:
+  - page: Jokers
+    label: API regression sample (2026-09-10; existing cache for Bloody Gust)
 domain: balatrowiki.org
 description: Weird Gloop hosted MediaWiki for Balatro game wiki
 protection_level: low
@@ -86,12 +89,10 @@ extraction:
     - strip_footer
     - strip_edit_links
     - strip_skip_links
-    - strip_dpl_wikitext
     - strip_empty_parens
     - convert_nested_images
     - normalize_internal
     - strip_category_links
-    - normalize_infobox
     - fix_separators
 ---
 

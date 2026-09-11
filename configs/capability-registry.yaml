@@ -88,3 +88,27 @@ fetch:
       implemented_in: configs/engine-registry.json
     - name: cdp-api-bridge
       implemented_in: scripts/pipeline/pipeline/phases/fetch_cdp_api.py
+
+# Existing discover capability: kernels plus explicitly identified thin adapters.
+discover:
+  kernels:
+    - name: allpages_discovery
+      implemented_in: scripts/explore/discovery_allpages.py
+    - name: homepage_discovery
+      implemented_in: scripts/explore/discovery_homepage.py
+  adapters:
+    - name: page_discovery
+      implemented_in: scripts/explore/page_discovery.py
+      relationship: mirror
+    - name: mediawiki_crawl_workflow
+      implemented_in: scripts/lib/mediawiki-crawl.mjs
+      relationship: infrastructure
+    - name: manifest_contract
+      implemented_in: scripts/lib/manifest_contract.py
+      relationship: infrastructure
+    - name: strategy_lifecycle
+      implemented_in: scripts/explore/strategy_lifecycle.py
+      relationship: infrastructure
+    - name: extraction_schema
+      implemented_in: scripts/lib/extraction/schema.py
+      relationship: infrastructure

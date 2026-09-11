@@ -55,7 +55,7 @@ class ExactTitleLinkResolver:
         page = pages_by_title.get(target)
         if page:
             target_dir = page["target_directory"]
-            target_file = page["target_filename"]
+            target_file = "index.md" if page.get("is_list_page") else page["target_filename"]
             if target_dir != source_dir and target_dir != "Misc":
                 if source_dir == "Misc" or "/" not in source_dir:
                     rel_path = f"{target_dir}/{target_file}"
@@ -158,7 +158,7 @@ class ShortNameLinkResolver:
 
     def _make_link(self, page: dict, display: str, source_dir: str) -> str:
         target_dir = page["target_directory"]
-        target_file = page["target_filename"]
+        target_file = "index.md" if page.get("is_list_page") else page["target_filename"]
         if target_dir == source_dir:
             return f"[{display}]({target_file})"
         source_path = source_dir.replace("/", os.sep) if source_dir else "."

@@ -275,6 +275,30 @@
             "file": "maker.taptap.cn/strategy.md",
             "backend": "cdp-api-bridge",
             "notes": "Scrapling returns empty body (SPA). Use CDP Runtime.evaluate with in-page fetch() + localStorage Bearer token. Pipeline support via fetch_cdp_api.py. See docs/playbooks/api-backed-spa-cdp-bridge.md."
+        },
+        {
+            "domain": "growagarden.fandom.com",
+            "description": "Fandom-hosted MediaWiki 1.43.9 wiki for Grow a Garden (Roblox farming/idle simulator). Cloudflare Managed Challenge on HTML pages; MediaWiki API endpoints are unaffected by the challenge but reject non-browser User-Agents. Category-driven content model with structured entity pages (Crops/Pets/Gears/Eggs) using infobox templates, plus a Game Features system-documentation family.",
+            "protection_level": "high",
+            "page_types": [
+                "static_article"
+            ],
+            "pagination": [
+                "none"
+            ],
+            "entry_points": [
+                "wiki_main_page",
+                "summary_crops",
+                "summary_pets",
+                "summary_gears",
+                "summary_eggs",
+                "summary_mechanics"
+            ],
+            "anti_crawl_refs": [
+                "default",
+                "rate-limit-api"
+            ],
+            "file": "growagarden.fandom.com/strategy.md"
         }
     ]
 }

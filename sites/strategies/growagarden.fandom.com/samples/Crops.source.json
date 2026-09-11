@@ -1,0 +1,9 @@
+{
+  "page": "Crops",
+  "source_url": "https://growagarden.fandom.com/api.php?action=parse&page=Crops&prop=text&format=json",
+  "source_kind": "single API sample request",
+  "sample_date": "2026-09-10",
+  "selection": "Complete action=parse text HTML, losslessly gzip compressed; no DOM pruning",
+  "html_sha256": "73a8ac2ff5fc23e63e65d889a38efe3c531ec439f786c3b68013bb13b970b94e",
+  "compressed_bytes": 174700
+}

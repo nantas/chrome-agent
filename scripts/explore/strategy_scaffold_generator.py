@@ -205,6 +205,11 @@ def generate(
     if protection.get("engine_override"):
         scaffold["extraction"]["engine"] = protection["engine_override"]
 
+    if api.get("platform") == "mediawiki" or platform.startswith("mediawiki"):
+        from scripts.lib.extraction.schema import require_valid_extraction
+        require_valid_extraction(scaffold["extraction"])
+    scaffold["lifecycle"] = {"status": "draft", "review_evidence": None}
+
     # Generate file content
     lines = ["# Auto-generated scaffold — review recommended", ""]
     lines.append("---")

@@ -1,0 +1,9 @@
+{
+  "page": "Bloody Gust",
+  "source_url": "https://bindingofisaacrebirth.wiki.gg/api.php?action=parse&page=Bloody_Gust&prop=text&format=json",
+  "source_kind": "existing API cache",
+  "sample_date": "2026-09-10",
+  "selection": "Complete action=parse text HTML, losslessly gzip compressed; no DOM pruning",
+  "html_sha256": "71e5fd5b7d2cce2bb990fd407af26ea433b546eba55a593b326d3e3a49c16730",
+  "compressed_bytes": 7935
+}

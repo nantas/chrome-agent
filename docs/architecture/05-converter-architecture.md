@@ -271,3 +271,7 @@ Key diagnostic: render individual blocks independently and compare to combined o
 - [02 — 管线数据流](02-pipeline-flow.md) — MediaWiki API 五阶段管线，converter 的运行时上下文
 - [03 — 策略 Schema 参考](03-strategy-schema.md) — extraction.infox 等字段的权威定义
 - [08 — 技术栈](08-tech-stack.md) — Python 依赖与兼容性约束
+
+## Shared configuration validation and index links
+
+`lib/extraction/schema.py` validates governed extraction fields before preprocessing; cleanup operation names resolve through capability-registry and their shared implementations. Gate audits shared consumers after shape checks, ignoring docstring examples. Both converter and strategy link resolvers use index.md for admitted list pages. Site sample runner uses MediaWiki cache and the actual strategy through convert_page_full, rather than generic conversion.

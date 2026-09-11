@@ -1,0 +1,9 @@
+{
+  "page": "Items",
+  "source_url": "https://neonabyss.fandom.com/api.php?action=parse&page=Items&prop=text&format=json",
+  "source_kind": "single API sample request",
+  "sample_date": "2026-09-10",
+  "selection": "Complete action=parse text HTML, losslessly gzip compressed; no DOM pruning",
+  "html_sha256": "3a9b75751d3a0230f2b844a93ef9099db508a78b9b3a6a2f10e7b19b7de931f5",
+  "compressed_bytes": 33046
+}

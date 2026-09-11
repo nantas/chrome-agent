@@ -538,3 +538,7 @@ rate_limit_tiers:
 - [05 — 转换器架构](05-converter-architecture.md) — extraction 规则如何被消费
 
 ---
+
+## Extraction and draft lifecycle validation
+
+MediaWiki extraction cleanup/text_normalization are supported string lists. Lazyload uses enabled/placeholder_pattern/real_src_attr, and operation names come from capability-registry shared implementations. Descriptive pipeline keys and unsupported names fail before network work. Non-MediaWiki narrative rules remain governed by their actual backend. Bootstrap emits lifecycle.status=draft, target-specific pending fields and no production registry entry. Freeze validates target identity, entry points, capability references and review_evidence before publication; failed freeze retains draft markers and registry state. See strategy-schema/lifecycle specs.

@@ -5,16 +5,19 @@ and zero hardcoded values (pipeline values not sourced from strategy).
 """
 
 import os
+import ast
 import re
 from typing import Optional
+from scripts.lib.extraction.schema import validate_extraction, cleanup_operations
 
 # Fields that are always consumed by pipeline infrastructure (not checked)
-_ALWAYS_CONSUMED = {"selectors"}
+_ALWAYS_CONSUMED = {"selectors", "engine"}
 
 # Pipeline source files relative to repo root
 _PIPELINE_FILES = [
     os.path.join("scripts", "lib", "extraction", "converter.py"),
     os.path.join("scripts", "lib", "extraction", "preprocessor.py"),
+    os.path.join("scripts", "lib", "extraction", "infobox.py"),
 ]
 
 
@@ -62,6 +65,10 @@ def validate(
     extraction = extraction_rules.get("extraction", extraction_rules)
     if not isinstance(extraction, dict):
         extraction = extraction_rules
+
+    schema_errors = validate_extraction(extraction)
+    if schema_errors:
+        return {"status": "fail", "schema_errors": schema_errors, "strategy_to_pipeline": {"status": "fail", "dead_config": []}, "pipeline_to_strategy": {"status": "skip", "violations": []}}
 
     # Check 1: Strategy → Pipeline (multi-file dead config detection)
     dead_config = _detect_dead_config(extraction_rules, pipeline_paths)
@@ -159,22 +166,10 @@ def detect_dead_cleanup_operations(
     pipeline_paths: list[str],
 ) -> list[str]:
     """Check that each cleanup operation name in strategy exists in any pipeline source."""
-    source = "\n".join(_read_file(p) for p in pipeline_paths)
-
-    cleanup_ops = extraction.get("cleanup", [])
-    if not isinstance(cleanup_ops, list):
-        return []
-
-    dead_ops = []
-    for op in cleanup_ops:
-        if not isinstance(op, str):
-            continue
-        # Pipeline consumes operation names via `if "op_name" in cleanup:`
-        pattern = rf'"{re.escape(op)}"\s+in\s+cleanup'
-        if not re.search(pattern, source):
-            dead_ops.append(op)
-
-    return dead_ops
+    errors = validate_extraction(extraction)
+    if errors:
+        return [str(e['value']) for e in errors if e['field_path'].startswith('extraction.cleanup')]
+    return [op for op in extraction.get('cleanup', []) if op not in cleanup_operations()]
 
 
 # ---------------------------------------------------------------------------
@@ -198,6 +193,17 @@ def _audit_pipeline(
         extraction = strategy
 
     violations = []
+
+    # Docstring examples are not executable site-specific constants. Preserve
+    # line offsets so reported implementation locations remain accurate.
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) and node.body:
+            first = node.body[0]
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) and isinstance(first.value.value, str):
+                for index in range(first.lineno - 1, first.end_lineno):
+                    lines[index] = "\n"
+    source = "".join(lines)
 
     # Collect known-good values from strategy config
     known_selectors = set()
@@ -349,7 +355,7 @@ def _check_hardcoded_css_classes(
         "User", "User-Agent", "ChromeAgent", "image",
         "selector", "content", "placeholder_pattern", "real_src_attr",
         "field_selector", "label_selector", "value_selector",
-        "ambox", "cleanup", "normalization",
+        "ambox", "cleanup", "normalization", "tooltip",
     })
 
     for i, line in enumerate(lines, 1):

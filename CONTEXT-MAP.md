@@ -49,3 +49,7 @@
 | 应用层 python vs 系统 python3 | `resolveAppPython()` 优先 `.venv/bin/python`，fallback `python3` | 系统 python3 是最后兜底，正常路径不经过它 |
 | 引擎层 python vs 系统 python3 | `resolveManagedPath()` 解析 `~/.cache/` 下各自 venv | 每个引擎有独立的 `managed_path`，永不依赖系统 python3 |
 | engine-registry 版本声明 vs 运行时检测 | `engine-version-check.sh` 统一入口，医生不直接写检测逻辑 | |
+
+## Page discovery handoff boundary
+
+`crawl` → `explore/page_discovery.py` → allpages/homepage → v2 manifest/summary → confirmation → pipeline. `lib/manifest_contract.py` validates handoff data; `lib/extraction/schema.py` validates shared consumer configuration. Bootstrap/scaffold drafts pass validated freeze before registry lookup eligibility.

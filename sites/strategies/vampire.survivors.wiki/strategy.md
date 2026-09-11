@@ -1,4 +1,7 @@
 ---
+samples:
+  - page: Weapons
+    label: API regression sample (2026-09-10; existing cache for Bloody Gust)
 domain: vampire.survivors.wiki
 description: Weird Gloop hosted MediaWiki for Vampire Survivors
 protection_level: low
@@ -64,12 +67,10 @@ extraction:
   cleanup:
     - strip_footer
     - strip_skip_links
-    - strip_json_data
     - strip_empty_parens
     - convert_nested_images
     - normalize_internal
     - strip_category_links
-    - normalize_infobox
     - fix_separators
 ---
 

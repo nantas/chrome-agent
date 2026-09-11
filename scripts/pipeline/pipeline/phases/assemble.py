@@ -18,7 +18,8 @@ def run_assemble(output_dir: str, manifest: dict, results: dict,
     """Execute Phase C: Output Assembly. Returns stats dict."""
     api = strategy.get("api", {})
     taxonomy = api.get("taxonomy", {})
-    list_pages = taxonomy.get("list_pages", {})
+    list_pages = {manifest.get("list_page_decisions", {}).get(title, {}).get("canonical_title") or title: directory
+                  for title, directory in taxonomy.get("list_pages", {}).items()}
 
     log.info("Phase C: Assembling output in %s...", output_dir)
 
@@ -197,7 +198,7 @@ def run_assemble(output_dir: str, manifest: dict, results: dict,
                 fm = page_result.get("frontmatter", {}) if page_result and page_result.get("status") == "ok" else {}
                 pages_in_dir.append({
                     "title": page["title"],
-                    "filename": page["target_filename"],
+                    "filename": "index.md" if page.get("is_list_page") else page["target_filename"],
                     "frontmatter": fm,
                 })
 

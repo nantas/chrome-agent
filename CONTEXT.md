@@ -85,3 +85,7 @@ _Avoid_: 名义共享但各镜像取不同入口（实际非共享）
 一个模块在 4 维空间中声明的坐标。新 agent 面对任一模块，应能从结构回答：
 ① 单一还是镜像/变体 ② 镜像伙伴/变体基类 ③ 等价证明在哪。
 _Avoid_: 靠读全量代码推断、靠问作者才知道关系
+
+**Page Manifest Admission (页面清单准入)**：生产前验证版本、目标域、策略语义指纹与行路径；旧无版本清单只做无歧义内存适配，不扩scope或迁移文件。
+
+**Draft Eligibility (草稿资格)**：bootstrap/scaffold是非生产草稿，只有验证目标身份、配置、review evidence并freeze发布后才能经registry供生产匹配。

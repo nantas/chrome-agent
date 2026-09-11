@@ -30,12 +30,19 @@ extraction:
     title: "#firstHeading"
     nav: ".mw-parser-output"
   cleanup:
-    - fix_lazyload_images
+    - strip_edit_links
     - strip_fandom_infobox_tables
     - convert_ambox_to_text
     - unwrap_image_wrappers
-    - strip_edit_sections
-    - strip_toc
+  cleanup_selectors:
+    - .mw-editsection
+    - .toc
+    - '#toc'
+    - .hatnote
+  lazyload:
+    enabled: true
+    placeholder_pattern: 'data:image/'
+    real_src_attr: data-src
   text_normalization:
     - fix_spaces
     - normalize_blank_lines

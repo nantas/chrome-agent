@@ -168,3 +168,7 @@
 
 
 ---
+
+## Validated discovery handoff
+
+Public crawl → `scripts/explore/page_discovery.py` (existing frozen strategy) → v2 page_manifest/discovery_summary → confirmation → manifest-only pipeline. Supporting boundaries are `scripts/lib/manifest_contract.py` and `scripts/lib/mediawiki-crawl.mjs`. Full explore site analysis remains a separate workflow.

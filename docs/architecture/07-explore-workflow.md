@@ -368,3 +368,8 @@ External dependencies (from `scripts/explore/requirements.txt`):
 - [00 — 目标架构](00-target-architecture.md) — **架构真源**：explore 作为 B 轴执行路径的 4 维坐标
 - [01 — 系统总览](01-overview.md) — 多后端架构全景
 
+## Page enumeration using an existing frozen strategy
+
+`python3 -m scripts.explore.page_discovery --strategy <path> --output <run-dir>` is separate from the eight-step site-analysis workflow. It dispatches existing allpages/homepage kernels, resolves canonical list identities within retained scope and produces a v2 manifest plus evidence-based summary. Public crawl invokes it for discovery-only; no re-probing/scaffolding of an already known site is required. Unknown counts/estimates remain null with reasons; observed API failures result in partial/failure, never fabricated success.
+
+Freeze now validates before removing any markers or publishing registry metadata. New drafts require recorded lifecycle.review_evidence and valid target entry points; failures retain original files and produce diagnostic evidence. Bootstrap drafts cannot be used by production strategy lookup.

@@ -25,6 +25,7 @@ def run_allpages_discovery(client: ApiClient, strategy: dict, origin: str,
     pages = discovery_strategy.discover_pages(client, strategy)
     log.info("Allpages discovery: Discovered %d pages", len(pages))
 
+    discovered_count = len(pages)
     # Fandom translation page filtering
     if platform_variant == "fandom":
         before = len(pages)
@@ -118,10 +119,14 @@ def run_allpages_discovery(client: ApiClient, strategy: dict, origin: str,
                 else:
                     target_dir = classified_dir
 
+        if ns == 0 and not target_dir:
+            target_dir = "Misc"
+
         manifest["pages"].append({
             "title": title,
             "pageid": page.get("pageid"),
             "ns": ns,
+            "is_list_page": title in list_pages,
             "categories": cats,
             "target_directory": target_dir,
             "target_filename": filename,
@@ -135,4 +140,5 @@ def run_allpages_discovery(client: ApiClient, strategy: dict, origin: str,
     log.info("Allpages discovery complete: %d pages classified. Misc: %d (%.1f%%)",
              total_count, misc_count, misc_pct)
 
+    manifest["discovery_counts"] = {"discovered": discovered_count, "excluded": discovered_count - len(pages)}
     return manifest

@@ -52,7 +52,11 @@ Strategy files at `sites/strategies/<domain>/strategy.md` with optional `_attach
 
 ### Requirement: Extraction
 
-`selectors` (map), `image_handling` (attribute/fallback/output_format), `cleanup` (array of rule IDs).
+Extraction SHALL expose selectors and image_handling maps, cleanup as list[str] of supported shared operations, optional lazyload map with enabled/placeholder_pattern/real_src_attr, text_normalization as list[str] of supported normalizers, and other explicitly consumed schema fields. Unsupported legacy descriptive pipeline keys and malformed/named operations SHALL fail validation. Validation SHALL run at scaffold/bootstrap/freeze and production consumption boundaries before network work; templates SHALL pass structural validation after target fields are filled.
+
+#### Scenario: production-rejects-old-cleanup
+- **WHEN** any production entry receives cleanup dictionaries, unsupported normalization keys or dead extraction.pipeline
+- **THEN** it SHALL return structured configuration failure before network access.
 
 ### Requirement: protection_level 受控词汇表
 

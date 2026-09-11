@@ -62,7 +62,7 @@ class HtmlToMarkdownConverter:
                           redirect_map: dict[str, str] | None = None):
         """Build title -> (target_directory, target_filename) index."""
         self.title_to_path = {
-            p["title"]: (p["target_directory"], p["target_filename"])
+            p["title"]: (p["target_directory"], "index.md" if p.get("is_list_page") else p["target_filename"])
             for p in manifest_pages
         }
         self._redirect_map = redirect_map or {}

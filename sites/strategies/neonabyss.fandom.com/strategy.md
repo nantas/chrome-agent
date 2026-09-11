@@ -1,4 +1,7 @@
 ---
+samples:
+  - page: Items
+    label: API regression sample (2026-09-10; existing cache for Bloody Gust)
 domain: neonabyss.fandom.com
 description: Fandom-hosted MediaWiki 1.43.8 game wiki for Neon Abyss. Cloudflare Managed Challenge on HTML pages; MediaWiki API endpoints are unaffected. Dual-content model with summary list pages and individual entity pages.
 protection_level: high
@@ -247,7 +250,6 @@ api:
       "Infobox weapon": ""
       "Infobox character": ""
 extraction:
-  pipeline: BeautifulSoup preprocessing + markdownify conversion
   selectors:
     title: "#firstHeading"
     body: ".mw-parser-output"
@@ -258,33 +260,23 @@ extraction:
     keep_inline_in: [td, th, span, a, div, p, li]
     base_url: https://neonabyss.fandom.com
   cleanup:
-    - fix_lazyload_images: replace base64 src with data-src
-    - strip_edit_sections: remove .mw-editsection elements
-    - strip_toc: remove #toc and Contents headers
-    - strip_fandom_infobox_tables: remove item-table-* and infobox-table classes
-    - convert_ambox_to_text: replace ambox tables with ⚠️ paragraph
-    - unwrap_image_wrappers: unwrap <a> tags that only contain <img>
-    - unwrap_image_file_links: unwrap <a> tags whose href is an image URL
-    - convert_wiki_links: replace /wiki/ links with markdown relative links
-    - strip_translation_links: remove /tr interlanguage links
-    - strip_empty_elements: remove empty p/div without images
+    - strip_edit_links
+    - strip_fandom_infobox_tables
+    - convert_ambox_to_text
+    - unwrap_image_wrappers
+  cleanup_selectors:
+    - .mw-editsection
+    - .toc
+    - '#toc'
+    - .hatnote
+  lazyload:
+    enabled: true
+    placeholder_pattern: 'data:image/'
+    real_src_attr: data-src
   text_normalization:
-    space_fix:
-      enabled: true
-      patterns:
-        - regex: '([a-zA-Z])(\d+(?:\.\d+)*)([a-zA-Z])'
-          replacement: '\1 \2 \3'
-          description: 'Fix missing spaces around version numbers (supports multi-dot like 1.4.6)'
-        - regex: '([a-z])\.([A-Z])'
-          replacement: '\1. \2'
-          description: 'Fix missing space after period'
-    consecutive_image_spacing:
-      enabled: true
-      description: 'Add spaces between consecutive inline images ![A](x)![B](y)'
-    link_resolution:
-      enabled: true
-      resolve_to: "markdown_relative"
-      fallback: "external_wiki_url"
+    - fix_spaces
+    - normalize_blank_lines
+
 ---
 
 ## Overview

@@ -9,6 +9,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import { buildScraplingExtractionArgs } from "./lib/scrapling-extraction-args.mjs";
+import { runMediawikiWorkflow } from "./lib/mediawiki-crawl.mjs";
 import { runCrawlScrapling } from "./lib/crawl_scrapling.mjs";
 import { runScrape } from "./lib/scrape.mjs";
 import { resolveAppPython } from "./lib/python-resolver.mjs";
@@ -549,6 +550,15 @@ function findStrategy(repoRoot, targetUrl) {
   const strategyMeta = matches[0];
   const strategyPath = path.join(repoRoot, "sites", "strategies", strategyMeta.file);
   const strategy = readFrontmatter(strategyPath);
+  const raw = fs.readFileSync(strategyPath, "utf8");
+  if (strategy.lifecycle?.status === "draft" || /Bootstrapped|Auto-generated scaffold|SCAPFOLD/.test(raw)) {
+    throw new Error(`Strategy is a draft; validate and freeze before production: ${strategyPath}`);
+  }
+
+  if (strategy.api?.platform === "mediawiki") {
+    const validation = spawnSync(resolveAppPython(repoRoot), ["-m", "scripts.explore.strategy_lifecycle", "validate", "--source", strategyPath], {cwd: repoRoot, encoding: "utf8"});
+    if (validation.status !== 0) throw new Error(`Invalid MediaWiki strategy: ${validation.stdout || validation.stderr}`);
+  }
   return { registry, strategy: { ...strategyMeta, path: strategyPath, document: strategy } };
 }
 
@@ -2287,148 +2297,51 @@ function crawlInternalError({ targetUrl, repoRef, resolutionMode, strategy, runD
 }
 
 function runCrawlMediawikiApi(repoRoot, repoRef, resolutionMode, runDir, reportPath, manifestPath, emitReport, targetUrl, strategy, doc, startPage, matchingPage, entryPoints, opts) {
-  const {
-    maxPages = null,
-    concurrency = 5,
-    discoveryOnly = false,
-    fromManifest = null,
-    yes: yesFlag = false,
-    excludeCategory = [],
-    phase = null,
-    reFetch = false,
-  } = opts;
-  const apiConfig = doc?.api;
-  const extractionScript = path.join(repoRoot, "scripts", "pipeline");
-  if (fs.existsSync(extractionScript)) {
-    console.log("Strategy has api.platform=mediawiki — routing to MediaWiki API extraction pipeline");
-    const apiArgs = [
-      "-m", "scripts.pipeline",
-      targetUrl,
-      "--strategy", strategy.path,
-      "--output", runDir,
-      "--concurrency", String(concurrency),
-    ];
-    // Pass --discovery based on strategy config
-    if (apiConfig?.homepage) {
-      apiArgs.push("--discovery", "homepage");
-    } else {
-      apiArgs.push("--discovery", "allpages");
+  function run(kind, options) {
+    const args = kind === "discover"
+      ? ["-m", "scripts.explore.page_discovery", "--strategy", strategy.path, "--output", runDir]
+      : ["-m", "scripts.pipeline", targetUrl, "--strategy", strategy.path, "--output", runDir];
+    if (options.fromManifest) args.push("--from-manifest", options.fromManifest);
+    if (options.phase && kind === "pipeline") args.push("--phase", options.phase);
+    if (options.reFetch && kind === "pipeline") args.push("--re-fetch");
+    if (options.maxPages != null) args.push("--max-pages", String(options.maxPages));
+    if (options.concurrency != null) args.push("--concurrency", String(options.concurrency));
+    for (const category of options.excludeCategory ?? []) args.push("--exclude-category", category);
+    const result = spawnSync(resolveAppPython(repoRoot), args, {cwd: repoRoot, encoding: "utf8", timeout: 600_000});
+    let payload = null;
+    try { payload = JSON.parse(result.stdout); } catch {}
+    return {...result, payload, kind};
+  }
+  try {
+    const result = runMediawikiWorkflow(opts, {run});
+    if (result.failure_context || (result.status !== 0 && result.status !== 1)) {
+      const context = result.failure_context ?? {};
+      const message = result.stderr || result.payload?.error || result.error?.message || "MediaWiki process failed";
+      const failure = context.failure_kind === "external"
+        ? makeResult("crawl", targetUrl, repoRef, message, [], "Resolve the upstream failure and retry with the same scope.", "failure", {engine_path: "strategy_registry -> mediawiki -> stopped"})
+        : internalFailure({command: "crawl", target: targetUrl, repoRef, runDir, strategy,
+          reason: "pipeline_failure", summary: message, resultMsg: message,
+          stderr: message, exitCode: result.status, enginePath: "strategy_registry -> mediawiki -> failure"});
+      return {...failure, ...context};
     }
-    // Pass --phase discover when --discovery-only
-    if (discoveryOnly) {
-      apiArgs.push("--phase", "discover");
+    const artifacts = collectMarkdownArtifacts(runDir);
+    for (const name of ["page_manifest.json", "discovery_summary.json", "extraction_results.json"]) {
+      const file = path.join(runDir, name);
+      if (fs.existsSync(file)) artifacts.push(absoluteArtifact(file, "disposable", name));
     }
-    // Pass --phase from opts (fetch, convert, assemble)
-    if (phase && !discoveryOnly) {
-      apiArgs.push("--phase", phase);
-    }
-    // Pass --re-fetch flag
-    if (reFetch) {
-      apiArgs.push("--re-fetch");
-    }
-    // Pass --from-manifest when resuming from existing manifest
-    if (fromManifest) {
-      apiArgs.push("--from-manifest", fromManifest);
-    }
-    // Pass --exclude-category
-    for (const cat of excludeCategory) {
-      apiArgs.push("--exclude-category", cat);
-    }
-    // Pass --max-pages
-    if (maxPages != null) {
-      apiArgs.push("--max-pages", String(maxPages));
-    }
-    const apiResult = spawnSync(resolveAppPython(repoRoot), apiArgs, {
-      cwd: repoRoot,
-      encoding: "utf-8",
-      timeout: 600_000,  // 10 min max
-    });
-
-    const exitCode = apiResult.status ?? 1;
-    const isApiSuccess = exitCode === 0;
-    const isApiPartial = exitCode === 1;
-    const isApiFailure = exitCode >= 10;  // API_UNREACHABLE, PHASE_A/B/C_FAILURE
-
-    if (isApiSuccess || isApiPartial) {
-      // --- Discovery-only mode: return summary and exit early ---
-      if (discoveryOnly) {
-        const discoverySummaryPath = path.join(runDir, "discovery_summary.json");
-        const pageManifestPath = path.join(runDir, "page_manifest.json");
-        const discArtifacts = [];
-        if (fs.existsSync(pageManifestPath)) {
-          discArtifacts.push(absoluteArtifact(pageManifestPath, "disposable", "Page manifest"));
-        }
-        if (fs.existsSync(discoverySummaryPath)) {
-          discArtifacts.push(absoluteArtifact(discoverySummaryPath, "disposable", "Discovery summary"));
-        }
-        return makeResult("crawl", targetUrl, repoRef,
-          `Discovery-only completed via MediaWiki API pipeline.`,
-          discArtifacts,
-          "Review discovery summary. Use --from-manifest to proceed with extraction.",
-          isApiSuccess ? "success" : "partial_success",
-          {
-            workflow: "content_retrieval",
-            engine_path: `strategy_registry -> mediawiki_api_pipeline -> discovery_only -> exit:${exitCode}`,
-            extraction_method: "mediawiki_api",
-            discovery_only: true,
-            discovery_summary_path: fs.existsSync(discoverySummaryPath) ? path.resolve(discoverySummaryPath) : null,
-            manifest_path: fs.existsSync(pageManifestPath) ? path.resolve(pageManifestPath) : null,
-            confirmation_bypassed: yesFlag,
-          });
-      }
-
-      // Collect artifacts from the output directory
-      const apiArtifacts = [absoluteArtifact(manifestPath, "disposable", "Crawl manifest")];
-      for (const file of fs.readdirSync(runDir, { recursive: true })) {
-        const filePath = path.join(runDir, String(file));
-        if (String(file).endsWith(".md")) {
-          apiArtifacts.push(absoluteArtifact(filePath, "disposable", `API extracted: ${file}`));
-        }
-      }
-      // Add extraction results if present
-      const resultsPath = path.join(runDir, "extraction_results.json");
-      if (fs.existsSync(resultsPath)) {
-        apiArtifacts.push(absoluteArtifact(resultsPath, "disposable", "Extraction results"));
-      }
-
-      const extractionMethod = "mediawiki_api";
-      const resultState = isApiSuccess ? "success" : "partial_success";
-      const summary = isApiSuccess
-        ? `Crawl completed via MediaWiki API extraction pipeline.`
-        : `Crawl completed via MediaWiki API pipeline with partial success (some pages failed).`;
-
-      if (emitReport) {
-        const report = buildCrawlReport({
-          targetUrl, repoRef, resolutionMode, strategy,
-          events: [
-            `Routed to MediaWiki API extraction pipeline (platform=mediawiki).`,
-            `Pipeline exit code: ${exitCode}`,
-          ],
-          result: resultState,
-          extractionMethod,
-        });
-        writeTextFile(reportPath, report);
-        apiArtifacts.unshift(absoluteArtifact(reportPath, "durable", "Crawl report"));
-      }
-
-      return makeResult("crawl", targetUrl, repoRef, summary, apiArtifacts,
-        "Inspect the crawl outputs in the run directory.",
-        resultState, {
-          workflow: "content_retrieval",
-          engine_path: `strategy_registry -> mediawiki_api_pipeline -> exit:${exitCode}`,
-          extraction_method: extractionMethod,
-          confirmation_bypassed: yesFlag,
-        });
-    }
-
-    // API failure — log and fall through to Scrapling
-    console.warn(`MediaWiki API pipeline failed (exit code ${exitCode}), falling back to Scrapling`);
-    // API failure — delegate to Scrapling crawl
-    return runCrawlScrapling({ repoRoot, repoRef, resolutionMode, runDir, reportPath, manifestPath, emitReport, targetUrl, strategy, doc, startPage, matchingPage, entryPoints }, opts, crawlApi);
-  } else {
-    console.warn("pipeline script not found, falling back to Scrapling");
-    // Script missing — delegate to Scrapling crawl
-    return runCrawlScrapling({ repoRoot, repoRef, resolutionMode, runDir, reportPath, manifestPath, emitReport, targetUrl, strategy, doc, startPage, matchingPage, entryPoints }, opts, crawlApi);
+    return makeResult("crawl", targetUrl, repoRef,
+      result.discovery_only ? "Discovery completed; review scope before extraction." : "MediaWiki extraction completed.",
+      artifacts, result.discovery_only ? "Confirm scope, then resume with --from-manifest." : "Inspect the output directory.",
+      result.status === 0 ? "success" : "partial_success", {
+        workflow: "content_retrieval", engine_path: `strategy_registry -> mediawiki_${result.kind}`,
+        discovery_only: !!result.discovery_only, confirmation_required: !!result.confirmation_required,
+        manifest_path: result.payload?.manifest_path ?? opts.fromManifest ?? null,
+        discovery_summary_path: result.payload?.discovery_summary_path ?? null,
+      });
+  } catch (error) {
+    return internalFailure({command: "crawl", target: targetUrl, repoRef, runDir, strategy,
+      reason: "invalid_arguments", summary: error.message, resultMsg: error.message, stderr: error.message,
+      enginePath: "strategy_registry -> mediawiki -> invalid_arguments"});
   }
 }
 
@@ -2593,136 +2506,21 @@ function buildScrapeReport({ targetUrl, repoRef, resolutionMode, events, result,
 }
 
 function runBootstrapStrategy(repoRoot, repoRef, resolutionMode, targetUrl, fromDomain, profile, reportOverride) {
-  const { registryPath, entries } = readRegistry(repoRoot);
-  const refEntry = entries.find((e) => e.domain === fromDomain);
-  if (!refEntry) {
-    return makeResult(
-      "bootstrap-strategy",
-      targetUrl,
-      repoRef,
-      `No strategy exists for reference domain '${fromDomain}'.`,
-      [],
-      `Choose a valid --from domain that exists in sites/strategies/registry.json.`,
-      "failure",
-    );
+  const {entries} = readRegistry(repoRoot);
+  const source = entries.find((entry) => entry.domain === fromDomain);
+  const domain = new URL(targetUrl).hostname;
+  const output = path.join(repoRoot, "sites/strategies", domain, "strategy.md");
+  if (!source || entries.some((entry) => entry.domain === domain) || fs.existsSync(output)) {
+    return makeResult("bootstrap-strategy", targetUrl, repoRef, "Reference missing or target already exists.", [], "Review source/target strategy.", "failure");
   }
-
-  const targetDomain = new URL(targetUrl).hostname;
-  const existingEntry = entries.find(
-    (e) => e.domain === targetDomain || targetDomain.endsWith(`.${e.domain}`),
-  );
-  if (existingEntry) {
-    return makeResult(
-      "bootstrap-strategy",
-      targetUrl,
-      repoRef,
-      `A strategy already exists for '${targetDomain}'. Bootstrap would overwrite it.`,
-      [absoluteArtifact(path.join(repoRoot, "sites", "strategies", existingEntry.file), "durable", "Existing strategy")],
-      `Review the existing strategy or remove it before bootstrapping.`,
-      "failure",
-    );
-  }
-
-  const refStrategyPath = path.join(repoRoot, "sites", "strategies", refEntry.file);
-  const refFrontmatter = readFrontmatter(refStrategyPath);
-  const refRaw = fs.readFileSync(refStrategyPath, "utf8");
-
-  const newFrontmatter = { ...refFrontmatter };
-  const oldDomain = refFrontmatter.domain;
-  newFrontmatter.domain = targetDomain;
-  newFrontmatter.description = refFrontmatter.description.replace(oldDomain, targetDomain);
-
-  if (newFrontmatter.structure?.pages) {
-    for (const page of newFrontmatter.structure.pages) {
-      if (page.url_example) {
-        page.url_example = page.url_example.replace(oldDomain, targetDomain);
-      }
-    }
-  }
-
-  if (profile && newFrontmatter.extraction?.cleanup) {
-    newFrontmatter.extraction.cleanup = [profile];
-  }
-
-  const sigPath = path.join(repoRoot, "configs", "backend-signatures.json");
-  let matchingBackend = null;
-  if (fs.existsSync(sigPath)) {
-    const parsed = JSON.parse(fs.readFileSync(sigPath, "utf8"));
-    const backends = parsed.backends ?? [];
-    matchingBackend = backends.find((b) => b.reusable_strategies?.includes(fromDomain));
-  }
-  if (matchingBackend) {
-    newFrontmatter.backend = matchingBackend.id;
-  }
-
-  const { date } = nowParts();
-  const bodyLines = [
-    `<!-- Bootstrapped from ${fromDomain} on ${date}; review recommended -->`,
-    "",
-    "## Overview",
-    "",
-    `\`${targetDomain}\` was bootstrapped from \`${fromDomain}\` as a shared-backend strategy. Review and validate all fields before production use.`,
-    "",
-    "## Page Structure",
-    "",
-    "*(Bootstrapped — copy the reference strategy's page structure narrative and adapt domain-specific details.)*",
-    "",
-    "## Extraction Flow",
-    "",
-    "*(Bootstrapped — copy the reference strategy's extraction flow and validate selectors.)*",
-    "",
-    "## Known Issues",
-    "",
-    "*(Bootstrapped — copy the reference strategy's known issues and add site-specific observations.)*",
-    "",
-    "## Evidence",
-    "",
-    `Bootstrapped from ${fromDomain} on ${date}; requires validation.`,
-  ];
-  const body = bodyLines.join("\n");
-
-  const strategyDir = path.join(repoRoot, "sites", "strategies", targetDomain);
-  const strategyPath = path.join(strategyDir, "strategy.md");
-  const frontmatterYaml = YAML.stringify(newFrontmatter);
-  const strategyContent = `---\n${frontmatterYaml}---\n${body}\n`;
-  writeTextFile(strategyPath, strategyContent);
-
-  const newEntry = {
-    domain: targetDomain,
-    description: newFrontmatter.description,
-    protection_level: newFrontmatter.protection_level,
-    page_types: [...new Set((newFrontmatter.structure?.pages ?? []).map((p) => p.type))],
-    pagination: [...new Set((newFrontmatter.structure?.pages ?? []).map((p) => {
-      if (typeof p.pagination === "object" && p.pagination !== null) {
-        return p.pagination.mechanism;
-      }
-      return p.pagination ?? "none";
-    }))],
-    entry_points: newFrontmatter.structure?.entry_points ?? [],
-    anti_crawl_refs: newFrontmatter.anti_crawl_refs ?? [],
-    file: `${targetDomain}/strategy.md`,
-    ...(newFrontmatter.backend ? { backend: newFrontmatter.backend } : {}),
-  };
-  entries.push(newEntry);
-  fs.writeFileSync(registryPath, JSON.stringify({ entries }, null, 2), "utf8");
-
-  const artifacts = [
-    absoluteArtifact(strategyPath, "durable", "Bootstrapped strategy"),
-    absoluteArtifact(registryPath, "durable", "Updated registry", "updated"),
-  ];
-  return makeResult(
-    "bootstrap-strategy",
-    targetUrl,
-    repoRef,
-    `Bootstrapped strategy for ${targetDomain} from ${fromDomain}.`,
-    artifacts,
-    `Review the generated strategy at ${strategyPath}, then run chrome-agent crawl ${targetUrl}.`,
-    "success",
-    {
-      workflow: "strategy_authoring",
-      engine_path: `bootstrap -> reference:${fromDomain} -> target:${targetDomain}`,
-    },
-  );
+  const args = ["-m", "scripts.explore.strategy_lifecycle", "bootstrap", "--source", path.join(repoRoot, "sites/strategies", source.file), "--url", targetUrl, "--output", output];
+  if (profile) args.push("--profile", profile);
+  const processResult = spawnSync(resolveAppPython(repoRoot), args, {cwd: repoRoot, encoding: "utf8"});
+  let payload;
+  try { payload = JSON.parse(processResult.stdout); } catch { payload = {error: processResult.stderr}; }
+  return makeResult("bootstrap-strategy", targetUrl, repoRef, payload.ok ? "Created draft strategy; target fields require validation." : payload.error,
+    payload.ok ? [absoluteArtifact(output, "durable", "Draft strategy")] : [],
+    "Review target fields, record lifecycle.review_evidence, then freeze before production.", payload.ok ? "success" : "failure", payload);
 }
 
 function runFreeze(repoRoot, repoRef, resolutionMode, scaffoldPath) {
@@ -3196,12 +2994,13 @@ function runCapabilitiesCheck(repoRoot, repoRef, resolutionMode) {
   // Check 2: every capability has a matching openspec/specs/<cap>/spec.md
   const specsDir = path.join(repoRoot, "openspec", "specs");
   for (const [category] of Object.entries(registry)) {
-    const specPath = path.join(specsDir, category, "spec.md");
+    const specDirectory = category === "discover" ? "discover-kernel" : category;
+    const specPath = path.join(specsDir, specDirectory, "spec.md");
     const exists = fs.existsSync(specPath);
     checks.push({
       name: `spec_${category}`,
       ok: exists,
-      detail: `openspec/specs/${category}/spec.md`,
+      detail: `openspec/specs/${specDirectory}/spec.md`,
     });
     if (!exists) {
       warnings.push(`Missing spec for capability: ${category}`);

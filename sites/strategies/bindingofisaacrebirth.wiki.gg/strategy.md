@@ -1,4 +1,7 @@
 ---
+samples:
+  - page: Bloody Gust
+    label: API regression sample (2026-09-10; existing cache for Bloody Gust)
 domain: bindingofisaacrebirth.wiki.gg
 description: "The Binding of Isaac: Rebirth Wiki on wiki.gg - MediaWiki 1.43.6 covering Rebirth, Afterbirth, Afterbirth+, Repentance, and Repentance+ content. Full-site crawl via allpages API path."
 protection_level: medium
@@ -269,7 +272,6 @@ extraction:
     - convert_nested_images
     - normalize_internal
     - strip_category_links
-    - normalize_infobox
     - fix_separators
     - unwrap_image_wrappers
   url_conversion:

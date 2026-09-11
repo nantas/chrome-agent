@@ -98,8 +98,6 @@ def _resolve_cache_path(page: str, domain: str) -> Optional[Path]:
     ``/`` with ``_`` to produce a flat filename.
     """
     cache_dir = REPO_ROOT / ".cache" / _CDP_PLATFORM / domain
-    if not cache_dir.exists():
-        return None
 
     # CDP safe-path: / → _
     safe = page.replace("/", "_")
@@ -117,8 +115,11 @@ def _resolve_cache_path(page: str, domain: str) -> Optional[Path]:
     candidate = cache_dir / f"{safe}.json"
     if candidate.exists():
         return candidate
-
-    return None
+    mediawiki = REPO_ROOT / ".cache" / "mediawiki" / domain / f"{safe}.json"
+    if mediawiki.exists():
+        return mediawiki
+    portable = _golden_path(domain, page).with_suffix(".html.gz")
+    return portable if portable.exists() else None
 
 
 def _load_cached_html(cache_path: Path) -> Optional[str]:
@@ -126,6 +127,9 @@ def _load_cached_html(cache_path: Path) -> Optional[str]:
     import json
 
     try:
+        if cache_path.name.endswith(".html.gz"):
+            import gzip
+            return gzip.decompress(cache_path.read_bytes()).decode("utf-8")
         data = json.loads(cache_path.read_text(encoding="utf-8"))
         return data.get("html")
     except (json.JSONDecodeError, OSError):
@@ -223,7 +227,16 @@ def _make_site_sample_test(
                 return
 
             # Convert
-            md_output = convert_html_to_markdown(html, wiki_domain="")
+            from scripts.lib.strategy_loader import parse_strategy
+            from scripts.lib.extraction.converter import convert_page_full
+            strategy_path = REPO_ROOT / "sites/strategies" / domain / "strategy.md"
+            strategy = parse_strategy(str(strategy_path)) if strategy_path.exists() else {}
+            if strategy.get("api", {}).get("platform") == "mediawiki":
+                md_output = convert_page_full(html, strategy.get("extraction", {}))
+            else:
+                md_output = convert_html_to_markdown(html, wiki_domain="")
+            if not md_output.strip():
+                self.fail("Conversion produced empty content")
 
             # Link resolution post-processing for domains with
             # ../Pages/Page_*.html relative links (e.g. Nintendo Developer Portal)

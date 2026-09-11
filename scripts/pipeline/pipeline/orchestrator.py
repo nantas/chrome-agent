@@ -10,6 +10,8 @@ from urllib.parse import urlparse
 from ..converters.link_fixer import fix_links_in_dir
 
 from ...lib.strategy_loader import parse_strategy
+from ...lib.extraction.schema import require_valid_extraction
+from ...lib.manifest_contract import validate_manifest, ManifestError
 from ...lib.config_resolver import (
     resolve_rate_limit_config,
     resolve_exclude_categories,
@@ -124,9 +126,14 @@ def _passthrough_convert(output_dir: str, manifest: dict, domain: str,
 
 def run_pipeline(args: argparse.Namespace) -> int:
     """Run the full extraction pipeline. Returns exit code."""
+    phases = args.phase if args.phase else ["all"]
+    if any(phase not in {"all", "fetch", "convert", "assemble"} for phase in phases):
+        log.error("Unsupported phase. Use public crawl --discovery-only for discovery.")
+        return EXIT_INVALID_ARGS
     # Parse strategy
     try:
         strategy = parse_strategy(args.strategy)
+        require_valid_extraction(strategy.get('extraction', {}))
     except Exception as e:
         log.error("Failed to parse strategy: %s", e)
         return EXIT_STRATEGY_ERROR
@@ -155,6 +162,34 @@ def run_pipeline(args: argparse.Namespace) -> int:
         log.error("Unknown backend: %s. Known backends: %s",
                   declared_backend, ", ".join(sorted(_KNOWN_BACKENDS)))
         return EXIT_STRATEGY_ERROR
+
+    # --- from-manifest: skip discovery, load existing manifest ---
+    from_manifest = getattr(args, "from_manifest", None)
+    if from_manifest:
+        if not os.path.exists(from_manifest):
+            log.error("--from-manifest file not found: %s", from_manifest)
+            return EXIT_INVALID_ARGS
+        with open(from_manifest, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+        manifest_path = from_manifest
+        log.info("Loaded manifest from --from-manifest: %s (%d pages)",
+                 from_manifest, len(manifest.get("pages", [])))
+
+    elif not from_manifest:
+        manifest_path = os.path.join(args.output, "page_manifest.json")
+        if not os.path.exists(manifest_path):
+            log.error("No manifest specified. Use --from-manifest <path> or ensure page_manifest.json exists in output directory.")
+            return EXIT_INVALID_ARGS
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+        log.info("Loaded existing manifest: %d pages", len(manifest.get("pages", [])))
+
+
+    try:
+        manifest = validate_manifest(manifest, strategy)
+    except ManifestError as e:
+        log.error("manifest_contract: %s", e)
+        return EXIT_INVALID_ARGS
 
     # Probe API endpoint (skip for REST platforms — no MediaWiki API to probe)
     is_rest_platform = api_config.get("platform") == "rest" if api_config else False
@@ -189,28 +224,6 @@ def run_pipeline(args: argparse.Namespace) -> int:
 
     # Determine phases to run
     phases = args.phase if args.phase else ["all"]
-
-    # --- from-manifest: skip discovery, load existing manifest ---
-    from_manifest = getattr(args, "from_manifest", None)
-    if from_manifest:
-        if not os.path.exists(from_manifest):
-            log.error("--from-manifest file not found: %s", from_manifest)
-            return EXIT_INVALID_ARGS
-        with open(from_manifest, "r", encoding="utf-8") as f:
-            manifest = json.load(f)
-        manifest_path = from_manifest
-        log.info("Loaded manifest from --from-manifest: %s (%d pages)",
-                 from_manifest, len(manifest.get("pages", [])))
-
-    elif not from_manifest:
-        manifest_path = os.path.join(args.output, "page_manifest.json")
-        if not os.path.exists(manifest_path):
-            log.error("No manifest specified. Use --from-manifest <path> or ensure page_manifest.json exists in output directory.")
-            return EXIT_INVALID_ARGS
-        with open(manifest_path, "r", encoding="utf-8") as f:
-            manifest = json.load(f)
-        log.info("Loaded existing manifest: %d pages", len(manifest["pages"]))
-
 
     # --- --max-pages: limit manifest before extraction ---
     max_pages = getattr(args, "max_pages", None)

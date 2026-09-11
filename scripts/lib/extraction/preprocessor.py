@@ -28,6 +28,8 @@ def preprocess_html(
     Returns:
         Cleaned HTML string.
     """
+    from .schema import require_valid_extraction
+    require_valid_extraction(config)
     return _preprocess_explore(html, config)
 
 

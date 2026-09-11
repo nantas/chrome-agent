@@ -1,0 +1,9 @@
+{
+  "page": "Cards_List",
+  "source_url": "https://slaythespire.wiki.gg/api.php?action=parse&page=Cards_List&prop=text&format=json",
+  "source_kind": "single API sample request",
+  "sample_date": "2026-09-10",
+  "selection": "Complete action=parse text HTML, losslessly gzip compressed; no DOM pruning",
+  "html_sha256": "eb9ae6dca6ece029243b258695907943fc6bafa7b08b036cbac96f8bf98bcbeb",
+  "compressed_bytes": 60365
+}

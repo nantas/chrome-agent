@@ -54,6 +54,11 @@ class TestFreezeCapabilityGate(unittest.TestCase):
 ---
 domain: example.com
 description: Test site
+structure:
+  pages: [{id: home, type: home, url_example: "https://example.com/"}]
+  entry_points: [home]
+lifecycle:
+  review_evidence: Verified target fixture
 protection_level: low
 extraction:
   cleanup:
@@ -81,6 +86,11 @@ extraction:
 ---
 domain: example.com
 description: Test site
+structure:
+  pages: [{id: home, type: home, url_example: "https://example.com/"}]
+  entry_points: [home]
+lifecycle:
+  review_evidence: Verified target fixture
 protection_level: low
 extraction:
   cleanup:

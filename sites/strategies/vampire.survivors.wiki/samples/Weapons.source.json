@@ -1,0 +1,9 @@
+{
+  "page": "Weapons",
+  "source_url": "https://vampire.survivors.wiki/api.php?action=parse&page=Weapons&prop=text&format=json",
+  "source_kind": "single API sample request",
+  "sample_date": "2026-09-10",
+  "selection": "Complete action=parse text HTML, losslessly gzip compressed; no DOM pruning",
+  "html_sha256": "4ba881fb3c54e1280747971441c44b6ac60c0478ceb33c2724370eda581ce872",
+  "compressed_bytes": 110907
+}

@@ -178,7 +178,7 @@ def _add_pipeline_args(parser):
     parser.add_argument("--jitter", action="store_true", default=None,
                         help="Enable jitter on retry delays")
     parser.add_argument("--phase", nargs="+",
-                        choices=["all", "discover", "fetch", "convert", "assemble"],
+                        choices=["all", "fetch", "convert", "assemble"],
                         default=["all"], help='Phases to run ("all", "fetch", "convert", "assemble")')
     parser.add_argument("--re-fetch", action="store_true", default=False,
                         help="Force re-fetch all pages, ignoring existing cache")

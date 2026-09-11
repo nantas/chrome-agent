@@ -238,3 +238,7 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
 - [01 — 系统总览](01-overview.md) — 多后端架构全景
 
 ---
+
+## Manifest admission and list indexes
+
+Manifest/phase validation precedes API probing. Pipeline accepts fetch/convert/assemble/all and never performs discover. Legacy manifests are copied for unambiguous metadata adaptation without changing paths or page membership. Included `is_list_page` identities and canonical list decisions drive real indexes; absent/excluded detached list content cannot expand scope. Link indexes target the resulting index.md. New discovery assigns Misc only to unclassified ns0 pages with no existing directory.

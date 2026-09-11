@@ -557,3 +557,7 @@ def preprocess_html(html, config):  # 无 context
 | `scripts/chrome-agent-cli.mjs` `htmlToMarkdown()` | JS 轻量回退 | 当 Python/Scrapling 不可用时的兜底转换，~100 行纯函数，不引入到能力体系 |
 | `scripts/chrome-agent-cli.mjs` `mergeMarkdownFiles()` | 文件合并工具 | 遍历路径的低开销合并，是 assemble pipeline 的轻量替代，不替代 `run_assemble()` |
 | `scripts/chrome-agent-runtime.mjs` | 启动器 | repo 解析 + CLI 分发，不参与业务能力 |
+
+## MediaWiki discovery contract restoration (2026-09-10)
+
+Discover has one page-enumeration ownership boundary in explore: `page_discovery.py` is a thin adapter over allpages/homepage kernels. CLI controls confirmation; pipeline consumes validated manifests only. The capability registry identifies adapters/infrastructure explicitly; it does not introduce a second discovery kernel. See `openspec/specs/discover-kernel/spec.md`.
