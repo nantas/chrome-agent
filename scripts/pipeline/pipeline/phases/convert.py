@@ -32,10 +32,49 @@ def _first_image_name(images: list[str], extraction_config: dict | None) -> str 
         filtered = [img for img in images if not any(re.search(pat, img) for pat in skip_patterns)]
     return filtered[0].replace(" ", "_") if filtered else None
 
+def _resolve_hero_image_url(html: Optional[str],
+                            extraction_config: Optional[dict]) -> Optional[str]:
+    """Return the page's hero image URL *as the wiki actually serves it*.
+
+    Constructing one from the wiki domain does not work on Cloudflare-protected
+    Fandom wikis: the wiki-domain file paths return the challenge page rather
+    than the image, so any such link is dead. The real CDN URL is already
+    present in the rendered HTML, so read it from there.
+
+    Prefers the first image inside the infobox container, then the first body
+    image. Returns None when nothing usable is found (including lazy-load
+    ``data:`` placeholders), letting the caller omit the image rather than emit
+    a broken reference.
+    """
+    if not html:
+        return None
+    try:
+        from bs4 import BeautifulSoup
+    except ImportError:  # pragma: no cover - bs4 is a hard dependency
+        return None
+    soup = BeautifulSoup(html, "html.parser")
+    groups = []
+    selector = (extraction_config or {}).get("infobox", {}).get("selector")
+    if selector:
+        box = soup.select_one(selector)
+        if box is not None:
+            groups.append(box.find_all("img"))
+    body = soup.select_one(".mw-parser-output") or soup
+    groups.append(body.find_all("img"))
+    for group in groups:
+        for img in group:
+            src = (img.get("src") or "").strip()
+            if src.startswith("//"):
+                src = "https:" + src
+            if src.startswith("http"):
+                return src
+    return None
+
+
 log = logging.getLogger("pipeline")
 
 # Bump when conversion semantics change in a way not represented in config.
-CONVERTER_CONTRACT_REVISION = 2
+CONVERTER_CONTRACT_REVISION = 4
 
 
 def _digest(value) -> str:
@@ -137,9 +176,11 @@ def convert_single_page(raw: dict, page_info: dict, manifest_pages: list[dict],
             img_name = _first_image_name(images, extraction_config)
             if img_name:
                 frontmatter["image"] = img_name
-                from urllib.parse import quote as url_quote
-                img_url = f"https://{domain}/Special:Redirect/file/{url_quote(img_name, safe='')}"
-                if "---" in md_content:
+                # Wikitext raw carries rendered_html (not html) for dynamic
+                # pages — fall back so the hero is not silently dropped.
+                img_url = _resolve_hero_image_url(
+                    html or raw.get("rendered_html"), extraction_config)
+                if img_url and "---" in md_content:
                     end_fm = md_content.find("\n---", 3)
                     if end_fm >= 0:
                         insert_pos = end_fm + 4
@@ -207,15 +248,17 @@ def _process_html_page(raw: dict, title: str, source_dir: str, source_url: str,
     fm_lines.append("---\n")
 
     body = md_content.strip()
-    if body and not body.startswith("#"):
+    # Only an H1 counts as "already titled": a body opening with a section
+    # heading (`## Infobox`, `## Overview`) must still receive its page title.
+    first_line = next((line for line in body.split("\n") if line.strip()), "")
+    if body and not first_line.startswith("# "):
         body = f"# {title}\n\n{body}"
     elif not body:
         body = f"# {title}\n"
 
-    # Inject complete card image after title if available
-    img_name = frontmatter.get("image")
-    if img_name:
-        img_url = f"https://{domain}/images/{img_name}"
+    # Inject the hero image after the title, using the URL the wiki serves.
+    img_url = _resolve_hero_image_url(html, extraction_config)
+    if img_url:
         img_block = f"\n![{title}]({img_url})\n"
         # Insert after first heading
         first_nl = body.find("\n")

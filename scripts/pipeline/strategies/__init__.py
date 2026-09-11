@@ -148,6 +148,21 @@ def validate_content_integrity(output_dir: str) -> list[dict]:
     return empty
 
 
+def _image_file_title(url: str) -> str:
+    """Derive the ``File:`` title an image URL refers to.
+
+    Fandom CDN URLs carry transform suffixes
+    (``.../<name>.png/revision/latest/scale-to-width-down/111?cb=...``),
+    so the last path segment is a size parameter, not the file name.
+    Spec: pipeline/l6-image-filename-parsing.
+    """
+    if "Special:Redirect/file/" in url:
+        return "File:" + url.split("Special:Redirect/file/")[-1].split("?")[0]
+    if "/revision/" in url:
+        return "File:" + url.split("/revision/")[0].split("/")[-1]
+    return "File:" + url.split("/")[-1]
+
+
 def validate_images(output_dir: str, client=None) -> list[dict]:
     unavailable = []
     image_pattern = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
@@ -169,16 +184,10 @@ def validate_images(output_dir: str, client=None) -> list[dict]:
         file_names = []
         url_to_name = {}
         for url in images_to_check:
-            if "Special:Redirect/file/" in url:
-                name = url.split("Special:Redirect/file/")[-1]
-                name = name.split("?")[0]
-                file_names.append(f"File:{name}")
-                url_to_name[url] = f"File:{name}"
-            else:
-                name = url.split("/")[-1]
-                if name:
-                    file_names.append(f"File:{name}")
-                    url_to_name[url] = f"File:{name}"
+            name = _image_file_title(url)
+            if name != "File:":
+                file_names.append(name)
+                url_to_name[url] = name
 
         batch_size = 50
         unavailable_names = set()

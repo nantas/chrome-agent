@@ -247,6 +247,99 @@ class TestConvertMirrorEquivalence(unittest.TestCase):
         )
 
 
+class TestOutputQualityFollowups(unittest.TestCase):
+    """close-mediawiki-quality-followups regression guards.
+
+    Spec: extract-kernel/infobox-table-cell-escaping,
+    pipeline-convert-phase/conversion-output-format.
+    """
+
+    INFOBOX_MULTI = (
+        '<aside class="portable-infobox">'
+        '<div class="pi-data"><h3 class="pi-data-label">Passive</h3>'
+        '<div class="pi-data-value"><p>Gale Wyvern: push.</p><p>Wind Diety: pull.</p></div></div>'
+        '<div class="pi-data"><h3 class="pi-data-label">Tag</h3>'
+        '<div class="pi-data-value">a | b</div></div>'
+        '</aside><p>Body</p>'
+    )
+    HERO_RULES = {"infobox": {"enabled": True, "selector": ".portable-infobox"}}
+
+    @staticmethod
+    def _pipeline(html: str, rules: dict, raw_extra: dict | None = None) -> str:
+        raw = {"html": html, "content_acquisition": "html_rendered"}
+        raw.update(raw_extra or {})
+        result = convert_single_page(
+            raw, {"title": TITLE, "target_directory": ""}, [], DOMAIN, [], {},
+            ExactTitleLinkResolver(), SimpleSubstitutionTemplateProcessor(), rules, {})
+        assert result["status"] == "ok", result.get("error")
+        return result["content"]
+
+    # --- extract-kernel: infobox-table-cell-escaping ---------------------
+
+    def test_infobox_multiline_and_pipe_cells_are_single_rows(self):
+        """Multi-paragraph values and raw pipes MUST NOT split the table row."""
+        for label, md in (
+            ("kernel", convert_page_full(self.INFOBOX_MULTI, self.HERO_RULES)),
+            ("pipeline", self._pipeline(self.INFOBOX_MULTI, self.HERO_RULES)),
+        ):
+            with self.subTest(path=label):
+                passive_rows = [l for l in md.splitlines() if l.startswith("| Passive")]
+                self.assertEqual(len(passive_rows), 1, md)
+                self.assertIn("Gale Wyvern: push.<br>", passive_rows[0])
+                self.assertIn("Wind Diety: pull.", passive_rows[0])
+                self.assertIn("| Tag | a \\| b |", md)
+
+    # --- pipeline-convert-phase: conversion-output-format ----------------
+
+    def test_h1_prepended_when_body_opens_with_section_heading(self):
+        content = self._pipeline(self.INFOBOX_MULTI, self.HERO_RULES)
+        body = content.split("---\n", 2)[2].lstrip("\n")
+        self.assertTrue(body.startswith(f"# {TITLE}\n"), body[:80])
+        self.assertIn("## Infobox", body)  # section heading still present below H1
+
+    def test_exactly_one_h1_when_body_heading_renders_as_h2(self):
+        """Converter demotes h1 to ## (MediaWiki title convention), so the
+        page must end up with exactly one H1 line: the injected title."""
+        html = f'<h1>{TITLE}</h1><p>Body</p>'
+        content = self._pipeline(html, {})
+        body = content.split("---\n", 2)[2].lstrip("\n")
+        h1_lines = [l for l in body.splitlines() if l.startswith("# ")]
+        self.assertEqual(h1_lines, [f"# {TITLE}"])
+
+    def test_hero_image_resolved_from_infobox_markup(self):
+        hero = 'https://static.wikia.nocookie.net/x/images/a/ab/Hero.png/revision/latest?cb=1'
+        body_img = 'https://static.wikia.nocookie.net/x/images/a/ab/Later.png/revision/latest?cb=2'
+        html = (
+            f'<aside class="portable-infobox"><img src="{hero}"/></aside>'
+            f'<div class="mw-parser-output"><p>text</p><img src="{body_img}"/></div>'
+        )
+        content = self._pipeline(html, self.HERO_RULES)
+        self.assertIn(f"![{TITLE}]({hero})", content)  # infobox image wins
+        self.assertNotIn(f"![{TITLE}]({body_img})", content)
+        self.assertNotIn("/Special:Redirect/file/", content)
+        self.assertNotIn(f"https://{DOMAIN}/images/", content)
+
+    def test_hero_image_omitted_when_no_http_image(self):
+        html = '<p>Plain body without images</p>'
+        content = self._pipeline(html, {})
+        self.assertNotIn("![", content)
+
+    def test_wikitext_path_hero_falls_back_to_rendered_html(self):
+        """Wikitext raw carries rendered_html, not html; hero must survive."""
+        hero = 'https://static.wikia.nocookie.net/x/images/a/ab/Hero.png/revision/latest?cb=1'
+        raw = {
+            "content_acquisition": "wikitext_only",
+            "wikitext": "Plain wikitext body.",
+            "rendered_html": f'<div class="mw-parser-output"><img src="{hero}"/></div>',
+            "images": ["Hero.png"],
+        }
+        result = convert_single_page(
+            raw, {"title": TITLE, "target_directory": ""}, [], DOMAIN, [], {},
+            ExactTitleLinkResolver(), SimpleSubstitutionTemplateProcessor(), {}, {})
+        self.assertEqual(result["status"], "ok", result.get("error"))
+        self.assertIn(hero, result["content"])
+
+
 class TestInfoboxPoolTargets(unittest.TestCase):
     def test_dedup_keeps_distinct_targets_with_same_label(self):
         rules = {'infobox': {'enabled': True}, 'infobox_field_handlers': {'pool': {'handler': 'dedup_pools'}}}

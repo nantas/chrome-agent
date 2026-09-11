@@ -223,7 +223,13 @@ def _extract_bs4(
             val = " ".join(val_parts).strip()
 
         if key and val:
-            lines.append(f"| {key} | {val} |")
+            # A Markdown table cell cannot contain a raw pipe or newline.
+            # Rendered values are frequently multi-line (e.g. multi-paragraph
+            # passive abilities, bulleted price lists), which would otherwise
+            # split the row and break the table.
+            cell_key = key.replace("|", "\\|").replace("\n", "<br>")
+            cell_val = val.replace("|", "\\|").replace("\n", "<br>")
+            lines.append(f"| {cell_key} | {cell_val} |")
 
     if len(lines) <= 4:
         return ""
@@ -371,8 +377,10 @@ def _extract_selectolax(
     table += "| Field | Value |\n"
     table += "| --- | --- |\n"
     for label, value in rows:
-        escaped_label = label.replace("|", "\\|")
-        escaped_value = value.replace("|", "\\|")
+        # A Markdown table cell cannot contain a raw pipe or newline; infobox
+        # values are multi-line (e.g. multi-paragraph passive abilities).
+        escaped_label = label.replace("|", "\\|").replace("\n", "<br>")
+        escaped_value = value.replace("|", "\\|").replace("\n", "<br>")
         table += f"| **{escaped_label}** | {escaped_value} |\n"
 
     return table.strip()
