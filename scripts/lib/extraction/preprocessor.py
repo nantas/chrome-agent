@@ -41,8 +41,8 @@ def _preprocess_explore(html: str, config: dict) -> str:
 
     # Step 1: Remove infobox container
     infobox_cfg = config.get("infobox", {})
-    if infobox_cfg.get("enabled") and infobox_cfg.get("selector"):
-        for el in soup.select(infobox_cfg["selector"]):
+    if infobox_cfg.get("enabled"):
+        for el in soup.select(infobox_cfg.get("selector", "aside.portable-infobox")):
             el.decompose()
 
     # Step 2: Strip elements matching cleanup_selectors

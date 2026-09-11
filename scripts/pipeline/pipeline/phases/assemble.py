@@ -16,6 +16,11 @@ def run_assemble(output_dir: str, manifest: dict, results: dict,
                 link_resolver: LinkResolver,
                 client=None) -> dict:
     """Execute Phase C: Output Assembly. Returns stats dict."""
+    # Failed conversion entries cannot become successful generated index content.
+    # Keep the source manifest immutable; absent category results retain legacy synthesis.
+    manifest = {**manifest, "pages": [p for p in manifest["pages"]
+                if p["title"] not in results or results[p["title"]].get("status") == "ok"]}
+    os.makedirs(output_dir, exist_ok=True)
     api = strategy.get("api", {})
     taxonomy = api.get("taxonomy", {})
     list_pages = {manifest.get("list_page_decisions", {}).get(title, {}).get("canonical_title") or title: directory
@@ -326,7 +331,9 @@ def run_assemble(output_dir: str, manifest: dict, results: dict,
     # Generate Misc index
     misc_dir = os.path.join(output_dir, "Misc")
     if os.path.isdir(misc_dir):
-        misc_files = [f for f in os.listdir(misc_dir) if f.endswith(".md") and f != "index.md"]
+        misc_files = [p["target_filename"] for p in manifest["pages"]
+                      if p["target_directory"] == "Misc" and p["target_filename"] != "index.md"
+                      and results.get(p["title"], {}).get("status") == "ok"]
         if misc_files:
             lines = ["---"]
             lines.append('title: "Misc"')

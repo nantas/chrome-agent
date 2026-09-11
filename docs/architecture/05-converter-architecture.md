@@ -165,37 +165,15 @@ Both modes support named handlers for specialized field processing:
 | `simplify_collection` | Reduce collection grid to single link |
 | `extract_tags` | Extract tag tooltips from icon links |
 
-Handler lookup uses a **dual-key system**: first by label text, then by `data-source` alias (`ds_key = f"{data_source}({label_text})"`), enabling both human-readable and data-attribute-based handler routing.
+Handler lookup accepts label text, `data-source(label)` aliases and bare `data-source` keys. BS4 and selectolax rendering preserve supplied inline-renderer and source-directory context; pool deduplication includes the link target so equal labels do not erase distinct destinations.
 
 ## 5. Shared Orchestration Entry Point
 
-The shared kernel in `converter.py` exposes `convert_page_full()` as the single
-orchestration entry point for the 4-step extraction pipeline:
+`convert_page_full(html, extraction_rules, *, converter=None, source_dir="")` owns five steps: extract enabled infobox → preprocess HTML → convert body → prepend nonempty infobox → apply shared post-ops once. Extraction/removal share the default `aside.portable-infobox` selector. Disabled extraction leaves infobox content to ordinary body conversion without a duplicate table.
 
-```python
-def convert_page_full(html: str, extraction_rules: dict) -> str:
-    # 1. Extract infobox via extract_infobox()
-    # 2. Preprocess HTML via preprocess_html()  (always full 6-step cleanup, no context branch)
-    # 3. Convert to Markdown via convert_html_to_markdown()
-    # 4. Prepend infobox to body if extracted
-```
+CV3 delegates directly. CV4 injects its converter with link-index/redirect state and source directory; frontmatter, title and card stats remain pipeline wrapping. The two-argument form remains supported. Conflicting extraction rules are rejected. Infobox URL context uses configured image base URL, then converter domain, then the empty generic domain; this resolution retains the caller's link index.
 
-All B-axis paths (explore, pipeline) route through this function.
-
-### Sample Converter Integration
-
-The explore path's `sample_converter.py` delegates the core extraction to
-`convert_page_full()`, then applies explore-specific post-processing
-(text_normalization, url_conversion, youtube_cleanup, cleanup ops):
-
-```python
-def _apply_extraction(html, extraction_rules, known_pages):
-    # Delegate core 4-step extraction to shared kernel
-    md = convert_page_full(html, extraction_rules)
-
-    # Post-conversion: text_normalization, url_conversion, youtube_cleanup, cleanup ops
-    ...
-```
+The explore sample converter receives post-ops from the shared entry; it does not apply a second copy. Equivalence is tested by `tests/test_convert_equivalence.py` using self-contained infobox, body, link and post-op fixtures.
 
 The sample converter CLI provides two subcommands:
 

@@ -71,6 +71,7 @@ def extract_infobox(
         return _extract_bs4(
             html_or_node, selector, fsel, lsel, vsel, nav_sels,
             handlers, wiki_domain, config,
+            source_dir=source_dir, render_inline_children_fn=render_inline_children_fn,
         )
     else:
         return _extract_selectolax(
@@ -96,6 +97,9 @@ def _extract_bs4(
     handlers: dict,
     base_url: str,
     config: dict,
+    *,
+    source_dir: str = "",
+    render_inline_children_fn: Optional[Callable] = None,
 ) -> str:
     """BS4-based infobox extraction (explore path)."""
     from bs4 import BeautifulSoup, NavigableString
@@ -105,6 +109,15 @@ def _extract_bs4(
     if not container:
         return ""
 
+    def render_element(element):
+        if not render_inline_children_fn:
+            return None
+        from selectolax.parser import HTMLParser
+        node = HTMLParser("<div>" + str(element) + "</div>").css_first("div")
+        return render_inline_children_fn(node, source_dir=source_dir)
+
+    if base_url and not base_url.startswith(("https://", "http://")):
+        base_url = "https://" + base_url
     skip_patterns = config.get("image_filtering", {}).get("skip_patterns", [])
 
     lines = ["## Infobox", "", "| Field | Value |", "| --- | --- |"]
@@ -195,11 +208,17 @@ def _extract_bs4(
                 handler_cfg = handlers[key]
             elif ds_key and ds_key in handlers:
                 handler_cfg = handlers[ds_key]
+            elif ds and ds in handlers:
+                handler_cfg = handlers[ds]
 
+        rendered = render_element(value_el)
+        if rendered is not None:
+            val_parts = [rendered]
         if handler_cfg:
-            handler_name = handler_cfg.get("handler", "") if isinstance(handler_cfg, dict) else ""
+            handler_name = handler_cfg.get("handler", "") if isinstance(handler_cfg, dict) else handler_cfg
             # BS4 mode: use inline handler application
-            val = _apply_bs4_handler(handler_name, val_parts, value_el, skip_patterns, base_url)
+            val = _apply_bs4_handler(handler_name, val_parts, value_el, skip_patterns, base_url,
+                                     render_element=render_element if render_inline_children_fn else None)
         else:
             val = " ".join(val_parts).strip()
 
@@ -217,6 +236,7 @@ def _apply_bs4_handler(
     value_el,
     skip_patterns: list[str],
     base_url: str,
+    render_element: Optional[Callable] = None,
 ) -> str:
     """Apply a named handler to BS4 value content."""
     if handler_name == "extract_cur_id":
@@ -236,17 +256,18 @@ def _apply_bs4_handler(
         return str(count) if count else " ".join(val_parts).strip()
 
     elif handler_name == "dedup_pools":
-        seen: set[str] = set()
+        seen: set[tuple[str, str]] = set()
         parts: list[str] = []
         for a in value_el.find_all("a"):
             text = a.get_text(strip=True)
             href = a.get("href", "")
-            if not text or text in seen:
+            identity = (text, href)
+            if not text or identity in seen:
                 continue
-            seen.add(text)
+            seen.add(identity)
             if href.startswith("/") and base_url:
                 href = base_url + href
-            parts.append(f"[{text}]({href})")
+            parts.append(render_element(a) if render_element else f"[{text}]({href})")
         return " ".join(parts) if parts else " ".join(val_parts).strip()
 
     elif handler_name == "simplify_collection":
@@ -256,7 +277,7 @@ def _apply_bs4_handler(
             href = first_a.get("href", "")
             if href.startswith("/") and base_url:
                 href = base_url + href
-            return f"[{text}]({href})"
+            return render_element(first_a) if render_element else f"[{text}]({href})"
         return " ".join(val_parts).strip()
 
     return " ".join(val_parts).strip()

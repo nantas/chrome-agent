@@ -227,11 +227,11 @@ format_converter
 
 | 入口 | 层 | 适用条件 | 调用者 |
 |------|------|---------|--------|
-| `HtmlToMarkdownConverter`（类） | 实现层 | 需实例状态（link index、source_dir 渲染） | CV4（声明，因管线需 link-index 状态） |
+| `HtmlToMarkdownConverter`（类） | 实现层 | 需实例状态（link index、source_dir 渲染） | CV4 构造状态并注入全页入口 |
 | `convert_html_to_markdown()`（函数） | 无状态便捷入口 | 一次性转换、不需 link index | CV5、`test_runner.py` |
-| `convert_page_full()`（函数） | 声明的单一全页编排入口 | infobox→preprocess→convert→prepend 完整流水 | CV3、声明为 CV1 |
+| `convert_page_full()`（函数） | 声明的单一全页编排入口 | infobox→preprocess→convert→prepend→post-ops 完整流水 | CV3、CV4、声明为 CV1 |
 
-镜像可直接用类入口（当需实例状态时）；这不违反单一内核契约，前提是有等价证明覆盖该路径。CV3/CV4/CV5 的等价证明统一为 `tests/test_convert_equivalence.py`（相对 `convert_page_full` 内核）。CV4-standalone 是 CV4 的薄壳变体（组转 raw/page_info 后委托 `convert_single_page`），等价性继承自 CV4。详见 spec `convert-kernel-three-layer-interface`。
+CV4 将带 link-index/redirect 状态的 converter 和 source_dir 注入 `convert_page_full()`，不得自行省略或重复五步编排。CV3/CV4/CV5 的等价证明统一为 `tests/test_convert_equivalence.py`，使用含启用 infobox 和真实 post-ops 的自包含 fixture；CV4-standalone 委托 `convert_single_page` 并继承 CV4 证明。
 
 ---
 

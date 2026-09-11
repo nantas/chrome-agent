@@ -48,7 +48,7 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
                    │ .cache/     │
                    │ <platform>/ │
                    │ <domain>/   │
-                   │ <page>.json │
+                   │ v2-<sha256(title)>.json │
                    └──────┬──────┘
                           │
                    ┌──────▼──────┐
@@ -109,7 +109,7 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
 | **入口** | `scripts/pipeline/pipeline/phases/fetch.py:38` — `run_fetch()` |
 | **触发条件** | `--phase fetch` 或 `--phase all`（默认） |
 | **输入** | manifest、strategy、`ContentAcquisitionStrategy`、`RateLimitConfig` |
-| **流程** | 1. 检查 `.cache/` 已缓存页面（除非 `--re-fetch`） → 2. **快速路径**：若所有页面已缓存则直接返回 `skipped=total`（<1秒） → 3. **预过滤**：分离已缓存/未缓存页面，仅未缓存页面提交线程池 → 4. 并发获取未缓存页面（`ThreadPoolExecutor`，concurrency 由 rate_limit 控制） → 5. `time.sleep(batch_delay_sec)` 仅在实际网络请求（`status=ok`）时执行 → 6. 写入 `.cache/<platform>/<domain>/<page>.json` |
+| **流程** | 1. 检查 `.cache/` 已缓存页面（除非 `--re-fetch`） → 2. **快速路径**：若所有页面通过身份/模式/载荷准入则直接返回 `skipped=total` → 3. **预过滤**：分离兼容/缺失或不兼容页面，仅后者提交线程池 → 4. 并发获取未缓存页面（`ThreadPoolExecutor`，concurrency 由 rate_limit 控制） → 5. `time.sleep(batch_delay_sec)` 仅在实际网络请求（`status=ok`）时执行 → 6. 写入 `.cache/<platform>/<domain>/v2-<sha256(title)>.json` |
 | **输出** | Stats dict（total, fetched, skipped, failed） |
 | **副作用** | 写入 `.cache/` 持久化缓存 |
 
@@ -161,26 +161,15 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
 
 ## 缓存机制
 
-缓存由 `scripts/pipeline/pipeline/cache.py` 管理，实现 Fetch 与 Convert 阶段解耦：
+缓存由 `scripts/pipeline/pipeline/cache.py` 管理，实现 Fetch 与 Convert 解耦。新文件为 `.cache/<platform>/<domain>/v2-<sha256(exact-title)>.json`，包含原始 `title`、schema version、acquisition 标记、来源及相应载荷。枚举读取 metadata，不从文件名反解标题。唯一临时文件加原子替换保证完整写入；安全旧文件候选仅在 title 精确相等时可读，读取不会迁移或重命名旧文件。详见 [ADR 0014](../adr/0014-mediawiki-cache-identity.md)。CDP 调用方仍决定自己的 title 身份，但通过同一存储层保存。
 
-```
-<repo_root>/.cache/
-  └── <platform>/        # "mediawiki"、"scrapling" 或 "chrome-cdp"
-      └── <domain>/
-          ├── Page_Title_1.json
-          ├── Page_Title_2.json
-          └── ...
-```
+`admit_page()` 统一检查 title、已记录 API 来源、当前 resolved acquisition 和必需载荷。HTML 要求非空 html；wikitext 要求字符串；hybrid 动态 fallback 要求 rendered_html。markerless 旧缓存只在表示明确时内存适配。
 
-**每个缓存文件包含**：`html`、`wikitext`、`rendered_html`、`images`、`content_acquisition`、`fetched_at` 时间戳。
+- Fetch 只跳过兼容条目；全部兼容时不创建线程池；新响应准入后才写缓存。`--re-fetch` 强制获取，本次失败标题传给 convert，旧缓存不能掩盖重抓失败；fetch-only 失败返回非零。
+- Convert 在 resume 之前准入，不隐式联网。只有 completed、目标文件和转换指纹全部匹配才跳过。指纹覆盖 raw/config/acquisition/输出及链接上下文/converter revision，排除 fetched_at。
+- HTML 生产路径委托共享 `convert_page_full` 五步；成功落盘才存指纹。编排层保留指纹，不重新并入旧 completion；结构化失败写入 extraction_results，assembly 不把失败页或旧目录残留作为本次成功输出。
 
-**chrome-cdp 缓存**：`platform: "chrome-cdp"` 的缓存条目包含 `html`（原始 HTML）、`url`（完整源 URL）、`fetched_at` 时间戳。缓存路径为 `.cache/chrome-cdp/<domain>/<url_path_with_slashes_to_underscores>.json`。由 `fetch_cdp.py` 阶段写入，`convert_html.py` 阶段读取。
-
-**关键行为**：
-- Fetch 阶段：缓存已有页面跳过（`is_cached = title in cached_pages`），除非 `--re-fetch`；全量缓存时走快速路径直接返回（<1秒）；`batch_delay` sleep 仅在实际网络请求时执行
-- Convert 阶段：纯读缓存，无网络请求
-- 跨 session 复用：缓存持久化在仓库 `.cache/` 目录，支持跨 CLI 调用复用
-- `--re-fetch`：强制刷新所有页面，忽略已有缓存
+缺 HTML 时必须重新获取，不能仅离线重转。实际恢复先审核新 manifest，再选择重抓或完整 HTML 缓存重转，详见 [恢复手册](../playbooks/mediawiki-extraction-recovery.md)。
 
 ## 速率限制优先级解析
 

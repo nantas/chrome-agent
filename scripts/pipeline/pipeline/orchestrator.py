@@ -297,7 +297,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 "cdp-api-bridge backend: fetch must be performed externally. "
                 "Use fetch_cdp_api.run_fetch_cdp_api(eval_fn, ...) from the .mjs layer."
             )
-            if "fetch" in phases and "all" not in phases:
+            if phases == ["fetch"]:
                 return EXIT_SUCCESS
         else:
             try:
@@ -311,8 +311,10 @@ def run_pipeline(args: argparse.Namespace) -> int:
                 return EXIT_PHASE_B_FAILURE
 
             # Early exit for fetch-only
-            if "fetch" in phases and "all" not in phases:
-                log.info("--phase fetch complete — cache populated")
+            if phases == ["fetch"]:
+                log.info("--phase fetch complete")
+                if fetch_stats.get("failed", 0):
+                    return EXIT_PARTIAL_SUCCESS if fetch_stats.get("fetched", 0) or fetch_stats.get("skipped", 0) else EXIT_PHASE_B_FAILURE
                 return EXIT_SUCCESS
 
     # --- Convert Phase ---
@@ -332,7 +334,8 @@ def run_pipeline(args: argparse.Namespace) -> int:
             else:
                 results, stats = run_convert(
                     args.output, manifest, strategy, domain, repo_root,
-                    resume_enabled=resume_enabled
+                    resume_enabled=resume_enabled,
+                    failed_fetch_titles=(fetch_stats or {}).get("failed_titles", ()),
                 )
 
             # Save extraction results WITH content and rendered_html
@@ -347,6 +350,7 @@ def run_pipeline(args: argparse.Namespace) -> int:
                             "content": r.get("content"),
                             "rendered_html": r.get("rendered_html"),
                             "images": r.get("images"),
+                            **{key: r[key] for key in ("reason", "expected_mode", "actual_mode", "remediation", "missing_fields") if key in r},
                         }
                         for title, r in results.items()
                     },
@@ -383,16 +387,15 @@ def run_pipeline(args: argparse.Namespace) -> int:
 
     # Flush state after extraction completion
     if resume_enabled and results is not None and completed_pages_set is not None:
-        from .state import save_state
-        all_completed = set(completed_pages_set) | {
-            title for title, r in results.items()
-            if r.get("status") == "ok"
-        }
-        final_state = {
-            "completed_pages": list(all_completed),
+        from .state import load_state, save_state
+        # Convert owns admission and fingerprints; never re-add stale completions.
+        final_state = load_state(args.output)
+        all_completed = {title for title, r in results.items() if r.get("status") == "ok"}
+        final_state.update({
+            "completed_pages": sorted(all_completed),
             "phase": "convert_done",
             "total_pages": len(manifest.get("pages", [])),
-        }
+        })
         save_state(args.output, final_state)
         log.info("State flushed: %d completed pages", len(all_completed))
 
@@ -411,18 +414,10 @@ def run_pipeline(args: argparse.Namespace) -> int:
 
     # Flush final state after assembly completion
     if resume_enabled and completed_pages_set is not None:
-        from .state import save_state
-        final_completed = list(completed_pages_set) if results is None else list(
-            completed_pages_set | {
-                title for title, r in results.items()
-                if r.get("status") == "ok"
-            }
-        )
-        save_state(args.output, {
-            "completed_pages": final_completed,
-            "phase": "done",
-            "total_pages": len(manifest.get("pages", [])),
-        })
+        from .state import load_state, save_state
+        final_state = load_state(args.output)
+        final_state['phase'] = 'done'
+        save_state(args.output, final_state)
 
     # --- Auto Link Fix ---
     did_extraction = "fetch" in phases or "convert" in phases or "all" in phases or "assemble" in phases

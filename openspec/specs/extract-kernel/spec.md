@@ -29,27 +29,40 @@
 - **AND** no `context=` keyword argument SHALL be passed
 
 ### Requirement: convert-page-full
-
-`converter.py` SHALL expose `convert_page_full(html, extraction_rules)` as the single shared orchestration entry point for the full 4-step extraction pipeline:
-
-1. Extract infobox via `extract_infobox()`
-2. Preprocess HTML via `preprocess_html()`
-3. Convert to Markdown via `HtmlToMarkdownConverter.convert_body()`
-4. Prepend infobox to body if extracted
+`converter.py` SHALL expose `convert_page_full(html, extraction_rules)` with backward-compatible optional rendering context as the single full-page extraction orchestration entry. It SHALL extract infobox from intact input, preprocess HTML, convert body with the supplied or stateless converter, prepend nonempty infobox Markdown, and apply shared post-ops exactly once. It SHALL preserve the input for other read-only consumers such as card-stat extraction.
 
 #### Scenario: sample-converter-delegates-to-kernel
-- **WHEN** `sample_converter.py` applies extraction rules to an HTML page
-- **THEN** it SHALL call `convert_page_full(html, extraction_rules)` from `converter.py`
-- **AND** SHALL NOT contain its own orchestrator logic for the 4-step pipeline
+- **WHEN** explore applies extraction rules
+- **THEN** it SHALL delegate to the shared entry without its own extraction sequence.
+
+#### Scenario: pipeline-delegates-to-kernel
+- **WHEN** pipeline HTML conversion has a stateful converter
+- **THEN** it SHALL supply that context to the same entry, extracting before container deletion.
 
 #### Scenario: full-pipeline-output-intact
-- **WHEN** `convert_page_full()` is called with the same HTML and extraction rules as the current `_apply_extraction()`
-- **THEN** the output SHALL be identical to pre-change behavior
+- **WHEN** input contains enabled infobox fields plus body text
+- **THEN** structured fields and body SHALL survive, without a duplicate body rendering of the removed infobox.
+
+#### Scenario: absent-infobox
+- **WHEN** no infobox matches
+- **THEN** the shared entry SHALL return the converted body without inventing an infobox section.
 
 ### Requirement: extract-infobox-via-kernel
-
-`convert_page_full()` SHALL call `extract_infobox()` from within the shared extraction library. The infobox extraction SHALL use the same logic regardless of which B-axis path calls it.
+The full-page entry SHALL call the shared `extract_infobox` implementation before cleanup. All callers SHALL use one URL-context policy and preserve supplied inline-rendering, handler and source-directory context. Equal input, rules and context SHALL produce identical extracted fields, values and links across execution paths.
 
 #### Scenario: infobox-extraction-identical
-- **WHEN** explore path calls `convert_page_full()` and pipeline path calls infobox extraction manually
-- **THEN** both SHALL produce identical infobox Markdown for the same HTML input
+- **WHEN** explore and pipeline convert identical HTML under matching rules/context
+- **THEN** their infobox Markdown SHALL be identical, including field handlers and resolved links.
+
+## ADDED Requirements
+
+### Requirement: infobox-enable-and-selector-parity
+Full-page extraction SHALL extract/prepend an infobox only when enabled, and preprocessing SHALL use the same selector (default `aside.portable-infobox`). Disabled or absent infobox rules SHALL leave the content to ordinary body conversion, without prepending a duplicate structured table.
+
+#### Scenario: enabled-default-selector
+- **WHEN** infobox is enabled without an explicit selector
+- **THEN** extraction and removal SHALL both match the default portable infobox and fields SHALL appear once.
+
+#### Scenario: disabled-infobox
+- **WHEN** infobox configuration is absent or disabled
+- **THEN** full-page conversion SHALL NOT prepend an infobox table and ordinary body conversion SHALL preserve the content.

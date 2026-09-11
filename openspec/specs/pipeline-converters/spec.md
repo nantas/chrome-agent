@@ -139,30 +139,19 @@ Convert phase SHALL detect wiki redirect pages via `redirectMsg` HTML marker in 
 Added by the `link-fallback-redirect-skip` change; authoritative spec delta resides in the change directory.
 
 ### Requirement: infobox-link-source-dir-passthrough
-
-`_extract_selectolax()` SHALL accept `source_dir: str = ""` parameter and pass it as `source_dir` keyword argument when calling `render_inline_children_fn`.
-
-`extract_infobox()` SHALL accept `source_dir: str = ""` parameter and pass it through to `_extract_selectolax()` in the selectolax branch.
-
-`HtmlToMarkdownConverter._render_infobox_table()` SHALL pass its current `source_dir` parameter value when calling `extract_infobox()`.
+`extract_infobox()` SHALL pass `source_dir` to inline render callbacks in both selectolax and BS4 paths. The shared full-page entry and `HtmlToMarkdownConverter._render_infobox_table()` SHALL preserve the caller's link-index and source-directory context.
 
 #### Scenario: infobox-link-uses-correct-relative-path
-
-- **WHEN** converting `bosses/Ultra_Greed.md` infobox
-- **AND** infobox contains a link to `endings/index.md`
-- **THEN** the infobox link SHALL be `[Ending 18](../endings/index.md)`
-- **AND** SHALL NOT be `[Ending 18](endings/index.md)`
+- **WHEN** `bosses/Ultra_Greed.md` links to `endings/index.md` from an infobox
+- **THEN** the link SHALL be `[Ending 18](../endings/index.md)`.
 
 #### Scenario: infobox-link-same-directory
+- **WHEN** an infobox links to a page in the same output directory
+- **THEN** its relative link SHALL have no directory prefix.
 
-- **WHEN** converting `items/Item_Pool.md` infobox
-- **AND** infobox contains a link to `items/Item_Pool.md`
-- **THEN** the infobox link SHALL be `[Item Pool](Item_Pool.md)` (no prefix)
-
-#### Scenario: bs4-path-unaffected
-
-- **WHEN** `extract_infobox()` uses BS4 mode (explore path)
-- **THEN** behavior SHALL be identical to before this change (BS4 path does not use `source_dir`)
+#### Scenario: bs4-context-preserved
+- **WHEN** full-page extraction uses BS4 with a supplied inline renderer
+- **THEN** field handlers and ordinary fields SHALL preserve that renderer's source directory and link targets.
 
 ### Requirement: strategy-variant-config-driven
 
@@ -193,4 +182,25 @@ All site-specific HTML conversion variations SHALL be expressed through `strateg
 
 **Migration**: No migration needed. All tables now render as Markdown tables. The change is a quality improvement with no loss of functionality.
 
+## Requirements
 
+### Requirement: monotonic-wikitable-scanning
+The wikitext table converter SHALL scan complete top-level tables in document order, including a table at offset zero. Every iteration SHALL advance beyond the consumed span or terminate. It SHALL preserve surrounding and trailing text, preserve supported cell content, and SHALL NOT reprocess an already consumed table.
+
+#### Scenario: table-at-start-with-tail
+- **WHEN** input starts with a complete wikitable followed by prose and no other table
+- **THEN** conversion SHALL terminate, convert the table once and retain the prose.
+
+#### Scenario: table-at-start-and-second-table
+- **WHEN** input starts with a table followed by prose and a second table
+- **THEN** both tables SHALL be converted once in source order and neither complete top-level table SHALL remain as raw `{|` markup.
+
+#### Scenario: table-after-prose
+- **WHEN** a table starts after introductory prose
+- **THEN** both introduction and table content SHALL be retained.
+
+#### Scenario: malformed-or-nested-table
+- **WHEN** input contains an unclosed table or supported nested table syntax
+- **THEN** scanning SHALL terminate without rescanning a consumed span, preserve unconsumed malformed text, and retain existing supported nested-table behavior.
+
+## MODIFIED Requirements

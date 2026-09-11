@@ -6,7 +6,6 @@ Change: openspec/changes/infobox-link-source-dir-fix
 
 from __future__ import annotations
 
-import inspect
 import unittest
 from unittest.mock import MagicMock, call
 
@@ -172,14 +171,15 @@ class TestBS4PathUnaffected(unittest.TestCase):
         # Both should produce identical output
         self.assertEqual(result_no_dir, result_with_dir)
 
-    def test_bs4_signature_no_source_dir_param(self):
-        sig = inspect.signature(_extract_bs4)
-        param_names = list(sig.parameters.keys())
-        self.assertNotIn("source_dir", param_names)
+    def test_bs4_passes_source_dir_to_renderer(self):
+        render = MagicMock(return_value="Ending 18")
+        result = extract_infobox(_make_infobox_html(), {}, "wiki.gg",
+                                 source_dir="bosses", render_inline_children_fn=render)
+        self.assertIn("Ending 18", result)
+        render.assert_called()
+        self.assertTrue(all(c.kwargs.get("source_dir") == "bosses" for c in render.call_args_list))
 
 
-# Need to import _extract_bs4 for signature check
-from scripts.lib.extraction.infobox import _extract_bs4
 
 
 if __name__ == "__main__":

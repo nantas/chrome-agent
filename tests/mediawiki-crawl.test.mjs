@@ -47,7 +47,7 @@ test('real public CLI dispatches discovery and retains upstream failure', async 
   try {
     const fake=path.join(tmp,'python');const log=path.join(tmp,'calls');
     fs.writeFileSync(fake,`#!/bin/sh\nset -eu\nprintf '%s\\n' "$*" >> '${log}'\nprintf '%s\\n' '{"result":"success","manifest_path":"${tmp}/page_manifest.json"}'\n`);fs.chmodSync(fake,0o755);
-    const args=['scripts/chrome-agent-cli.mjs','crawl','https://growagarden.fandom.com/wiki/Grow_a_Garden_Wiki','--discovery-only','--format','json','--output',tmp];
+    const args=['scripts/chrome-agent-cli.mjs','crawl','https://growagarden.fandom.com/wiki/Grow_a_Garden_Wiki','--discovery-only','--pipeline-timeout-seconds','3600','--format','json','--output',tmp];
     const env={...process.env,CHROME_AGENT_PYTHON:fake};
     let result=spawnSync(process.execPath,args,{encoding:'utf8',env});
     assert.equal(result.status,0,result.stderr);assert.equal(JSON.parse(result.stdout).discovery_only,true);
@@ -57,6 +57,13 @@ test('real public CLI dispatches discovery and retains upstream failure', async 
     result=spawnSync(process.execPath,args,{encoding:'utf8',env});
     const error=JSON.parse(result.stdout);assert.equal(error.upstream_exit_code,20);assert.match(error.stderr_summary,/manifest_contract/);
     assert.ok(error.handoff_path);assert.equal(error.result,'failure');
+    assert.equal(error.pipeline_timeout_seconds, 3600);
+    const callsBefore = fs.readFileSync(log, 'utf8');
+    for (const value of ['0', '1.5', 'bad', '']) {
+      result = spawnSync(process.execPath, [...args, '--pipeline-timeout-seconds=' + value], {encoding:'utf8', env});
+      assert.equal(JSON.parse(result.stdout).result, 'failure');
+      assert.equal(fs.readFileSync(log, 'utf8'), callsBefore);
+    }
   } finally {fs.rmSync(tmp,{recursive:true,force:true});}
 });
 
@@ -66,4 +73,26 @@ test('capability doctor recognizes discover kernel without duplicate spec', asyn
   const report=JSON.parse(result.stdout);
   assert.equal(report.result,'success',report.summary);
   assert.ok(report.checks.some(c=>c.name==='impl_page_discovery' && c.ok));
+});
+
+test('pipeline timeout is validated and passed to both stages', () => {
+  const h = harness();
+  runMediawikiWorkflow({yes: true, pipelineTimeoutSeconds: '3600'}, h.api);
+  assert.equal(h.calls.length, 2);
+  for (const call of h.calls) assert.equal(call.args.pipelineTimeoutMs, 3_600_000);
+  const defaults = harness();
+  runMediawikiWorkflow({discoveryOnly: true}, defaults.api);
+  assert.equal(defaults.calls[0].args.pipelineTimeoutMs, 600_000);
+  for (const value of ['0', '-1', '1.5', 'abc', '', true, '86401']) {
+    const invalid = harness();
+    assert.throws(() => runMediawikiWorkflow({pipelineTimeoutSeconds: value}, invalid.api), /pipeline-timeout/);
+    assert.equal(invalid.calls.length, 0);
+  }
+});
+
+test('timeout failure retains configured budget', () => {
+  const h = harness([{status: null, error: new Error('ETIMEDOUT'), signal: 'SIGTERM'}]);
+  const result = runMediawikiWorkflow({fromManifest: '/m', pipelineTimeoutSeconds: 3600}, h.api);
+  assert.equal(result.failure_context.pipeline_timeout_seconds, 3600);
+  assert.equal(result.failure_context.failure_kind, 'internal');
 });

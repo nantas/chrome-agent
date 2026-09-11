@@ -57,7 +57,14 @@ def run_fetch(client: ApiClient, manifest: dict, strategy: dict,
              re_fetch)
 
     # Pre-compute cached pages unless re_fetch
-    cached_pages = set() if re_fetch else cache_mod.list_cached_pages(repo_root, platform, domain)
+    mode = cache_mod.resolve_acquisition(strategy)
+    cached_pages = set()
+    if not re_fetch:
+        for page in pages:
+            raw = cache_mod.load_page_cache(repo_root, platform, domain, page['title'])
+            admitted, error = cache_mod.admit_page(raw, page['title'], mode, client.base_url)
+            if admitted is not None:
+                cached_pages.add(page['title'])
     if cached_pages and not re_fetch:
         log.info("Cache: %d pages already cached, will skip", len(cached_pages))
 
@@ -81,6 +88,7 @@ def run_fetch(client: ApiClient, manifest: dict, strategy: dict,
 
     fetched_count = 0
     failed_count = 0
+    failed_titles = []
 
     def _fetch_one(page_info: dict) -> dict:
         """Fetch a single page and write to cache. Returns status dict."""
@@ -88,10 +96,11 @@ def run_fetch(client: ApiClient, manifest: dict, strategy: dict,
         try:
             raw = fetch_single_page(client, page_info, content_strategy)
             # Add metadata for cache
-            raw.setdefault("content_acquisition", strategy.get("api", {})
-                             .get("content_profile", {})
-                             .get("content_acquisition", "unknown"))
+            raw.setdefault("content_acquisition", mode)
             raw.setdefault("base_url", client.base_url)
+            raw, error = cache_mod.admit_page(raw, title, mode, client.base_url)
+            if error:
+                return {"title": title, "status": "error", "error": error}
             cache_mod.save_page_cache(repo_root, platform, domain, raw)
             return {"title": title, "status": "ok"}
         except PageNotFoundError:
@@ -111,13 +120,13 @@ def run_fetch(client: ApiClient, manifest: dict, strategy: dict,
                     fetched_count += 1
                     # Sleep only on actual network requests (spec: batch-delay-only-on-network-requests)
                     time.sleep(batch_delay_sec)
-                elif result["status"] == "not_found":
-                    skipped_count += 1
                 else:
                     failed_count += 1
+                    failed_titles.append(title)
                     log.warning("Fetch failed for '%s': %s", title, result.get("error", "unknown"))
             except Exception as e:
                 failed_count += 1
+                failed_titles.append(title)
                 log.warning("Fetch failed for '%s': %s", title, e)
 
             done = fetched_count + skipped_count + failed_count
@@ -131,6 +140,8 @@ def run_fetch(client: ApiClient, manifest: dict, strategy: dict,
         "skipped": skipped_count,
         "failed": failed_count,
     }
+    if failed_titles:
+        stats["failed_titles"] = sorted(failed_titles)
     log.info("Fetch phase complete: %d total, %d fetched, %d skipped (cached), %d failed",
              stats["total"], fetched_count, skipped_count, failed_count)
     return stats

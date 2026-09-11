@@ -16,29 +16,37 @@
 ## MODIFIED Requirements
 
 ### Requirement: full-cache-fastpath
-`run_fetch()` SHALL 在进入 ThreadPoolExecutor 之前，检查 manifest 所有页面标题是否为 `list_cached_pages()` 返回集合的子集。若 `manifest_titles ⊆ cached_pages` 且 `re_fetch == False`，SHALL 跳过整个线程池调度，直接返回 `skipped = total` 的 stats dict。
+`run_fetch()` SHALL check all manifest pages for compatible cache entries using `mediawiki-cache-integrity` before creating a ThreadPoolExecutor. Only when every page passes admission and `re_fetch == False` SHALL it return skipped statistics without worker scheduling or API requests. No fixed sub-second wall-clock bound SHALL override identity and payload validation.
 
 #### Scenario: all-pages-cached
-- **WHEN** manifest 包含 N 个页面，`list_cached_pages()` 返回的集合包含所有 N 个标题，且 `re_fetch == False`
-- **THEN** `run_fetch()` SHALL NOT 创建任何线程或发起任何 API 请求，直接返回 `{"total": N, "fetched": 0, "skipped": N, "failed": 0}`，总耗时 < 1 秒
+- **WHEN** all N manifest pages have compatible entries and re-fetch is false
+- **THEN** fetch SHALL create no executor, make no API calls, and return total=N, fetched=0, skipped=N, failed=0.
 
 #### Scenario: all-pages-cached-with-re-fetch
-- **WHEN** `re_fetch == True`
-- **THEN** 快速路径 SHALL NOT 触发，行为与当前一致（全量重新获取）
+- **WHEN** re-fetch is true
+- **THEN** the fast path SHALL NOT trigger and every manifest page SHALL be scheduled for acquisition.
+
+#### Scenario: filenames-exist-but-mode-changed
+- **WHEN** every title has a cache file but any entry fails current-mode admission
+- **THEN** the all-cached fast path SHALL NOT trigger.
 
 ### Requirement: partial-cache-prefilter
-`run_fetch()` SHALL 在提交 ThreadPoolExecutor 之前，将 manifest 页面分为两组：已缓存（skip）和未缓存（fetch）。只有未缓存页面 SHALL 提交到线程池。已缓存页面 SHALL 直接计入 `skipped_count`，不创建 future 对象。
+`run_fetch()` SHALL partition manifest pages by compatible cache admission before scheduling workers. Only incompatible or absent entries SHALL be fetched, unless re-fetch is true. Compatible entries SHALL count as skipped without futures. Failed replacement acquisition SHALL remain a failure and SHALL NOT authorize conversion of incompatible old content.
 
-#### Scenario: partial-cache
-- **WHEN** manifest 包含 5000 页面，其中 4900 已缓存，100 未缓存
-- **THEN** 仅 100 个 future 提交到线程池；`skipped_count` 初始化为 4900；线程池 max_workers 仅调度 100 个任务
+#### Scenario: mixed-cache
+- **WHEN** 4,900 entries are compatible and 100 are missing or incompatible
+- **THEN** only 100 futures SHALL be submitted and initial skipped count SHALL be 4,900.
 
 #### Scenario: no-cache
-- **WHEN** manifest 包含 N 页面，`list_cached_pages()` 返回空集
-- **THEN** 所有 N 页面提交到线程池，行为与当前一致
+- **WHEN** no manifest page has a compatible entry
+- **THEN** all pages SHALL be scheduled.
+
+#### Scenario: replacement-fetch-fails
+- **WHEN** acquiring HTML to replace old hybrid content fails
+- **THEN** the page SHALL remain failed and incompatible old content SHALL NOT be reported as a successful cache fallback.
 
 ### Requirement: batch-delay-only-on-network-requests
-`run_fetch()` SHALL 仅在 `as_completed` 循环中实际产生了网络请求（`status == "ok"`）时执行 `time.sleep(batch_delay_sec)`。跳过（cached / not_found）和失败的页面 SHALL NOT 触发 sleep。
+`run_fetch()` SHALL 仅在 `as_completed` 循环中实际产生了网络请求（`status == "ok"`）时执行 `time.sleep(batch_delay_sec)`。跳过（cached）和失败（含 not_found）的页面 SHALL NOT 触发 sleep。
 
 #### Scenario: skip-does-not-sleep
 - **WHEN** 一个 cached 页面在预过滤阶段被排除（不进入 `_fetch_one` 和 `as_completed` 循环）
@@ -55,3 +63,16 @@
 ## RENAMED Requirements
 
 （无）
+
+## ADDED Requirements
+
+### Requirement: acquired-payload-admission
+Freshly acquired content SHALL satisfy the same identity, resolved acquisition and payload requirements before being counted as fetched successfully or replacing a valid cache entry. An HTML request returning only fallback wikitext SHALL remain an acquisition failure for that request.
+
+#### Scenario: fresh-html-request-without-html
+- **WHEN** an HTML acquisition response contains empty HTML and fallback wikitext
+- **THEN** fetch SHALL report a payload incompatibility instead of recording an HTML success.
+
+#### Scenario: failed-forced-fetch-is-not-a-cache-hit
+- **WHEN** a forced fetch fails despite an older compatible cache entry
+- **THEN** fetch SHALL report the failed title, fetch-only SHALL return a nonzero exit code, and combined conversion SHALL NOT resume that title from the old entry.

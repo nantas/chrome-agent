@@ -9,7 +9,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 import { buildScraplingExtractionArgs } from "./lib/scrapling-extraction-args.mjs";
-import { runMediawikiWorkflow } from "./lib/mediawiki-crawl.mjs";
+import { runMediawikiWorkflow, resolvePipelineTimeout } from "./lib/mediawiki-crawl.mjs";
 import { runCrawlScrapling } from "./lib/crawl_scrapling.mjs";
 import { runScrape } from "./lib/scrape.mjs";
 import { resolveAppPython } from "./lib/python-resolver.mjs";
@@ -51,6 +51,7 @@ Command options:
   --report               Force durable report emission to reports/.
   --no-report            Disable durable report emission for this run.
   --discovery-only       Stop after discovery phase, output discovery_summary.json.
+  --pipeline-timeout-seconds <n>  MediaWiki child timeout (1–86400 seconds; default 600).
   --from-manifest <path> Resume crawl from existing page manifest.
   --output <dir>        Specify output directory for crawl results.
   --yes                  Bypass confirmation gate (passthrough signal for SKILL layer).
@@ -108,6 +109,7 @@ function parseArgs(argv) {
   let fromManifest = null;
   let phase = null;
   let reFetch = false;
+  let pipelineTimeoutSeconds;
   let yes = false;
   let excludeCategory = [];
   let outputDir = null;
@@ -280,6 +282,15 @@ function parseArgs(argv) {
       phase = value.slice("--phase=".length);
       continue;
     }
+    if (value === "--pipeline-timeout-seconds") {
+      pipelineTimeoutSeconds = passthrough[i + 1] ?? "";
+      if (!pipelineTimeoutSeconds.startsWith("--")) i += 1;
+      continue;
+    }
+    if (value.startsWith("--pipeline-timeout-seconds=")) {
+      pipelineTimeoutSeconds = value.slice("--pipeline-timeout-seconds=".length);
+      continue;
+    }
     if (value === "--re-fetch") {
       reFetch = true;
       continue;
@@ -329,6 +340,7 @@ function parseArgs(argv) {
     fromManifest,
     phase,
     reFetch,
+    pipelineTimeoutSeconds,
     yes,
     excludeCategory,
     outputDir,
@@ -2307,7 +2319,7 @@ function runCrawlMediawikiApi(repoRoot, repoRef, resolutionMode, runDir, reportP
     if (options.maxPages != null) args.push("--max-pages", String(options.maxPages));
     if (options.concurrency != null) args.push("--concurrency", String(options.concurrency));
     for (const category of options.excludeCategory ?? []) args.push("--exclude-category", category);
-    const result = spawnSync(resolveAppPython(repoRoot), args, {cwd: repoRoot, encoding: "utf8", timeout: 600_000});
+    const result = spawnSync(resolveAppPython(repoRoot), args, {cwd: repoRoot, encoding: "utf8", timeout: options.pipelineTimeoutMs});
     let payload = null;
     try { payload = JSON.parse(result.stdout); } catch {}
     return {...result, payload, kind};
@@ -3245,6 +3257,7 @@ async function main() {
           fromManifest: parsed.fromManifest,
           phase: parsed.phase,
           reFetch: parsed.reFetch,
+          pipelineTimeoutSeconds: resolvePipelineTimeout(parsed.pipelineTimeoutSeconds),
           yes: parsed.yes,
           excludeCategory: parsed.excludeCategory,
           outputDir: parsed.outputDir,

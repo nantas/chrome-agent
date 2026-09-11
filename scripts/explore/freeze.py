@@ -41,15 +41,27 @@ def freeze(repo_root: str, scaffold_path: str) -> dict:
         final = '---\n' + yaml.safe_dump(strategy, sort_keys=False, allow_unicode=True) + '---' + body
         registry = json.loads(previous) if previous else {'entries': []}
         domain = strategy['domain']
-        registry['entries'] = [e for e in registry['entries'] if e.get('domain') != domain]
-        registry['entries'].append({'domain': domain, 'description': strategy['description'],
+        new_entry = {'domain': domain, 'description': strategy['description'],
             'protection_level': strategy.get('protection_level', 'low'),
             'page_types': sorted({p.get('type', 'article') for p in strategy['structure']['pages']}),
             'pagination': ['none'], 'entry_points': strategy['structure']['entry_points'],
             'anti_crawl_refs': strategy.get('anti_crawl_refs', []),
             'file': os.path.relpath(file, registry_path.parent),
-            **({'backend': strategy['backend']} if strategy.get('backend') else {})})
-        for target, data in [(file, final), (registry_path, json.dumps(registry, ensure_ascii=False, indent=2))]:
+            **({'backend': strategy['backend']} if strategy.get('backend') else {})}
+        for index, entry in enumerate(registry['entries']):
+            if entry.get('domain') == domain:
+                ordered = {key: new_entry[key] for key in entry if key in new_entry}
+                ordered.update(new_entry)
+                registry['entries'][index] = ordered
+                break
+        else:
+            registry['entries'].append(new_entry)
+        previous_text = previous.decode('utf-8') if previous else ''
+        indentation = re.search(r'\n([ \t]+)\"', previous_text)
+        indent = indentation.group(1) if indentation else 4
+        newline = '\n' if not previous or previous_text.endswith('\n') else ''
+        registry_text = json.dumps(registry, ensure_ascii=False, indent=indent) + newline
+        for target, data in [(file, final), (registry_path, registry_text)]:
             with tempfile.NamedTemporaryFile(mode='w', dir=target.parent, delete=False) as temp:
                 temp.write(data); temp_paths.append(temp.name)
         os.replace(temp_paths[0], file)

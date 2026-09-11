@@ -26,3 +26,11 @@ class SiteRunnerStrategyTests(unittest.TestCase):
                 self.assertEqual(test_runner._resolve_cache_path('Example',domain),portable)
                 result=unittest.TestResult();case.run(result)
                 self.assertTrue(result.wasSuccessful(),str(result.failures)+str(result.errors))
+
+    def test_v2_cache_sample_is_found(self):
+        from scripts.pipeline.pipeline.cache import save_page_cache
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            saved = save_page_cache(tmp, 'mediawiki', 'example.org', {'title': 'A/B', 'html': '<p>Body</p>'})
+            with patch.object(test_runner, 'REPO_ROOT', root):
+                self.assertEqual(test_runner._resolve_cache_path('A/B', 'example.org'), saved)

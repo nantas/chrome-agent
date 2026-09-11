@@ -139,6 +139,7 @@ chrome-agent crawl <url> [options]
 | `--exclude-category <n>` | string[] | — | 排除分类（可重复） |
 | `--phase <phases...>` | string[] | `all` | 执行阶段 |
 | `--re-fetch` | flag | false | 强制重新获取 |
+| `--pipeline-timeout-seconds <n>` | int | 600 | MediaWiki 每个 discovery/extraction 子进程预算，1–86400 秒 |
 
 **行为**：策略引导有界遍历。MediaWiki 站点自动路由到 API 管线（`scripts/pipeline/`）。
 
@@ -319,3 +320,7 @@ python3 -m scripts.pipeline <subcommand> [args]
 - [06 — 引擎选择](06-engine-selection.md) — 引擎选择决策树
 
 ---
+
+### MediaWiki pipeline 超时预算
+
+`crawl --pipeline-timeout-seconds <n>` 设置每个 MediaWiki discovery/extraction 子进程的总预算，单位秒，默认 600，允许整数 1–86400。例如 `--pipeline-timeout-seconds 3600` 为每阶段一小时。该选项不修改单个 API 请求超时或其他 backend，也不绕过 discovery/confirmation gate。非法值在启动子进程前拒绝；超时 failure context 包含 `pipeline_timeout_seconds`，保留 handoff 与失败状态。

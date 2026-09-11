@@ -188,3 +188,20 @@ The Fandom template and Neon Abyss strategy SHALL use supported extraction confi
 #### Scenario: neon-behavior-regression
 - **WHEN** Neon Abyss sample conversion runs with migrated configuration
 - **THEN** supported lazyload/edit/TOC/ambox/image-wrapper and normalization behavior SHALL match approved fixtures without requiring historical batch re-extraction.
+
+## Requirements
+
+### Requirement: stable-registry-publication-format
+Freeze SHALL preserve the existing registry indentation, trailing newline convention, top-level/member key order and relative order of unrelated entries. Updating an existing domain SHALL retain its entry position; new domains SHALL append. A newly created registry SHALL use four-space indentation. Only the target domain's metadata SHALL change semantically. Existing validation, atomic publication and rollback behavior SHALL remain in force.
+
+#### Scenario: four-space-existing-registry
+- **WHEN** a domain is frozen into a registry using four-space indentation
+- **THEN** the result SHALL retain four-space indentation and unrelated entries SHALL NOT be reordered or changed.
+
+#### Scenario: repeated-freeze
+- **WHEN** the same unchanged strategy is frozen twice
+- **THEN** the second registry publication SHALL be byte-identical to the first.
+
+#### Scenario: failed-publication
+- **WHEN** freeze validation or publication fails
+- **THEN** the prior strategy and registry SHALL be restored according to the existing lifecycle contract.

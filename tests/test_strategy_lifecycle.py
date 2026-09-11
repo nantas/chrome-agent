@@ -42,3 +42,24 @@ class StrategyLifecycleTests(unittest.TestCase):
             with patch('scripts.explore.freeze.os.replace',side_effect=OSError('disk error')):
                 self.assertFalse(freeze(out,str(file))['ok'])
             self.assertEqual(before,file.read_bytes());self.assertEqual(json.loads(registry.read_text())['entries'],[])
+
+    def test_registry_format_order_and_repeat_freeze(self):
+        for indent, newline in [(4, '\n'), (2, '')]:
+            with self.subTest(indent=indent), tempfile.TemporaryDirectory() as out:
+                root = Path(out)
+                folder = root / 'sites/strategies/example.org'
+                folder.mkdir(parents=True)
+                registry = folder.parent / 'registry.json'
+                before = {'entries': [{'domain': 'first.org', 'extra': 1}, {'domain': 'example.org'}, {'domain': 'last.org', 'extra': 2}], 'version': 1}
+                registry.write_text(json.dumps(before, indent=indent) + newline)
+                file = folder / 'strategy.md'
+                file.write_text('---\ndomain: example.org\ndescription: Example\nstructure:\n  pages: [{id: home, type: home, url_example: "https://example.org/"}]\n  entry_points: [home]\nlifecycle: {status: frozen}\n---\n')
+                self.assertTrue(freeze(out, str(file))['ok'])
+                data = json.loads(registry.read_text())
+                self.assertEqual([e['domain'] for e in data['entries']], ['first.org', 'example.org', 'last.org'])
+                self.assertEqual(data['entries'][0], before['entries'][0])
+                self.assertEqual(data['entries'][2], before['entries'][2])
+                self.assertEqual(registry.read_text(), json.dumps(data, indent=indent, ensure_ascii=False) + newline)
+                frozen = registry.read_bytes()
+                self.assertTrue(freeze(out, str(file))['ok'])
+                self.assertEqual(registry.read_bytes(), frozen)

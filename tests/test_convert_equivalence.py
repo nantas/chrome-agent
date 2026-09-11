@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import unittest
 
-from scripts.lib.extraction.converter import convert_html_to_markdown, convert_page_full
+from scripts.lib.extraction.converter import HtmlToMarkdownConverter, convert_html_to_markdown, convert_page_full
 from scripts.explore.sample_converter import _apply_extraction
 from scripts.pipeline.pipeline.phases.convert import convert_single_page
 from scripts.pipeline.strategies import (
@@ -108,6 +108,53 @@ def _unwrap_pipeline_body(content: str, title: str) -> str:
 
 
 class TestConvertMirrorEquivalence(unittest.TestCase):
+    def test_enabled_infobox_survives_pipeline(self):
+        html = '<aside class="portable-infobox"><div class="pi-data"><h3 class="pi-data-label">Seed Chance</h3><div class="pi-data-value">7.14%</div></div></aside><p>Body</p>'
+        rules = {**RULES_WITH_POSTOPS, "infobox": {"enabled": True, "selector": ".portable-infobox"}}
+        result = convert_single_page(
+            {"html": html, "content_acquisition": "html_rendered"},
+            {"title": TITLE, "target_directory": ""}, [], DOMAIN, [], {},
+            ExactTitleLinkResolver(), SimpleSubstitutionTemplateProcessor(), rules, {})
+        body = _unwrap_pipeline_body(result["content"], TITLE)
+        for marker in ("## Infobox", "Seed Chance", "7.14%"):
+            self.assertEqual(body.count(marker), 1, marker)
+        self.assertEqual(body, convert_page_full(html, rules).strip())
+
+    def test_infobox_uses_link_index_and_redirects(self):
+        html = '<aside class="portable-infobox"><div class="pi-data"><h3 class="pi-data-label">Unlock</h3><div class="pi-data-value"><a href="/wiki/Old">Ending</a></div></div></aside><p>Body</p>'
+        rules = {"infobox": {"enabled": True, "selector": ".portable-infobox"}}
+        pages = [{"title": "Ending", "target_directory": "endings", "target_filename": "index.md"}]
+        converter = HtmlToMarkdownConverter(DOMAIN, rules)
+        converter.build_link_index(pages, {"Old": "Ending"})
+        md = convert_page_full(html, rules, converter=converter, source_dir="bosses")
+        self.assertIn('[Ending](../endings/index.md)', md)
+
+    def test_infobox_base_url_overrides_context(self):
+        html = '<aside class="portable-infobox"><div class="pi-data"><h3 class="pi-data-label">Site</h3><div class="pi-data-value"><a href="/guide">Guide</a></div></div></aside>'
+        rules = {"image_handling": {"base_url": "https://other.example/"}, "infobox": {"enabled": True}}
+        converter = HtmlToMarkdownConverter(DOMAIN, rules)
+        self.assertIn("https://other.example/guide", convert_page_full(html, rules, converter=converter))
+
+    def test_context_validation_and_absent_infobox(self):
+        rules = {"infobox": {"enabled": True}}
+        self.assertEqual(convert_page_full('<p>Body</p>', rules), 'Body')
+        with self.assertRaises(ValueError):
+            convert_page_full('<p>Body</p>', rules, converter=HtmlToMarkdownConverter(DOMAIN, {}))
+
+    def test_infobox_handler_and_table_selector(self):
+        html = '<table class="info"><tr data-source="count"><th>Count</th><td><img src="/a.png"/><img src="/b.png"/></td></tr></table><p>Body</p>'
+        rules = {"infobox": {"enabled": True, "selector": "table.info", "field_selector": "tr", "label_selector": "th", "value_selector": "td"}, "infobox_field_handlers": {"count": {"handler": "count_images"}}}
+        self.assertIn('| Count | 2 |', convert_page_full(html, rules))
+
+    def test_infobox_configuration_controls_extraction_without_duplicates(self):
+        html = '<aside class="portable-infobox"><div class="pi-data"><h3 class="pi-data-label">Seed Chance</h3><div class="pi-data-value">7.14%</div></div></aside>'
+        for rules in ({}, {"infobox": {"enabled": False}}, {"infobox": {"enabled": True}}):
+            with self.subTest(rules=rules):
+                result = convert_page_full(html, rules)
+                self.assertEqual(result.count('Seed Chance'), 1)
+                self.assertEqual(result.count('7.14%'), 1)
+                self.assertEqual('## Infobox' in result, rules.get('infobox', {}).get('enabled', False))
+
     def test_cv3_explore_mirror_matches_kernel(self) -> None:
         """explore/sample_converter._apply_extraction ≡ convert_page_full."""
         via_explore = _apply_extraction(HTML, RULES, set())
@@ -199,6 +246,14 @@ class TestConvertMirrorEquivalence(unittest.TestCase):
             "B-axis drift: generic CDP path != convert kernel",
         )
 
+
+class TestInfoboxPoolTargets(unittest.TestCase):
+    def test_dedup_keeps_distinct_targets_with_same_label(self):
+        rules = {'infobox': {'enabled': True}, 'infobox_field_handlers': {'pool': {'handler': 'dedup_pools'}}}
+        html = '<aside class="portable-infobox"><div class="pi-data" data-source="pool"><h3 class="pi-data-label">Pools</h3><div class="pi-data-value"><a href="/wiki/Normal">Pool</a><a href="/wiki/Greed">Pool</a><a href="/wiki/Normal">Pool</a></div></div></aside>'
+        md = convert_page_full(html, rules)
+        self.assertEqual(md.count('/wiki/Normal'), 1)
+        self.assertEqual(md.count('/wiki/Greed'), 1)
 
 if __name__ == "__main__":
     unittest.main()

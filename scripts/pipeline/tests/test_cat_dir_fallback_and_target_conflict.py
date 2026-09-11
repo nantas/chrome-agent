@@ -177,9 +177,9 @@ class TestTargetPathConflict(unittest.TestCase):
             strategy = _make_strategy()
             # Mock cache to return minimal content for both pages
             cache_data = {"rendered_html": "<p>content</p>", "content_acquisition": "html_rendered"}
-            with patch("scripts.pipeline.pipeline.phases.convert.cache_mod") as mock_cache, \
+            with patch("scripts.pipeline.pipeline.phases.convert.cache_mod.load_page_cache") as mock_cache, \
                  patch("scripts.pipeline.pipeline.phases.convert.convert_single_page") as mock_convert:
-                mock_cache.load_page_cache.return_value = cache_data
+                mock_cache.side_effect = lambda root, platform, domain, title: {"title": title, "wikitext": "body", "content_acquisition": "wikitext_only"}
                 mock_convert.return_value = {
                     "title": "Page_A",
                     "status": "ok",
@@ -204,9 +204,9 @@ class TestTargetPathConflict(unittest.TestCase):
             }
             strategy = _make_strategy()
             cache_data = {"rendered_html": "<p>x</p>"}
-            with patch("scripts.pipeline.pipeline.phases.convert.cache_mod") as mock_cache, \
+            with patch("scripts.pipeline.pipeline.phases.convert.cache_mod.load_page_cache") as mock_cache, \
                  patch("scripts.pipeline.pipeline.phases.convert.convert_single_page") as mock_convert:
-                mock_cache.load_page_cache.return_value = cache_data
+                mock_cache.side_effect = lambda root, platform, domain, title: {"title": title, "wikitext": "body", "content_acquisition": "wikitext_only"}
                 mock_convert.return_value = {"title": "A", "status": "ok", "content": "# A"}
 
                 _, stats = run_convert(tmpdir, manifest, strategy, "test.wiki.gg", _repo_root)
@@ -228,9 +228,9 @@ class TestTargetPathConflict(unittest.TestCase):
             }
             strategy = _make_strategy()
             cache_data = {"rendered_html": "<p>x</p>"}
-            with patch("scripts.pipeline.pipeline.phases.convert.cache_mod") as mock_cache, \
+            with patch("scripts.pipeline.pipeline.phases.convert.cache_mod.load_page_cache") as mock_cache, \
                  patch("scripts.pipeline.pipeline.phases.convert.convert_single_page") as mock_convert:
-                mock_cache.load_page_cache.return_value = cache_data
+                mock_cache.side_effect = lambda root, platform, domain, title: {"title": title, "wikitext": "body", "content_acquisition": "wikitext_only"}
                 mock_convert.return_value = {"title": "Page_A", "status": "ok", "content": "# A"}
 
                 results, stats = run_convert(tmpdir, manifest, strategy, "test.wiki.gg", _repo_root)
@@ -260,9 +260,9 @@ class TestNoConflictFalsePositive(unittest.TestCase):
             }
             strategy = _make_strategy()
             cache_data = {"rendered_html": "<p>x</p>"}
-            with patch("scripts.pipeline.pipeline.phases.convert.cache_mod") as mock_cache, \
+            with patch("scripts.pipeline.pipeline.phases.convert.cache_mod.load_page_cache") as mock_cache, \
                  patch("scripts.pipeline.pipeline.phases.convert.convert_single_page") as mock_convert:
-                mock_cache.load_page_cache.return_value = cache_data
+                mock_cache.side_effect = lambda root, platform, domain, title: {"title": title, "wikitext": "body", "content_acquisition": "wikitext_only"}
                 mock_convert.return_value = {"title": "X", "status": "ok", "content": "# X"}
 
                 results, stats = run_convert(tmpdir, manifest, strategy, "test.wiki.gg", _repo_root)
@@ -412,9 +412,9 @@ class TestMinimalVerificationSet(unittest.TestCase):
             }
             strategy = self._make_isaac_strategy(include_new_cats=False)
             cache_data = {"rendered_html": "<p>x</p>"}
-            with patch("scripts.pipeline.pipeline.phases.convert.cache_mod") as mock_cache, \
+            with patch("scripts.pipeline.pipeline.phases.convert.cache_mod.load_page_cache") as mock_cache, \
                  patch("scripts.pipeline.pipeline.phases.convert.convert_single_page") as mock_convert:
-                mock_cache.load_page_cache.return_value = cache_data
+                mock_cache.side_effect = lambda root, platform, domain, title: {"title": title, "wikitext": "body", "content_acquisition": "wikitext_only"}
                 mock_convert.return_value = {"title": "Items", "status": "ok", "content": "# Items"}
 
                 results, stats = run_convert(

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import logging
+import hashlib
+import json
 import os
 import re
+from pathlib import Path
 from typing import Optional
 
 from ..registry import build_pipeline
@@ -14,8 +17,7 @@ from ...strategies import (
     SimpleSubstitutionTemplateProcessor,
 )
 from ...strategies import LinkResolver, TemplateProcessor
-from scripts.lib.extraction.converter import HtmlToMarkdownConverter, apply_post_conversion_ops
-from scripts.lib.extraction.preprocessor import preprocess_html
+from scripts.lib.extraction.converter import HtmlToMarkdownConverter, convert_page_full
 from ...strategies import convert_wikitext_to_markdown
 from ...client import PageNotFoundError
 
@@ -31,6 +33,15 @@ def _first_image_name(images: list[str], extraction_config: dict | None) -> str 
     return filtered[0].replace(" ", "_") if filtered else None
 
 log = logging.getLogger("pipeline")
+
+# Bump when conversion semantics change in a way not represented in config.
+CONVERTER_CONTRACT_REVISION = 2
+
+
+def _digest(value) -> str:
+    return hashlib.sha256(json.dumps(value, sort_keys=True, ensure_ascii=False,
+                                     separators=(",", ":")).encode("utf-8")).hexdigest()
+
 
 
 # ---------------------------------------------------------------------------
@@ -163,24 +174,9 @@ def _process_html_page(raw: dict, title: str, source_dir: str, source_url: str,
     converter = HtmlToMarkdownConverter(wiki_domain=domain, extraction_config=extraction_config)
     converter.build_link_index(manifest_pages, redirect_map)
 
-    # Preprocess HTML with the same pipeline as explore so that cleanup
-    # operations run identically in both paths — and now, with CV4 also
-    # applying the markdown-layer post-conversion ops below, explore samples
-    # serve as a valid quality proxy for pipeline production output for
-    # strategies that configure text_normalization / url_conversion /
-    # youtube_cleanup / markdown-layer cleanup ops.
-    # Spec: convert-kernel-three-layer-interface,
-    #       cv3-and-cv4-honor-same-post-ops-for-real-strategies.
-    # NOTE: extract_card_stats() below still uses the raw `html` (needs the intact
-    # infobox structure), so the preprocessed result stays in a local var.
-    cleaned_html = preprocess_html(html, extraction_config or {})
-    md_content = converter.convert_body(cleaned_html, source_dir=source_dir)
-
-    # Apply the same config-driven markdown-layer post-ops the kernel runs
-    # (convert_page_full does this as its final step). CV4 uses the class entry
-    # directly for link-index state, so it calls apply_post_conversion_ops
-    # explicitly to stay equivalent to CV3 / the kernel.
-    md_content = apply_post_conversion_ops(md_content, extraction_config or {})
+    # Preserve link-index state while sharing all five extraction steps.
+    md_content = convert_page_full(
+        html, extraction_config or {}, converter=converter, source_dir=source_dir)
 
     # Build frontmatter
     frontmatter = {"title": title, "source_url": source_url}
@@ -253,7 +249,7 @@ def _process_html_page(raw: dict, title: str, source_dir: str, source_url: str,
 
 def run_convert(output_dir: str, manifest: dict, strategy: dict,
                       domain: str, repo_root: str,
-                      resume_enabled: bool = False) -> tuple[dict, dict]:
+                      resume_enabled: bool = False, failed_fetch_titles=()) -> tuple[dict, dict]:
     """Execute Phase Convert: read from cache and convert to Markdown.
 
     No network requests are made. All input comes from local cache files.
@@ -298,8 +294,11 @@ def run_convert(output_dir: str, manifest: dict, strategy: dict,
     flush_interval = 50
 
     # Load resume state if enabled
-    state = load_state(output_dir) if resume_enabled else None
-    completed_pages_set = set(state.get("completed_pages", [])) if state else set()
+    state = load_state(output_dir)
+    completed_pages_set = set(state.get("completed_pages", [])) if resume_enabled else set()
+    fingerprints = state.setdefault("conversion_fingerprints", {})
+    if not resume_enabled:
+        fingerprints.clear()
 
     log.info("Phase Convert: converting %d pages from cache (platform=%s, resume=%s)...",
              len(pages), platform, resume_enabled)
@@ -307,10 +306,27 @@ def run_convert(output_dir: str, manifest: dict, strategy: dict,
     redirect_map: dict[str, str] = {}  # source_title -> target_title
     redirect_titles: set[str] = set()
 
+    mode = cache_mod.resolve_acquisition(strategy)
+    failed_fetch_titles = set(failed_fetch_titles)
+    admitted_pages = {}
+    admission_errors = {}
+    for page in pages:
+        title = page['title']
+        raw = cache_mod.load_page_cache(repo_root, platform, domain, title)
+        admitted, error = cache_mod.admit_page(raw, title, mode, api.get('base_url', ''))
+        if title in failed_fetch_titles:
+            error = {'error': 'fetch_failed', 'reason': 'fetch_failed',
+                     'expected_mode': mode, 'actual_mode': raw.get('content_acquisition') if raw else None,
+                     'remediation': 'Retry fetch with the current strategy before converting this page'}
+        if error:
+            admission_errors[title] = error
+        else:
+            admitted_pages[title] = admitted
+
     # Pre-scan: detect redirect pages and build full redirect_map
     for page in pages:
         title = page["title"]
-        raw = cache_mod.load_page_cache(repo_root, platform, domain, title)
+        raw = admitted_pages.get(title)
         if raw is None:
             continue
         rendered_html = raw.get("rendered_html") or raw.get("html") or ""
@@ -342,45 +358,49 @@ def run_convert(output_dir: str, manifest: dict, strategy: dict,
             log.error("Target path conflict: '%s' — winner: '%s', losers: %s",
                       path_key, winner, losers)
 
+    context_digest = _digest({
+        "revision": CONVERTER_CONTRACT_REVISION, "domain": domain, "mode": mode,
+        "profile": api.get("content_profile", {}), "output": output_config,
+        "extraction": extraction_config, "pages": pages, "redirects": redirect_map,
+    })
     redirect_count = 0
     for page in pages:
         title = page["title"]
         target_dir = page.get("target_directory", "")
         target_filename = page.get("target_filename", "")
 
+        if title in admission_errors:
+            error = admission_errors[title]
+            results[title] = {"title": title, "status": "error", **error}
+            completed_pages_set.discard(title)
+            fingerprints.pop(title, None)
+            failed_count += 1
+            cache_miss_count += int(error['error'] == 'cache_miss')
+            continue
+        raw = admitted_pages[title]
+        fingerprint = _digest({"context": context_digest, "page": page,
+                               "raw": {k: v for k, v in raw.items()
+                                       if k not in ("fetched_at", "cache_schema_version")}})
+
         # Resume: skip already converted pages
-        if resume_enabled and completed_pages_set and title in completed_pages_set:
+        if (resume_enabled and title in completed_pages_set
+                and title not in conflict_titles and title not in redirect_titles
+                and fingerprints.get(title) == fingerprint):
             filepath = os.path.join(output_dir, target_dir, target_filename)
             if os.path.exists(filepath):
                 results[title] = {
                     "title": title,
                     "status": "ok",
-                    "content": None,
+                    "content": Path(filepath).read_text(encoding="utf-8"),
+                    "rendered_html": raw.get("rendered_html") or raw.get("html"),
                     "skipped": True,
                 }
                 success_count += 1
                 log.debug("Page '%s' skipped (already converted)", title)
                 continue
 
-        # Load from cache
-        raw = cache_mod.load_page_cache(repo_root, platform, domain, title)
-        if raw is None:
-            cache_miss_count += 1
-            results[title] = {
-                "title": title,
-                "status": "error",
-                "error": "cache_miss",
-            }
-            log.warning("Cache miss for '%s' — skipping (run --phase fetch first)", title)
-            continue
-
-        # Check content_acquisition mismatch warning
-        current_acq = strategy.get("api", {}).get("content_profile", {}).get("content_acquisition")
-        cached_acq = raw.get("content_acquisition")
-        if current_acq and cached_acq and current_acq != cached_acq:
-            log.warning("Content acquisition mismatch for '%s': cached='%s', current='%s'. Conversion may be incomplete. Use --re-fetch to refresh.",
-                        title, cached_acq, current_acq)
-
+        completed_pages_set.discard(title)
+        fingerprints.pop(title, None)
         try:
             # Skip target-conflict pages (detected in pre-scan)
             if title in conflict_titles:
@@ -411,8 +431,6 @@ def run_convert(output_dir: str, manifest: dict, strategy: dict,
             )
             results[title] = result
             if result["status"] == "ok":
-                success_count += 1
-
                 # Incremental write: write .md file immediately
                 if result.get("content"):
                     filepath = os.path.join(output_dir, target_dir, target_filename)
@@ -420,6 +438,8 @@ def run_convert(output_dir: str, manifest: dict, strategy: dict,
                     with open(filepath, "w", encoding="utf-8") as f:
                         f.write(result["content"])
 
+                success_count += 1
+                fingerprints[title] = fingerprint
                 # Track completed and flush state periodically
                 completed_pages_set.add(title)
                 flush_counter += 1
@@ -437,7 +457,7 @@ def run_convert(output_dir: str, manifest: dict, strategy: dict,
             log.warning("Convert failed for '%s': %s", title, e)
 
     # Final state flush
-    if state is not None and completed_pages_set:
+    if state is not None:
         state["completed_pages"] = list(completed_pages_set)
         save_state(output_dir, state)
 

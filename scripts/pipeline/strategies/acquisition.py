@@ -28,6 +28,11 @@ class HybridAcquisitionStrategy:
     def required_capabilities(self) -> set[str]:
         return {"wikitext_parse", "html_parse", "imageinfo_query"}
 
+    @staticmethod
+    def requires_rendered(wikitext: str) -> bool:
+        """Shared acquisition/admission rule for dynamic rendered fallback."""
+        return bool(re.search(r'\{\{\s*#\s*(invoke|dpl|lst|if|ifeq)\s*[:|]', wikitext, re.IGNORECASE))
+
     def fetch_page_content(self, client: ApiClient, title: str, strategy: dict) -> dict:
         data = client.parse(page=title, prop="wikitext")
         wikitext = data.get("parse", {}).get("wikitext", {}).get("*", "")
@@ -35,7 +40,7 @@ class HybridAcquisitionStrategy:
         if not wikitext:
             return result
 
-        has_dynamic = bool(re.search(r'\{\{\s*#\s*(invoke|dpl|lst|if|ifeq)\s*[:|]', wikitext, re.IGNORECASE))
+        has_dynamic = self.requires_rendered(wikitext)
         if has_dynamic:
             log.debug("Dynamic content detected for %s, fetching rendered HTML and images", title)
             try:

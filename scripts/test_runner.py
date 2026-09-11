@@ -97,6 +97,11 @@ def _resolve_cache_path(page: str, domain: str) -> Optional[Path]:
     Checks ``chrome-cdp`` platform.  The cache key for CDP pages replaces
     ``/`` with ``_`` to produce a flat filename.
     """
+    from scripts.pipeline.pipeline.cache import raw_to_cache_filename, load_page_cache
+    for platform, title in (("mediawiki", page), (_CDP_PLATFORM, page.replace("/", "_"))):
+        candidate = REPO_ROOT / ".cache" / platform / domain / raw_to_cache_filename(title)
+        if candidate.exists() and load_page_cache(str(REPO_ROOT), platform, domain, title) is not None:
+            return candidate
     cache_dir = REPO_ROOT / ".cache" / _CDP_PLATFORM / domain
 
     # CDP safe-path: / → _

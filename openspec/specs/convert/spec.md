@@ -16,7 +16,7 @@ convert 能力负责把抓取到的原始内容（HTML / MediaWiki wikitext）�
 ```
 Convert 能力
 ├── kernel: converter.py (selectolax) — 唯一 HTML→MD 实现
-│   ├── 入口: convert_page_full() — 4 步编排
+│   ├── 入口: convert_page_full() — 5 步编排
 │   ├── 入口: convert_html_to_markdown() — 独立转换
 │   └── wiki_domain="" 支持 generic HTML
 ├── mirrors (薄壳，委托 kernel):
@@ -50,36 +50,35 @@ Convert 能力
 - **AND** no `html_to_markdown.py` or `fandom_html_to_markdown.py` SHALL exist
 
 ### Requirement: mirror-equivalence-golden-snapshot
-
-A golden snapshot test SHALL verify that explore, pipeline, and pipeline(cdp) convert paths produce byte-identical Markdown from the same HTML input as the shared kernel (`convert_page_full`). The proof SHALL be a self-contained test with an embedded HTML fixture that exercises the recurring troublemakers (MediaWiki `/wiki/` links, rowspan/colspan tables, pipe characters in table cells, literal asterisks, parenthesized/apostrophe page titles, image+link concatenation, tooltip link pairs) so it never skips due to a missing external cache.
-
-Mirrors add declared path-specific wrapping around the conversion core (config-driven post-ops in explore; YAML frontmatter + title heading in pipeline). The snapshot SHALL strip that declared wrapping before comparison, so the assertion targets the conversion core, not the wrapping.
-
-The proof SHALL live in `tests/test_convert_equivalence.py`.
+Self-contained tests in `tests/test_convert_equivalence.py` SHALL prove shared-core byte equivalence for matching HTML, rules and rendering context across CV3/CV4 and generic CV5. They SHALL strip only declared path wrappers (pipeline YAML/title/card-stat wrapping), never infobox or shared post-ops. Existing coverage of wiki links, row/col spans, pipe cells, asterisks, parenthesized/apostrophe titles, image/link adjacency, tooltip pairs and preprocessing-only footer removal SHALL remain. Tests SHALL enable real post-op keys and include an enabled infobox with unique field labels and values.
 
 #### Scenario: cv3-explore-mirror-matches-kernel
-- **WHEN** the embedded fixture is converted via explore (`sample_converter._apply_extraction` with the minimal ruleset) and via the kernel (`convert_page_full` with the same ruleset)
-- **THEN** the two outputs SHALL be byte-identical
+- **WHEN** an embedded fixture is converted by explore and the shared entry with the same context
+- **THEN** core Markdown SHALL be byte-identical.
 
 #### Scenario: cv4-pipeline-mirror-matches-kernel
-- **WHEN** the embedded fixture is converted via the pipeline entry (`convert_single_page`) and via the kernel (`convert_page_full`)
-- **THEN** the pipeline output, after stripping the declared YAML frontmatter + conditional title heading, SHALL be byte-identical to the kernel output
+- **WHEN** the public `convert_single_page` entry and shared core convert the same fixture with matching context
+- **THEN** core Markdown SHALL be byte-identical after removing only declared wrappers.
 
 #### Scenario: cv5-generic-mirror-matches-kernel
-- **WHEN** the embedded fixture is converted via the generic CDP path (`convert_html_to_markdown` with `wiki_domain=""`) and via the kernel invoked with empty rules (`convert_page_full` with `{}`)
-- **THEN** the two outputs SHALL be byte-identical
+- **WHEN** CV5 and the full-page entry convert generic HTML with empty rules and domain
+- **THEN** outputs SHALL remain byte-identical.
+
+#### Scenario: infobox-canary
+- **WHEN** the fixture has `Seed Chance` and a unique value solely inside an enabled infobox
+- **THEN** both production and shared output SHALL retain the field/value once under `## Infobox`, and a mirror omitting extraction/prepend SHALL fail.
 
 #### Scenario: fixture-discriminates-preprocessing
-- **WHEN** a mirror skips `preprocess_html` (e.g. a future regression in the pipeline path)
-- **THEN** the test SHALL fail, because the embedded fixture contains a `#catlinks` element removed only by `preprocess_html` (under `cleanup: ["strip_footer"]`), not by the converter kernel
+- **WHEN** a mirror omits preprocessing of the fixture footer
+- **THEN** equivalence SHALL fail.
 
 #### Scenario: test-never-skips
-- **WHEN** the test runs on a fresh checkout without `.cache/`
-- **THEN** it SHALL execute (not skip), because the HTML fixture is embedded in the test file
+- **WHEN** the checkout lacks external caches
+- **THEN** all embedded-fixture proofs SHALL execute without network or skip.
 
 ### Requirement: standalone-orchestrator-delegates-to-cv4-mirror
 
-The standalone orchestrator (`standalone.py::fetch_and_convert`) SHALL be a thin shell variant of the CV4 mirror (`convert.py::convert_single_page`). For HTML-mode conversion it SHALL construct a `raw` content dict (`{"html", "images", "content_acquisition": "html_rendered"}`) and a `page_info` dict, then delegate to `convert_single_page` for the full conversion core (preprocess → convert → frontmatter → card stats), rather than reimplementing that orchestration. This guarantees the three standalone-backed subcommands (`fetch`, `reprocess`, `reconvert` via source_url re-fetch) produce output byte-equivalent to the `pipeline` subcommand for the same page and config.
+The standalone orchestrator (`standalone.py::fetch_and_convert`) SHALL be a thin shell variant of the CV4 mirror (`convert.py::convert_single_page`). For HTML-mode conversion it SHALL construct a `raw` content dict (`{"html", "images", "content_acquisition": "html_rendered"}`) and a `page_info` dict, then delegate to `convert_single_page` for the full conversion core (convert_page_full 五步核心 → frontmatter → card stats), rather than reimplementing that orchestration. This guarantees the three standalone-backed subcommands (`fetch`, `reprocess`, `reconvert` via source_url re-fetch) produce output byte-equivalent to the `pipeline` subcommand for the same page and config.
 
 #### Scenario: fetch-subcommand-applies-preprocess
 - **WHEN** the `fetch` subcommand converts a page whose HTML contains an element removed by `preprocess_html` (e.g. `#catlinks` under `cleanup: ["strip_footer"]`) and `extraction_config` carries that cleanup op
@@ -94,35 +93,50 @@ The standalone orchestrator (`standalone.py::fetch_and_convert`) SHALL be a thin
 - **THEN** it SHALL continue routing through `convert_wikitext_to_markdown` unchanged
 
 ### Requirement: convert-kernel-three-layer-interface
+The shared kernel SHALL retain four public entry points: the stateful `HtmlToMarkdownConverter` implementation class, the stateless `convert_html_to_markdown()` convenience function, the single full-page `convert_page_full()` orchestration function, and `apply_post_conversion_ops()` as the sole Markdown post-transform implementation. The full-page function SHALL remain compatible with existing two-argument callers and SHALL accept optional stateful converter and source-directory context.
 
-The convert shared kernel (`lib/extraction/converter.py`) SHALL expose public entry points with declared purposes: (1) `HtmlToMarkdownConverter` class — implementation layer, the only entry carrying instance state (`build_link_index`, `source_dir`-aware rendering), used directly by CV4 for link-index resolution; (2) `convert_html_to_markdown()` function — stateless convenience entry, used by CV5 and `test_runner.py`; (3) `convert_page_full()` function — the declared single full-page orchestration kernel entry (CV1), used by CV3; (4) `apply_post_conversion_ops(md, extraction_rules)` function — the single source of truth for config-driven markdown-layer post-conversion transforms (text normalization, url conversion, youtube cleanup, escape-artifact cleanup, and the markdown-layer cleanup ops `strip_empty_parens`/`fix_separators`/`normalize_internal`).
+The full-page sequence SHALL be extract infobox → preprocess HTML → convert body → prepend extracted infobox → apply post-ops exactly once. CV3 SHALL delegate to this entry. CV4 SHALL build its link-index/redirect state and supply that converter to the same entry, keeping frontmatter, heading and card-stat wrapping outside the core. It SHALL NOT independently repeat or omit those five steps. CV5 SHALL retain generic empty-domain behavior. Extraction rules supplied to the full-page entry and the converter SHALL agree; conflicting contexts SHALL be rejected.
 
-`convert_page_full()` SHALL run `apply_post_conversion_ops()` as a declared step after infobox prepend (the full pipeline is now: extract infobox → preprocess HTML → convert to Markdown → prepend infobox → apply post-conversion ops). CV3 (`sample_converter._apply_extraction`) obtains post-ops automatically via `convert_page_full()` and SHALL NOT inline any post-conversion transform logic (honors `00-target-architecture.md` invariant I2: a mirror orchestrates, contains no transform logic). CV4 (`pipeline convert _process_html_page`) uses the class entry directly (for link-index state) and SHALL call `apply_post_conversion_ops()` explicitly after `convert_body()`, so that both B-axis execution paths honor the identical set of config-driven markdown post-ops for the same strategy.
+The shared entry SHALL resolve infobox URL context from configured image base URL first, then supplied converter domain, then empty string. It SHALL preserve the supplied link index and source directory in both infobox and body link rendering. No caller-specific domain derivation SHALL duplicate this rule.
 
-A mirror MAY use the class entry directly when it needs instance state; this is not a violation of the single-kernel contract provided an equivalence proof covers the path. `tests/test_convert_equivalence.py` SHALL remain the proof for CV3/CV4/CV5 against `convert_page_full`, and SHALL include at least one fixture that enables the divergent config keys (`text_normalization`, `url_conversion`, `youtube_cleanup`, and at least one markdown-layer `cleanup` op) so that equivalence is bound for real strategies, not only for a fixture where the post-ops are inert.
-
-#### Scenario: cv4-class-entry-is-declared-and-proven
-- **WHEN** a future review inspects CV4's direct use of `HtmlToMarkdownConverter`
-- **THEN** `00-target-architecture.md` §3.1 SHALL declare it as the class entry (intentional, for link-index state), and `tests/test_convert_equivalence.py::test_cv4_pipeline_mirror_matches_kernel` SHALL prove equivalence to the kernel
+#### Scenario: cv4-stateful-full-page-entry
+- **WHEN** CV4 converts a page with an existing link index and source directory
+- **THEN** the full-page core SHALL use that state for both infobox and body without rebuilding an empty converter.
 
 #### Scenario: post-ops-have-one-implementation-in-kernel
-- **WHEN** any code path (CV3 explore, CV4 pipeline, future CV5 variant) needs to apply config-driven markdown-layer post-conversion transforms (text normalization, url conversion, youtube cleanup, escape-artifact cleanup, markdown-layer cleanup ops)
-- **THEN** it SHALL call `convert.apply_post_conversion_ops(md, extraction_rules)` from the kernel
-- **AND** SHALL NOT inline a parallel implementation of those transforms
-- **AND** `sample_converter._apply_extraction` SHALL contain no markdown-transform logic beyond delegating to `convert_page_full()` (invariant I2 honored)
+- **WHEN** any path applies text normalization, URL conversion, YouTube cleanup, escape cleanup or Markdown cleanup operations
+- **THEN** it SHALL use `apply_post_conversion_ops`, once after infobox prepend in the full-page flow, without mirrored transform logic.
 
-#### Scenario: convert-page-full-includes-post-op-step
-- **WHEN** `convert_page_full(html, extraction_rules)` is invoked
-- **THEN** the returned Markdown SHALL have `apply_post_conversion_ops` applied as the final step (after infobox prepend)
-- **AND** for a strategy with no divergent keys configured, the output SHALL be byte-identical to the pre-change kernel output (post-ops are config-gated no-ops)
+#### Scenario: legacy-two-argument-call
+- **WHEN** `convert_page_full(html, rules)` is called without context
+- **THEN** it SHALL retain stateless behavior, including configured base URL or generic empty-domain handling.
 
-#### Scenario: cv3-and-cv4-honor-same-post-ops-for-real-strategies
-- **WHEN** a strategy configures any of `text_normalization` / `url_conversion` / `youtube_cleanup` / markdown-layer `cleanup` ops (`strip_empty_parens`, `fix_separators`, `normalize_internal`)
-- **THEN** both CV3 (`convert_page_full`) and CV4 (`convert_body` + explicit `apply_post_conversion_ops`) SHALL apply the identical transform set to the converted Markdown
-- **AND** `tests/test_convert_equivalence.py` SHALL assert CV3 ≡ CV4 ≡ kernel for a fixture that enables these keys (not only for an inert fixture)
+#### Scenario: contextual-infobox-links
+- **WHEN** a page in `bosses/` links from its infobox to a manifest page in `endings/`
+- **THEN** the link SHALL resolve relative to `bosses/`, using the same link index as body links.
+
+#### Scenario: conflicting-converter-rules
+- **WHEN** the provided converter has extraction rules inconsistent with the full-page request
+- **THEN** conversion SHALL reject the conflicting context rather than apply two different rule sets.
 
 #### Scenario: escape-artifact-cleanup-is-uniform-safety-net
-- **WHEN** the converted Markdown contains backslash-escape artifacts (e.g. `\*\*\*`, `\*+`)
-- **THEN** `apply_post_conversion_ops` SHALL clean them unconditionally (not config-gated)
-- **AND** because both CV3 and CV4 route through `apply_post_conversion_ops`, the cleanup SHALL be uniform across execution paths; the prior "CV3-only unconditional cleanup as divergence canary" is subsumed by the byte-equality equivalence proof
+- **WHEN** Markdown contains backslash-escape artifacts
+- **THEN** the shared post-op safety net SHALL clean them uniformly, including when no optional normalization keys are configured.
 
+#### Scenario: convert-page-full-includes-post-op-step
+- **WHEN** `convert_page_full(html, extraction_rules)` returns
+- **THEN** shared post-ops SHALL have run after infobox prepend, including unconditional escape cleanup and configured optional transforms.
+
+#### Scenario: cv3-and-cv4-honor-same-post-ops-for-real-strategies
+- **WHEN** rules enable text normalization, URL conversion, YouTube cleanup or Markdown cleanup
+- **THEN** both CV3 and CV4 SHALL obtain the identical transforms through the shared full-page entry, as proven by an enabled-key fixture.
+
+## Requirements
+
+#### Scenario: convert-page-full-includes-post-op-step
+- **WHEN** `convert_page_full(html, extraction_rules)` returns
+- **THEN** shared post-ops SHALL have run after infobox prepend, including unconditional escape cleanup and configured optional transforms.
+
+#### Scenario: cv3-and-cv4-honor-same-post-ops-for-real-strategies
+- **WHEN** rules enable text normalization, URL conversion, YouTube cleanup or Markdown cleanup
+- **THEN** both CV3 and CV4 SHALL obtain the identical transforms through the shared full-page entry, as proven by an enabled-key fixture.

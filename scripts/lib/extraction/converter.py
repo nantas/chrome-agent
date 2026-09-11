@@ -7,12 +7,13 @@ Can be imported and used standalone:
 """
 
 import json
+from copy import copy
 import logging
 import os
 import re
 import urllib.request
 from typing import Optional
-from urllib.parse import unquote
+from urllib.parse import unquote, urlsplit
 
 from selectolax.parser import HTMLParser
 
@@ -820,8 +821,10 @@ def convert_html_to_markdown(
     return converter.convert_body(html)
 
 
-def convert_page_full(html: str, extraction_rules: dict) -> str:
-    """Full 4-step extraction pipeline — shared orchestration entry point.
+def convert_page_full(html: str, extraction_rules: dict, *,
+                      converter: Optional[HtmlToMarkdownConverter] = None,
+                      source_dir: str = "") -> str:
+    """Full 5-step extraction pipeline — shared orchestration entry point.
 
     1. Extract infobox via extract_infobox()
     2. Preprocess HTML via preprocess_html()
@@ -837,20 +840,27 @@ def convert_page_full(html: str, extraction_rules: dict) -> str:
     from scripts.lib.extraction.preprocessor import preprocess_html
 
     base_url = extraction_rules.get("image_handling", {}).get("base_url", "")
-    wiki_domain = base_url.replace("https://", "").replace("http://", "") if base_url else ""
+    wiki_domain = urlsplit(base_url).netloc if base_url else (converter.wiki_domain if converter else "")
+    if converter is not None and converter.config != extraction_rules:
+        raise ValueError("Conflicting converter extraction rules")
+    if converter is None:
+        converter = HtmlToMarkdownConverter(wiki_domain, extraction_rules)
+
+    infobox_converter = copy(converter)
+    infobox_converter.wiki_domain = wiki_domain
 
     # Step 1: Extract infobox (read-only — returns Markdown, does not modify HTML)
-    infobox_md = extract_infobox(html, extraction_rules, wiki_domain)
+    infobox_md = ""
+    if extraction_rules.get("infobox", {}).get("enabled"):
+        infobox_md = extract_infobox(
+            html, extraction_rules, wiki_domain, source_dir=source_dir,
+            render_inline_children_fn=infobox_converter._render_inline_children)
 
     # Step 2: Preprocess HTML (removes infobox container, applies cleanup)
     cleaned_html = preprocess_html(html, extraction_rules)
 
     # Step 3: Convert cleaned HTML to Markdown
-    md = convert_html_to_markdown(
-        cleaned_html,
-        wiki_domain=wiki_domain,
-        extraction_config=extraction_rules,
-    )
+    md = converter.convert_body(cleaned_html, source_dir=source_dir)
 
     # Step 4: Prepend infobox if extracted
     if infobox_md:

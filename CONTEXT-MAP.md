@@ -53,3 +53,9 @@
 ## Page discovery handoff boundary
 
 `crawl` → `explore/page_discovery.py` → allpages/homepage → v2 manifest/summary → confirmation → pipeline. `lib/manifest_contract.py` validates handoff data; `lib/extraction/schema.py` validates shared consumer configuration. Bootstrap/scaffold drafts pass validated freeze before registry lookup eligibility.
+
+## MediaWiki 完整性边界
+
+`acquisition.py` 定义模式与动态 fallback → `cache.py::admit_page` 统一准入 → fetch 只跳过兼容缓存，失败标题交给 convert → convert 在 resume 前准入并计算指纹 → `convert_page_full` 复用 link-index/source_dir → assembly 只把本次成功页写入索引。Orchestrator 保留转换指纹并持久化失败原因。
+
+存储键由 cache 管理；Markdown 输出名由 manifest/输出命名治理管理。二者不可用同一有损替换代替。恢复入口：[MediaWiki extraction recovery](docs/playbooks/mediawiki-extraction-recovery.md)。

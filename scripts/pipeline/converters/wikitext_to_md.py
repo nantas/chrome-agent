@@ -105,9 +105,8 @@ def convert_wikitable_to_markdown(text: str, manifest_pages: list[dict], source_
     result_parts = []
     i = 0
     while i < len(text):
-        table_start = text.find('\n{|', i)
-        if table_start == -1 and text.startswith('{|'):
-            table_start = 0
+        # The first table at offset zero precedes any later newline match.
+        table_start = 0 if i == 0 and text.startswith('{|') else text.find('\n{|', i)
         if table_start == -1:
             result_parts.append(text[i:])
             break
@@ -174,7 +173,7 @@ def _parse_wikitable_block(block: str, manifest_pages: list[dict], source_dir: s
         if stripped.startswith('|'):
             content = stripped[1:]
             attr_pipe = content.find(' |')
-            if attr_pipe >= 0 and attr_pipe < 30:
+            if 0 <= attr_pipe < 30 and content[attr_pipe + 2:attr_pipe + 3] != "|":
                 maybe_attr = content[:attr_pipe].strip()
                 if (re.match(r'^[a-zA-Z]+="?[^"]*"?$|^[a-zA-Z]+$|^\d+$', maybe_attr)
                         or maybe_attr.startswith('colspan')
