@@ -33,7 +33,8 @@ def _first_image_name(images: list[str], extraction_config: dict | None) -> str 
     return filtered[0].replace(" ", "_") if filtered else None
 
 def _resolve_hero_image_url(html: Optional[str],
-                            extraction_config: Optional[dict]) -> Optional[str]:
+                            extraction_config: Optional[dict],
+                            domain: str = "") -> Optional[str]:
     """Return the page's hero image URL *as the wiki actually serves it*.
 
     Constructing one from the wiki domain does not work on Cloudflare-protected
@@ -42,9 +43,11 @@ def _resolve_hero_image_url(html: Optional[str],
     present in the rendered HTML, so read it from there.
 
     Prefers the first image inside the infobox container, then the first body
-    image. Returns None when nothing usable is found (including lazy-load
-    ``data:`` placeholders), letting the caller omit the image rather than emit
-    a broken reference.
+    image. Protocol-relative (``//``) and root-relative (``/images/...``) srcs
+    are absolutized against ``image_handling.base_url`` (falling back to the
+    wiki domain, same resolution order the infobox kernel uses). Returns None
+    when nothing usable is found (including lazy-load ``data:`` placeholders),
+    letting the caller omit the image rather than emit a broken reference.
     """
     if not html:
         return None
@@ -52,6 +55,9 @@ def _resolve_hero_image_url(html: Optional[str],
         from bs4 import BeautifulSoup
     except ImportError:  # pragma: no cover - bs4 is a hard dependency
         return None
+    base_url = ((extraction_config or {}).get("image_handling", {}) or {}).get("base_url", "")
+    if base_url and not base_url.startswith(("https://", "http://")):
+        base_url = "https://" + base_url
     soup = BeautifulSoup(html, "html.parser")
     groups = []
     selector = (extraction_config or {}).get("infobox", {}).get("selector")
@@ -66,6 +72,9 @@ def _resolve_hero_image_url(html: Optional[str],
             src = (img.get("src") or "").strip()
             if src.startswith("//"):
                 src = "https:" + src
+            elif src.startswith("/"):
+                root = base_url.rstrip("/") or (f"https://{domain}" if domain else "")
+                src = root + src
             if src.startswith("http"):
                 return src
     return None
@@ -179,7 +188,7 @@ def convert_single_page(raw: dict, page_info: dict, manifest_pages: list[dict],
                 # Wikitext raw carries rendered_html (not html) for dynamic
                 # pages — fall back so the hero is not silently dropped.
                 img_url = _resolve_hero_image_url(
-                    html or raw.get("rendered_html"), extraction_config)
+                    html or raw.get("rendered_html"), extraction_config, domain)
                 if img_url and "---" in md_content:
                     end_fm = md_content.find("\n---", 3)
                     if end_fm >= 0:
@@ -250,6 +259,9 @@ def _process_html_page(raw: dict, title: str, source_dir: str, source_url: str,
     body = md_content.strip()
     # Only an H1 counts as "already titled": a body opening with a section
     # heading (`## Infobox`, `## Overview`) must still receive its page title.
+    # Defensive branch: the converter demotes <h1> to ##, so a body genuinely
+    # starting with `# ` cannot arise from the HTML path today — the guard
+    # exists in case kernel heading semantics change.
     first_line = next((line for line in body.split("\n") if line.strip()), "")
     if body and not first_line.startswith("# "):
         body = f"# {title}\n\n{body}"
@@ -257,7 +269,7 @@ def _process_html_page(raw: dict, title: str, source_dir: str, source_url: str,
         body = f"# {title}\n"
 
     # Inject the hero image after the title, using the URL the wiki serves.
-    img_url = _resolve_hero_image_url(html, extraction_config)
+    img_url = _resolve_hero_image_url(html, extraction_config, domain)
     if img_url:
         img_block = f"\n![{title}]({img_url})\n"
         # Insert after first heading

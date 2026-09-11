@@ -317,9 +317,13 @@ def _make_site_sample_test(
 
 
 def cmd_unit(args: argparse.Namespace) -> int:
-    """Run stdlib discover tests under ``tests/``."""
+    """Run stdlib discover tests under ``tests/`` and ``scripts/pipeline/tests``."""
     loader = unittest.TestLoader()
     suite = loader.discover("tests", top_level_dir=str(REPO_ROOT))
+    # Module-adjacent pipeline tests (golden guards etc.) — same runner so
+    # they cannot silently drift out of the default suite.
+    suite.addTests(loader.discover(str(REPO_ROOT / "scripts" / "pipeline" / "tests"),
+                                    top_level_dir=str(REPO_ROOT)))
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
     return 0 if result.wasSuccessful() else 1

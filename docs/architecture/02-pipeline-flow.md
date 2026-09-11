@@ -165,9 +165,10 @@ MediaWiki API 提取管线（`scripts/pipeline/`）是 chrome-agent 针对 Media
 
 1. 含 `Special:Redirect/file/`：取前缀后、`?` 前部分；
 2. 含 `/revision/` 的 Fandom CDN URL（`static.wikia.nocookie.net/.../<name>.png/revision/latest/scale-to-width-down/111?cb=...`）：取 `/revision/` 前路径末段（真实文件名，而非尺寸参数）；
-3. 其余 URL：取路径末段。
+3. 含 `/thumb/` 的 MediaWiki 缩略图 URL（`.../images/thumb/<h1>/<h2>/<name>.png/150px-<name>.png?...`）：取尺寸变体段（`NNNpx-` 前缀）之前的一段；
+4. 其余 URL：取路径末段。
 
-修复前 CDN 变换后缀被当作文件名（`111?cb=...`），单站产生 ~17k 条 `api_missing` 误报。回归守护：`tests/test_validate_images_filename.py`。
+修复前 CDN 变换后缀与缩略图尺寸段被当作文件名（`111?cb=...`、`150px-Red-Bash.png`），单站产生 ~17k 条 `api_missing` 误报。回归守护：`tests/test_validate_images_filename.py`。`scripts/pipeline/tests/` 同在 `test_runner.py unit` 发现范围内。
 
 ## 缓存机制
 

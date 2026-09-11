@@ -93,17 +93,24 @@ RULES_WITH_POSTOPS = {
 
 
 def _unwrap_pipeline_body(content: str, title: str) -> str:
-    """Strip CV4's declared wrapping (YAML frontmatter + title heading).
+    """Strip CV4's declared wrapping (YAML frontmatter + title heading +
+    hero image line).
 
     The title heading is conditional: _process_html_page only prepends
     `# {title}` when the converted body does not already start with a
     Markdown heading (a `#`-prefix check that also matches `##`). Strip
-    it when present instead of asserting its presence.
+    it when present instead of asserting its presence. The hero image
+    line (`![{title}](url)` directly after the H1) is likewise declared
+    CV4 wrapping, not conversion-core output.
     """
     body = content.split("---\n", 2)[2].lstrip("\n")
     prefix = f"# {title}\n"
     if body.startswith(prefix):
         body = body[len(prefix):]
+    body = body.lstrip("\n")
+    hero = f"![{title}]("
+    if body.startswith(hero):
+        body = body[body.index("\n", body.index(")")) + 1:] if ")" in body else body
     return body.strip()
 
 
@@ -289,6 +296,33 @@ class TestOutputQualityFollowups(unittest.TestCase):
                 self.assertIn("Wind Diety: pull.", passive_rows[0])
                 self.assertIn("| Tag | a \\| b |", md)
 
+    def test_infobox_cell_escaping_selectolax_path(self):
+        """Same guarantee on the selectolax render path (Node input).
+
+        The multi-line value only materializes when an inline renderer is
+        supplied (the pipeline always passes one); without a callback the
+        selectolax fallback joins with spaces, leaving nothing to escape.
+        """
+        from selectolax.parser import HTMLParser
+        from scripts.lib.extraction.infobox import extract_infobox
+
+        def render(node, source_dir=""):
+            text = node.text(strip=True)
+            return "Gale Wyvern: push.\n\nWind Diety: pull." if "Gale" in text else text
+
+        node = HTMLParser(self.INFOBOX_MULTI).css_first("aside")
+        md = extract_infobox(
+            node, {"infobox": {"enabled": True, "selector": "aside"}},
+            "example.wiki.gg", parser="selectolax",
+            field_selector="div.pi-data", label_selector="h3.pi-data-label",
+            value_selector="div.pi-data-value",
+            render_inline_children_fn=render)
+        passive_rows = [l for l in md.splitlines() if l.startswith("| **Passive**")]
+        self.assertEqual(len(passive_rows), 1, md)
+        self.assertIn("Gale Wyvern: push.<br>", passive_rows[0])
+        self.assertIn("Wind Diety: pull.", passive_rows[0])
+        self.assertIn("a \\| b", md)
+
     # --- pipeline-convert-phase: conversion-output-format ----------------
 
     def test_h1_prepended_when_body_opens_with_section_heading(self):
@@ -323,6 +357,19 @@ class TestOutputQualityFollowups(unittest.TestCase):
         html = '<p>Plain body without images</p>'
         content = self._pipeline(html, {})
         self.assertNotIn("![", content)
+
+    def test_hero_image_root_relative_src_absolutized(self):
+        """wiki.gg-style markup serves root-relative /images/ srcs (W1)."""
+        html = ('<div class="mw-parser-output">'
+                '<img src="/images/Collectible_Bloody_Gust_icon.png"/></div>')
+        for rules, expected in (
+            ({"image_handling": {"base_url": "https://example.wiki.gg"}},
+             "https://example.wiki.gg/images/Collectible_Bloody_Gust_icon.png"),
+            ({}, "https://example.wiki.gg/images/Collectible_Bloody_Gust_icon.png"),
+        ):
+            with self.subTest(rules=rules):
+                content = self._pipeline(html, rules)
+                self.assertIn(f"![{TITLE}]({expected})", content)
 
     def test_wikitext_path_hero_falls_back_to_rendered_html(self):
         """Wikitext raw carries rendered_html, not html; hero must survive."""

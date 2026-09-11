@@ -44,6 +44,11 @@ class TestImageFileTitle(unittest.TestCase):
             _image_file_title("https://example.com/images/a/Ac.png"),
             "File:Ac.png")
 
+    def test_mediawiki_thumb_url_resolves_real_filename(self):
+        url = ("https://slaythespire.wiki.gg/images/thumb/5/5c/Red-Bash.png"
+               "/150px-Red-Bash.png?57867c")
+        self.assertEqual(_image_file_title(url), "File:Red-Bash.png")
+
 
 class TestValidateImagesNoFalsePositive(unittest.TestCase):
     def test_cdn_revision_url_not_reported_missing(self):

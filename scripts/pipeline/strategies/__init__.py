@@ -152,14 +152,23 @@ def _image_file_title(url: str) -> str:
     """Derive the ``File:`` title an image URL refers to.
 
     Fandom CDN URLs carry transform suffixes
-    (``.../<name>.png/revision/latest/scale-to-width-down/111?cb=...``),
-    so the last path segment is a size parameter, not the file name.
+    (``.../<name>.png/revision/latest/scale-to-width-down/111?cb=...``)
+    and MediaWiki thumbnails use
+    ``.../images/thumb/<h1>/<h2>/<name>.png/150px-<name>.png?...``;
+    in both the last path segment is a size variant, not the file name.
     Spec: pipeline/l6-image-filename-parsing.
     """
     if "Special:Redirect/file/" in url:
         return "File:" + url.split("Special:Redirect/file/")[-1].split("?")[0]
     if "/revision/" in url:
         return "File:" + url.split("/revision/")[0].split("/")[-1]
+    if "/thumb/" in url:
+        parts = url.split("?")[0].split("/")
+        # thumb path: .../thumb/<h1>/<h2>/<name>/<NNNpx-name>; real file is
+        # the segment before the size variant
+        if len(parts) >= 2 and re.match(r"^\d+px-", parts[-1]):
+            return "File:" + parts[-2]
+        return "File:" + parts[-1]
     return "File:" + url.split("/")[-1]
 
 

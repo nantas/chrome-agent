@@ -42,4 +42,12 @@
 
 - [x] 4.1 基于真实实现结果生成或更新 verification.md（覆盖 spec-to-implementation 与 task-to-evidence）。
 - [x] 4.2 基于 verification.md 结论生成或更新 writeback.md（目标、字段映射、前置条件）。
-- [x] 4.3 执行 writeback.md 中定义的回写目标，并记录可审计证据（链接、时间、执行人、结果）。
+- [x] 4.3 执行 writeback.md 中定义的回写目标，并记录可审计证据（链接、时间、执行人、结果）
+
+## 5. 独立验证（opsx-verify subagent）修复
+
+- [x] 5.1 W1：hero resolver 根相对 src 补全（`image_handling.base_url` 回退 domain）+ 双分支测试
+- [x] 5.2 W2：selectolax 路径单元格转义直接断言（Node 输入 + inline renderer）
+- [x] 5.3 W3：`_image_file_title` 补 `/thumb/` 分支 + spec 口径收窄 + 测试
+- [x] 5.4 W4：`cmd_unit` 补 `scripts/pipeline/tests` 发现范围（golden 守护进默认套件）
+- [x] 5.5 S1/S2/S3：防御注释、design 偏离记录、verification HEAD 修正；spec/design/verification 同步。

@@ -3,6 +3,8 @@ title: Bloody_Gust
 source_url: "https://bindingofisaacrebirth.wiki.gg/wiki/Bloody_Gust"
 ---
 # Bloody_Gust
+![Bloody_Gust](https://bindingofisaacrebirth.wiki.gg/images/Font_TeamMeat_B.png?deab1b)
+
 
 ## ![B](https://bindingofisaacrebirth.wiki.gg/images/Font_TeamMeat_B.png?deab1b)![l](https://bindingofisaacrebirth.wiki.gg/images/Font_TeamMeat_l.png?f28758)![o](https://bindingofisaacrebirth.wiki.gg/images/Font_TeamMeat_o.png?aa3295)![o](https://bindingofisaacrebirth.wiki.gg/images/Font_TeamMeat_o.png?aa3295)![d](https://bindingofisaacrebirth.wiki.gg/images/Font_TeamMeat_d.png?150742)![y](https://bindingofisaacrebirth.wiki.gg/images/Font_TeamMeat_y.png?fda4db)![G](https://bindingofisaacrebirth.wiki.gg/images/Font_TeamMeat_G.png?bc9b79)![u](https://bindingofisaacrebirth.wiki.gg/images/Font_TeamMeat_u.png?8cbefa)![s](https://bindingofisaacrebirth.wiki.gg/images/Font_TeamMeat_s.png?7ec067)![t](https://bindingofisaacrebirth.wiki.gg/images/Font_TeamMeat_t.png?fd6c3d)
 

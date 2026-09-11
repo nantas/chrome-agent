@@ -21,14 +21,16 @@
 
 ## Decisions
 
-1. **测试落点**：三条 convert 断言进 `tests/test_convert_equivalence.py`（既有 equivalence 家族，直接用 `convert_single_page`/`convert_page_full` 夹具模式）；`validate_images` 解析测试进 `scripts/pipeline/tests/`（源码模块分组约定）。
-2. **hero URL 从渲染标记解析**（业务消费方第二版方案，取代第一版 Special:Redirect 构造）：Cloudflare 保护的 Fandom 站上 wiki 域名路径（含 `/Special:Redirect/file/`）返回 challenge 页，而真实 CDN URL 已在渲染 HTML 里，直接读。`_resolve_hero_image_url` 优先 infobox 容器图、回退正文图、跳过 `data:` 占位、无图则省略注入。附带修复其 wikitext 调用点回归：wikitext 路径 raw 无 `html` 键只有 `rendered_html`，需 `html or rendered_html` 回退，否则动态 wikitext 页 hero 被静默丢弃（balatrowiki 等策略受影响）。
-3. **L6 解析顺序**：先判 `Special:Redirect/file/`（既有），再判 `/revision/`，最后回退末段。`/revision/` 切分放 else 分支内，不新建函数——三行内聚改动。
+1. **测试落点**：三条 convert 断言进 `tests/test_convert_equivalence.py`（既有 equivalence 家族，直接用 `convert_single_page`/`convert_page_full` 夹具模式）；`validate_images` 解析测试**落在 `tests/` 顶层**（偏离原计划 `scripts/pipeline/tests/`：C9 顶层目录约定 + 默认 runner 只发现 `tests/`；同时已把 `scripts/pipeline/tests` 补进 runner 发现范围，见决策 9）。
+2. **hero URL 从渲染标记解析**（业务消费方第二版方案，取代第一版 Special:Redirect 构造）：Cloudflare 保护的 Fandom 站上 wiki 域名路径（含 `/Special:Redirect/file/`）返回 challenge 页，而真实 CDN URL 已在渲染 HTML 里，直接读。`_resolve_hero_image_url` 优先 infobox 容器图、回退正文图、协议相对 `//` 与根相对 `/images/...` 均补全为绝对 URL（根相对用 `image_handling.base_url` 回退 wiki 域名——独立验证 W1 发现：wiki.gg 系标记全是根相对 src，不补全则 hero 静默丢失）、跳过 `data:` 占位、无图则省略注入。附带修复其 wikitext 调用点回归：wikitext 路径 raw 无 `html` 键只有 `rendered_html`，需 `html or rendered_html` 回退，否则动态 wikitext 页 hero 被静默丢弃（balatrowiki 等策略受影响）。
+3. **L6 解析顺序**：先判 `Special:Redirect/file/`（既有），再判 `/revision/`（Fandom CDN）与 `/thumb/`（MediaWiki 缩略图，独立验证 W3 发现的同类误报），最后回退末段。切分逻辑内聚在 `_image_file_title` 单函数内。
 4. **mobalytics 收编**：策略 + freeze-report + registry 条目作为一个整体提交，内容逐字节不动（外部任务冻结产物）。
 5. **提交拆分**：① 代码修复 + 测试（`infobox.py`、`convert.py`、`strategies/__init__.py`、两处测试文件）；② growagarden 策略资产（含 freeze-report）；③ mobalytics 收编。registry.json 的 mobalytics hunk 归 ③。
 6. **H1 判定用 `# ` 前缀**（带空格）而非 `#`：ATX H1 的严格形式，避免 `## Infobox` 误命中；非 ATX 的 `#heading` 无空格形式按无标题处理并前置 H1，语义安全。
 7. **revision 2→4 跳过 3 是有意的**：本地 `.cache/mediawiki/` 已有 rev-3 指纹产物（1,602 页，含 Special:Redirect hero）；提交 3 会让 resume 静默复用旧 markdown，4 强制重转。
 8. **body lazy-load 图不读 `data-src`**（known limitation）：无 infobox 页的 hero 可能取自后续非 lazy 图或省略。当前无站点需要；需要时在 resolver 里 honors `lazyload.real_src_attr` 再扩。
+9. **runner 发现范围**（独立验证 W4）：`cmd_unit` 补上 `scripts/pipeline/tests` 的 discover，module-adjacent 的 golden 守护进入默认套件，不再依赖手动发现。
+10. **H1 去重分支为防御性代码**（独立验证 S1）：转换器把 `<h1>` 降级为 `##`，HTML 路径正文实际不会以 `# ` 开头；保留分支并加注释，防内核 heading 语义变化。
 
 ## Risks / Migration
 

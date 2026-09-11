@@ -18,7 +18,7 @@ Each incrementally written `.md` file SHALL contain the full page content includ
 
 标题判定：HTML 路径 SHALL 仅以 **H1**（首个非空行以 `# ` 前缀开头）判定"正文已有标题"；以小节标题（如 `## Infobox`、`## Overview`）开头的正文 SHALL 仍被前置 `# {title}`。正文为空时 SHALL 输出仅含标题的页面。
 
-卡片图注入：hero 图 URL SHALL 从页面渲染后的标记中解析（`_resolve_hero_image_url`）：优先 infobox 容器（`extraction.infobox.selector`）内首个图片，其次正文首个图片；协议相对 `//` 归一为 `https:`；跳过非 `http(s)` 源（含 lazy-load `data:` 占位）；无可用图时 SHALL 省略注入而非输出死链。SHALL NOT 从 wiki 域名构造文件路径 URL（`/images/{name}` 与 `/Special:Redirect/file/{name}` 在 Cloudflare 保护的 Fandom 站上均返回 challenge 页）。
+卡片图注入：hero 图 URL SHALL 从页面渲染后的标记中解析（`_resolve_hero_image_url`）：优先 infobox 容器（`extraction.infobox.selector`）内首个图片，其次正文首个图片；协议相对 `//` 归一为 `https:`，根相对 `/images/...` SHALL 以 `image_handling.base_url`（回退 wiki 域名，与 infobox 内核同序）补全为绝对 URL；跳过非 `http(s)` 源（含 lazy-load `data:` 占位）；无可用图时 SHALL 省略注入而非输出死链。SHALL NOT 从 wiki 域名构造文件路径 URL（`/images/{name}` 与 `/Special:Redirect/file/{name}` 在 Cloudflare 保护的 Fandom 站上均返回 challenge 页）。
 
 wikitext 路径回退：wikitext 页的 raw 内容不含 `html` 键而含 `rendered_html`（见 acquisition.py），hero 解析 SHALL 以 `html or rendered_html` 为输入，保持既有注入行为不回退。
 
@@ -40,6 +40,10 @@ wikitext 路径回退：wikitext 页的 raw 内容不含 `html` 键而含 `rende
 - **WHEN** 页面渲染 HTML 的 infobox 容器内存在 `src` 为 `https://static.wikia.nocookie.net/...` 的图片
 - **THEN** hero 图 URL SHALL 为该 CDN URL（协议相对形式归一为 `https:`）
 - **AND** SHALL NOT 为 wiki 域名下构造的 `/images/` 或 `/Special:Redirect/file/` 路径
+
+#### Scenario: hero-image-root-relative-src-absolutized
+- **WHEN** 渲染标记的图片 src 为根相对形式（wiki.gg 系 `/images/<name>.png`）
+- **THEN** hero URL SHALL 以 `image_handling.base_url`（缺省时 wiki 域名）补全为绝对 URL 并照常注入
 
 #### Scenario: hero-image-omitted-when-unusable
 - **WHEN** 页面无可用的 http(s) 图片（仅 `data:` 占位或无图）

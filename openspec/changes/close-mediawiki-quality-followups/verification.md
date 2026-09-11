@@ -2,7 +2,7 @@
 
 ## 验证环境
 
-- HEAD：`cf83fb0`（实现提交：`92d468b` 代码修复 / `d4a516f` growagarden 策略 / `cf83fb0` mobalytics 收编）
+- HEAD：`c745dc7` + 验证后修复提交（实现链：`92d468b` 代码 / `d4a516f` growagarden / `cf83fb0` mobalytics / `c745dc7` 回写 / 后续 opsx-verify 修复提交）
 - 解释器：`.venv/bin/python`（selectolax 等应用层依赖可用）
 - 日期：2026-09-11
 
@@ -66,9 +66,24 @@
 - 修改模块：`infobox.py`、`convert.py`、`strategies/__init__.py` 均带新测试 ✅
 - 文档：无新增 `.md` 模块
 
-## 缺口与遗留
+## 独立验证（subagent /opsx-verify）与验证后修复
 
-- **`scripts/pipeline/tests/` 不在 `test_runner.py unit` 的发现范围**（只 discover `tests/` 顶层）——本轮把新测试放 `tests/` 顶层规避；既有 8 个 pipeline-tests 文件仍是手动发现盲区，属独立治理项，不在本 change 扩面。
-- golden `boa_bloody_gust_minimal.golden.md` 重录属预期漂移（+H1 两行），`test_convert_cleanup_real_data` 通过。
-- C10：本 change 未改 `.mjs`，无全局同步义务（installed-hash 仍指向 `c9d3b76`——下次改 `.mjs` 时刷新）。
-- `92d468b..cf83fb0` 未 push；归档后随仓库策略 push。
+独立 reviewer 全量重跑证据（不采信本文档结论）：unit 180 OK、site-samples 19 OK、pipeline-tests 51 OK、doctor success、RED 复现全部成立。结论：**无 CRITICAL，4 WARNING**。修复情况：
+
+| # | 发现 | 处置 |
+|---|---|---|
+| W1 | wiki.gg 系根相对 `/images/` src 被 hero resolver 跳过，hero 静默丢失（实测 bindingofisaacrebirth / slaythespire / vampire.survivors 三域） | ✅ 已修：根相对 src 以 `image_handling.base_url`（回退 domain）补全；测试 `test_hero_image_root_relative_src_absolutized`（base_url 有/无两分支） |
+| W2 | spec 场景 `both-render-paths-escape` 无覆盖——两条既有断言都走 bs4 路径 | ✅ 已修：`test_infobox_cell_escaping_selectolax_path`（Node 输入 + inline renderer 产出多行值） |
+| W3 | L6 对 MediaWiki `/thumb/` 缩略图 URL 仍误报（末段是 `150px-<name>`），且 spec 结尾段与回退规则口径冲突 | ✅ 已修：`_image_file_title` 补 `/thumb/` 分支（`NNNpx-` 前缀判定取前段）；spec 收窄为"对 `/revision/` 与 `/thumb/` 两类变换后缀"；测试 `test_mediawiki_thumb_url_resolves_real_filename` |
+| W4 | 重录 golden 的守护测试不在默认 runner 发现范围 | ✅ 已修：`cmd_unit` 补 `scripts/pipeline/tests` discover，51 个 module-adjacent 测试进默认套件 |
+| S1 | H1 去重分支实际不可达（h1 被降级） | ✅ 已处理：代码注释标防御性，design 决策 10 记录 |
+| S2 | design 决策 1 测试落点与实现不一致 | ✅ 已处理：design 决策 1 改写并注明偏离理由 |
+| S3 | verification 头部 HEAD 过期 | ✅ 本节首行已更新 |
+| S4 | frontmatter `image` 与 hero 双首图定义并存 | 推迟：无害，等收敛需求出现（记入 design 决策 8 旁注与 reviewer Feedback） |
+
+修复后回归：unit **231 OK**（含 pipeline-tests 51）、site-samples **19 OK**、equivalence 25/25。
+
+## 缺口与遗留（更新）
+
+- ~~`scripts/pipeline/tests/` 不在默认发现范围~~ → W4 已修。
+- `installed-hash` 仍指向 `c9d3b76`（本 change 未改 `.mjs`，C10 免除；下次改 `.mjs` 时刷新）。
