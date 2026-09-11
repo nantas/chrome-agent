@@ -1,0 +1,16 @@
+{
+  "domain": "mobalytics.gg",
+  "protection_level": "high",
+  "page_types": [
+    "dynamic_content"
+  ],
+  "entry_points": [
+    "poe2_build_guide"
+  ],
+  "anti_crawl_refs": [
+    "cloudflare-managed"
+  ],
+  "strategy_path": "/Users/nantasmac/projects/agentic/chrome-agent/sites/strategies/mobalytics.gg/strategy.md",
+  "registry_path": "/Users/nantasmac/projects/agentic/chrome-agent/sites/strategies/registry.json",
+  "status": "frozen"
+}
