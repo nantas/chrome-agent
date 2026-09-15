@@ -7,6 +7,9 @@ import re
 import sys
 from pathlib import Path
 
+# repo root on sys.path for absolute `scripts.*` imports (strategy_lifecycle, capability_gate)
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
 import yaml
 
 
