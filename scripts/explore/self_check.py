@@ -495,7 +495,9 @@ def s6_table_integrity(html: str, markdown: str) -> dict:
         return re.split(r'(?<!\\)\|', line.strip().strip('|'))
 
     md_rows = []
-    lines = markdown.splitlines()
+    # Synthesized infobox rows originate from an aside, not an HTML table.
+    body = re.sub(r"^## Infobox$.*?(?=^## |\Z)", "", markdown, flags=re.M | re.S)
+    lines = body.splitlines()
     index = 0
     while index + 1 < len(lines):
         header, delimiter = lines[index].strip(), lines[index + 1].strip()

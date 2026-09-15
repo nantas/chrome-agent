@@ -122,6 +122,17 @@ def _extract_bs4(
 
     lines = ["## Infobox", "", "| Field | Value |", "| --- | --- |"]
 
+    # Lead image (figure.pi-item.pi-image) is not a pi-data row; capture it
+    # as the first table row so entity icons are not dropped (portable infobox).
+    lead_img_el = container.select_one("figure.pi-item.pi-image img") or container.select_one("img.pi-image-thumbnail")
+    if lead_img_el is not None:
+        src = lead_img_el.get("src", "")
+        alt = lead_img_el.get("alt", "")
+        if src and not (skip_patterns and any(re.search(p, src) for p in skip_patterns)):
+            if base_url and src.startswith("/"):
+                src = base_url + src
+            lines.append(f"| Image | ![{alt}]({src}) |")
+
     for field in container.select(field_sel):
         label_el = field.select_one(label_sel)
         value_el = field.select_one(value_sel)
