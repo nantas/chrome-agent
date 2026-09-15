@@ -334,6 +334,28 @@
       ],
       "anti_crawl_refs": [],
       "file": "darkestdungeon.wiki.gg/strategy.md"
+    },
+    {
+      "domain": "touhou-mystias-izakaya.fandom.com",
+      "description": "Fandom-hosted MediaWiki 1.43.9 game wiki for Touhou Mystia's Izakaya. Cloudflare Managed Challenge on HTML pages; MediaWiki API endpoints are unaffected. Highly templated entity pages (InfoboxCuisine/InfoboxIngredient/InfoboxBeverage/InfoboxRareCustomer) plus gameplay mechanic articles.",
+      "protection_level": "high",
+      "page_types": [
+        "static_article"
+      ],
+      "pagination": [
+        "none"
+      ],
+      "entry_points": [
+        "wiki_main_page",
+        "summary_cuisines",
+        "summary_ingredients",
+        "summary_beverages"
+      ],
+      "anti_crawl_refs": [
+        "default",
+        "rate-limit-api"
+      ],
+      "file": "touhou-mystias-izakaya.fandom.com/strategy.md"
     }
   ]
 }
