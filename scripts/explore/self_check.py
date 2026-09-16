@@ -452,7 +452,8 @@ def s6_table_integrity(html: str, markdown: str) -> dict:
     # each direct row once: descendant-row counting double counts nested tables.
     nav_classes = {"navbox", "nav-box", "nav-main", "nav-header", "nav-footer"}
     tables = [t for t in soup.find_all("table")
-              if not (nav_classes & set(t.get("class") or []))]
+              if not (nav_classes & set(t.get("class") or []))
+              and not any(c.startswith("navbox-") for c in (t.get("class") or []))]
     if not any(len(t.find_all("tr")) > 2 for t in tables):
         return {"check": "S6", "status": "skip", "detail": "No data tables in original"}
     html_rows = 0
