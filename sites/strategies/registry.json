@@ -356,6 +356,26 @@
         "rate-limit-api"
       ],
       "file": "touhou-mystias-izakaya.fandom.com/strategy.md"
+    },
+    {
+      "domain": "kairosoft.fandom.com",
+      "description": "Fandom-hosted MediaWiki 1.43.9 multi-game wiki for Kairosoft titles. Cloudflare Managed Challenge on HTML pages; MediaWiki API endpoints are unaffected. Crawl scope is single-game — Mega Mall Story mechanics tables (10 ns=0 pages named '<Mechanic> (Mega Mall Story)').",
+      "protection_level": "high",
+      "page_types": [
+        "static_article"
+      ],
+      "pagination": [
+        "none"
+      ],
+      "entry_points": [
+        "game_main_page",
+        "mechanic_table_page"
+      ],
+      "anti_crawl_refs": [
+        "default",
+        "rate-limit-api"
+      ],
+      "file": "kairosoft.fandom.com/strategy.md"
     }
   ]
 }

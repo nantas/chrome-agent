@@ -20,5 +20,5 @@ class RebaseRegressionTests(unittest.TestCase):
     def test_navbox_subgroup_excluded_but_collapsible_data_counted(self):
         rows = '<tr><td>A</td></tr><tr><td>B</td></tr><tr><td>C</td></tr>'
         html = '<table class="mw-collapsible">' + rows + '</table><table class="navbox-subgroup">' + rows + '</table>'
-        md = '| Name |\n| --- |\n| A |\n| B |\n| C |'
+        md = '| |\n| --- |\n| A |\n| B |\n| C |'
         self.assertEqual(s6_table_integrity(html, md)['status'], 'pass')
