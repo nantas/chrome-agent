@@ -180,19 +180,13 @@ Each check returns: `{check, status: pass|fail|skip, detail, fixable_type?}`
 
 #### 7c: Auto-Remediation Loop
 
-If self-check finds fixable failures, the system automatically adjusts extraction rules and re-converts:
+`plan_remediation(extraction, issues, evidence=None)` 返回独立的 `{extraction, applied, unresolved, changed}` 报告，深拷贝输入。`auto_remediate()` 保持只返回 extraction 字典的兼容接口。支持 wrapper/table/space 配置更新；lazyload 仅使用完整已有配置或显式证据提供的 placeholder_pattern/real_src_attr。不支持的 consumer 或缺少证据分别返回 `unsupported_consumer` / `missing_evidence`，保留原 failure，供 KI 分类；applied 不代表质量已修复。
 
-```
-Iteration 0: Initial conversion + self-check
-  ↓ fixable_failures found?
-Iteration 1: auto_remediate(extraction, failures) → re-convert → re-check
-  ↓ fixable_failures found?
-Iteration 2: auto_remediate → re-convert → re-check
-  ↓ max 2 iterations reached
-Done
-```
+main 仅在候选准入且 changed=true 时重转换/重检，最多两次更新；无有效变化立即停止。质量状态仍以 self-check 为准，Architecture Gate 和冻结确认继续生效。
 
-**Key function**: `auto_remediate(extraction, fixable_failures) → dict`
+所有注册 MediaWiki 模板在真实生成时遵守共享 schema。generic/wiki.gg 的编辑清理使用 strip_edit_links，TOC 使用 .toc/#toc cleanup_selectors。iterate 先规划候选并校验，非法 MediaWiki 规则返回字段诊断，原文件字节不变且不调用转换；非 MediaWiki 描述性规则保持原边界。普通 image 反馈可应用 wrapper，同时报告 lazyload 缺证据。
+
+验证入口：[producer 修复 verification](../../openspec/changes/archive/2026-10-02-fix-explore-extraction-config-producers/verification.md)。2026-10-02 原 URL 验证已解除 schema 错误，Explore 为 partial_success，HTML 仍有 Cloudflare 挑战标记；未进入提取。
 
 #### 7d: Architecture Gate (`architecture_gate.py`)
 

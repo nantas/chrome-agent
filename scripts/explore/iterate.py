@@ -4,12 +4,19 @@ import argparse
 import json
 import os
 import re
+import sys
 from pathlib import Path
+
+# Shared schema imports must work when the CLI launches this script outside the repo.
+_project_root = str(Path(__file__).resolve().parents[2])
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
 import yaml
 
 from sample_converter import convert
-from self_check import run_checks, summarize, auto_remediate
+from self_check import run_checks, summarize, plan_remediation
+from scripts.lib.extraction.schema import validate_extraction
 
 
 def iterate(
@@ -45,36 +52,36 @@ def iterate(
     frontmatter = yaml.safe_load(match.group(1))
     extraction = frontmatter.get("extraction", {})
     domain = frontmatter.get("domain", "")
-    cleanup = set(extraction.get("cleanup", []))
-    normalization = set(extraction.get("text_normalization", []))
-
-    # Parse feedback and update rules
+    api = frontmatter.get("api", {})
+    mediawiki = (api.get("platform") == "mediawiki" or api.get("type") == "mediawiki"
+                 or str(frontmatter.get("platform", "")).startswith("mediawiki"))
+    errors = validate_extraction(extraction) if mediawiki else []
+    if errors:
+        return {"ok": False, "error": "invalid_configuration", "errors": errors}
     fb = feedback.lower()
-    if "image" in fb or "picture" in fb or "photo" in fb:
-        cleanup.add("fix_lazyload_images")
-        cleanup.add("unwrap_image_wrappers")
-    if "table" in fb:
-        cleanup.add("strip_fandom_infobox_tables")
-    if "link" in fb:
-        cleanup.add("unwrap_image_wrappers")
-    if "space" in fb or "missing space" in fb:
-        normalization.add("fix_spaces")
-    if "toc" in fb or "contents" in fb:
-        cleanup.add("strip_toc")
-    if "edit" in fb:
-        cleanup.add("strip_edit_sections")
-    if "infobox" in fb:
-        cleanup.add("strip_fandom_infobox_tables")
-    if "ambox" in fb or "notice" in fb:
-        cleanup.add("convert_ambox_to_text")
-
-    extraction["cleanup"] = sorted(cleanup)
-    extraction["text_normalization"] = sorted(normalization)
+    requests = []
+    actions = [
+        (("image", "picture", "photo"), ("image_wrapper", "base64_residue")),
+        (("table", "infobox"), ("table_class_missing",)),
+        (("link",), ("link_resolution",)),
+        (("space",), ("space_normalization",)),
+        (("toc", "contents"), ("toc",)),
+        (("edit",), ("edit",)),
+        (("ambox", "notice"), ("ambox",)),
+    ]
+    for words, kinds in actions:
+        if any(word in fb for word in words):
+            requests.extend({"fixable_type": kind, "detail": feedback} for kind in kinds)
+    plan = plan_remediation(extraction, requests, validate=mediawiki)
+    extraction = plan["extraction"]
+    errors = validate_extraction(extraction) if mediawiki else []
+    if errors or plan.get("errors"):
+        return {"ok": False, "error": "invalid_configuration", "errors": errors or plan["errors"], "remediation": plan}
     frontmatter["extraction"] = extraction
 
     # Rewrite scaffold with updated rules
     new_frontmatter = yaml.dump(frontmatter, allow_unicode=True, sort_keys=False)
-    content = re.sub(r"^---\n(.*?)\n---", f"---\n{new_frontmatter}---", content, count=1, flags=re.S)
+    content = re.sub(r"^---\n(.*?)\n---", lambda _: f"---\n{new_frontmatter}---", content, count=1, flags=re.S)
 
     with open(scaffold_path, "w", encoding="utf-8") as f:
         f.write(content)
@@ -104,6 +111,7 @@ def iterate(
     return {
         "ok": True,
         "updated_extraction": extraction,
+        "remediation": plan,
         "sample_results": sample_results,
         "self_check": self_check,
         "scaffold_path": scaffold_path,

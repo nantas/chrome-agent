@@ -1,6 +1,8 @@
 from __future__ import annotations
 """SelfCheck — S1-S12 checks for sample conversion quality + auto-remediation loop."""
 
+import copy
+import json
 import re
 from typing import Optional
 
@@ -23,17 +25,11 @@ FIXABLE_ISSUES = {
 }
 
 _FIX_TO_CLEANUP = {
-    "base64_residue": "fix_lazyload_images",
     "link_resolution": "unwrap_image_wrappers",
     "image_wrapper": "unwrap_image_wrappers",
     "table_class_missing": "strip_fandom_infobox_tables",
-    "relative_image_url": "convert_images_full_url",
-    "relative_link": "convert_links_full_url",
-    "infobox_html_residue": "use_balanced_div_matching",
-    "section_loss": "use_balanced_toc_removal",
-    "nav_leak": "remove_nav_header_sidebar",
-    "youtube_title": "retry_oembed_titles",
-    "id_navigation_leak": "extract_infobox_nav_cur",
+    "edit": "strip_edit_links",
+    "ambox": "convert_ambox_to_text",
 }
 
 _FIX_TO_NORMALIZATION = {
@@ -557,25 +553,54 @@ def summarize(results: list[dict]) -> dict:
     }
 
 
-def auto_remediate(
-    extraction_rules: dict,
-    fixable_failures: list[dict],
-) -> dict:
-    """Suggest extraction rule amendments for fixable failures.
+def plan_remediation(extraction_rules: dict, issues: list[dict], evidence: Optional[dict] = None,
+                     validate: bool = True) -> dict:
+    """Plan executable configuration changes, retaining unsupported issue evidence."""
+    from scripts.lib.extraction.schema import validate_extraction
 
-    Returns:
-        Updated extraction_rules dict.
-    """
-    updated = dict(extraction_rules)
-    cleanup = set(updated.get("cleanup", []))
-    normalization = set(updated.get("text_normalization", []))
+    updated = copy.deepcopy(extraction_rules)
+    applied, unresolved = [], []
+    errors = validate_extraction(updated) if validate else []
+    if errors:
+        return {"extraction": updated, "applied": [], "changed": False,
+                "unresolved": [{"reason_code": "invalid_configuration", "detail": errors}],
+                "errors": errors}
+    for issue in sorted(issues, key=lambda item: (str(item.get("fixable_type", "")), json.dumps(item, sort_keys=True, default=str))):
+        kind = issue.get("fixable_type")
+        before = copy.deepcopy(updated)
+        reason = None
+        if kind in _FIX_TO_CLEANUP:
+            updated["cleanup"] = sorted(set(updated.get("cleanup", [])) | {_FIX_TO_CLEANUP[kind]})
+        elif kind in _FIX_TO_NORMALIZATION:
+            updated["text_normalization"] = sorted(set(updated.get("text_normalization", [])) | {_FIX_TO_NORMALIZATION[kind]})
+        elif kind == "toc":
+            updated["cleanup_selectors"] = sorted(set(updated.get("cleanup_selectors", [])) | {".toc", "#toc"})
+        elif kind == "base64_residue":
+            lazyload = copy.deepcopy(updated.get("lazyload", {}))
+            lazyload.update((evidence or {}).get("lazyload", {}))
+            if all(isinstance(lazyload.get(key), str) and lazyload[key].strip()
+                   for key in ("placeholder_pattern", "real_src_attr")):
+                lazyload["enabled"] = True
+                updated["lazyload"] = lazyload
+            else:
+                reason = "missing_evidence"
+        else:
+            reason = "unsupported_consumer"
+        if reason:
+            unresolved.append({"issue": copy.deepcopy(issue), "fixable_type": kind,
+                               "reason_code": reason, "detail": ("Lazyload requires evidenced placeholder_pattern and real_src_attr"
+                                                       if reason == "missing_evidence" else "No implemented automatic consumer for this issue")})
+        elif before != updated:
+            applied.append({"issue": copy.deepcopy(issue), "fixable_type": kind})
+    errors = validate_extraction(updated) if validate else []
+    if errors:
+        return {"extraction": copy.deepcopy(extraction_rules), "applied": [], "changed": False,
+                "unresolved": unresolved + [{"reason_code": "invalid_configuration", "detail": errors}],
+                "errors": errors}
+    return {"extraction": updated, "applied": applied, "unresolved": unresolved,
+            "changed": updated != extraction_rules}
 
-    for failure in fixable_failures:
-        fix_type = failure.get("fixable_type")
-        if fix_type in _FIX_TO_CLEANUP:
-            cleanup.add(_FIX_TO_CLEANUP[fix_type])
-        elif fix_type in _FIX_TO_NORMALIZATION:
-            normalization.add(_FIX_TO_NORMALIZATION[fix_type])
-    updated["cleanup"] = sorted(cleanup)
-    updated["text_normalization"] = sorted(normalization)
-    return updated
+
+def auto_remediate(extraction_rules: dict, fixable_failures: list[dict]) -> dict:
+    """Compatibility wrapper returning only the planned extraction configuration."""
+    return plan_remediation(extraction_rules, fixable_failures)["extraction"]

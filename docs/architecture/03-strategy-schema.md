@@ -542,3 +542,10 @@ rate_limit_tiers:
 ## Extraction and draft lifecycle validation
 
 MediaWiki extraction cleanup/text_normalization are supported string lists. Lazyload uses enabled/placeholder_pattern/real_src_attr, and operation names come from capability-registry shared implementations. Descriptive pipeline keys and unsupported names fail before network work. Non-MediaWiki narrative rules remain governed by their actual backend. Bootstrap emits lifecycle.status=draft, target-specific pending fields and no production registry entry. Freeze validates target identity, entry points, capability references and review_evidence before publication; failed freeze retains draft markers and registry state. See strategy-schema/lifecycle specs.
+
+
+### Extraction 配置生产端
+
+模板、反馈迭代与自检修复必须使用消费者支持的配置：编辑链接用 `cleanup: [strip_edit_links]`；TOC 用 `cleanup_selectors: [".toc", "#toc"]`，保留已有有效 selector。不得生产 `strip_edit_sections`、`strip_toc` 或 `fix_lazyload_images`。lazyload 通过结构化 enabled/placeholder_pattern/real_src_attr 配置，属性来源必须为完整已有配置或显式证据；缺证据报告 unresolved，不能猜 data-src。
+
+修复诊断与 extraction 分离。MediaWiki iterate 在落盘及转换前校验候选，既有非法规则也拒绝更新，不能静默清洗；非 MediaWiki 保留原 schema 适用边界。草稿不自动冻结或注册。详见 [producer 修复 verification](../../openspec/changes/archive/2026-10-02-fix-explore-extraction-config-producers/verification.md)。

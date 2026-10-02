@@ -32,7 +32,7 @@ from structure_mapper import map_structure
 from protection_identifier import identify
 from strategy_scaffold_generator import generate
 from sample_converter import convert
-from self_check import run_checks, summarize, auto_remediate
+from self_check import run_checks, summarize, plan_remediation
 from architecture_gate import validate as architecture_gate_validate
 
 # Startup dependency self-check
@@ -118,6 +118,7 @@ def main():
         all_checks = []
         iteration = 0
         max_iterations = 2
+        remediation_reports = []
         current_extraction = extraction
 
         while iteration <= max_iterations:
@@ -155,7 +156,20 @@ def main():
             # Auto-remediation: fix known issues and re-convert if needed
             fixable = self_check_summary.get("fixable_failures", [])
             if fixable and iteration < max_iterations:
-                current_extraction = auto_remediate(current_extraction, fixable)
+                api = extraction_config.get("api", {})
+                mediawiki = api.get("platform") == "mediawiki" or api.get("type") == "mediawiki" or platform.startswith("mediawiki")
+                plan = plan_remediation(current_extraction, fixable, validate=mediawiki)
+                remediation_reports.append(plan)
+                if not plan["changed"]:
+                    reported = [item.get("issue") for item in plan["unresolved"]]
+                    plan["unresolved"].extend(
+                        {"issue": failure.copy(), "fixable_type": failure.get("fixable_type"),
+                         "reason_code": "unsupported_consumer",
+                         "detail": "Configured remedy already present; no further automatic repair available"}
+                        for failure in fixable if failure not in reported
+                    )
+                    break
+                current_extraction = plan["extraction"]
                 sample_results = convert(repo_root, samples, current_extraction, engine, run_dir)
                 iteration += 1
             else:
@@ -163,6 +177,7 @@ def main():
 
         if self_check_summary:
             self_check_summary["auto_remediation_iterations"] = iteration
+            self_check_summary["remediation"] = remediation_reports
 
         # Phase 8: Architecture Gate (strategy↔pipeline bidirectional validation)
         # Runs after self-check passes, before final output

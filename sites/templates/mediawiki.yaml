@@ -26,8 +26,10 @@ extraction:
     title: "#firstHeading"
     nav: ".mw-parser-output"
   cleanup:
-    - strip_edit_sections
-    - strip_toc
+    - strip_edit_links
+  cleanup_selectors:
+    - ".toc"
+    - "#toc"
   text_normalization:
     - fix_spaces
     - normalize_blank_lines

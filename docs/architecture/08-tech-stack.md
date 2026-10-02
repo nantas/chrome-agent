@@ -310,6 +310,12 @@ node --test tests/chrome-agent-runtime.test.mjs
 
 `tests/explore-handoff.test.mjs` 以临时仓库副本执行真实 CLI 和 Explore 入口，仅替换 probe 网络边界，检查已抵达 probe、失败 JSON、交接文件、目标 slug 与有/无 runDir 行为。fixture 使用临时目录并在测试结束清理，不访问真实网站或接管浏览器。
 
+### Explore 配置生产端回归
+
+`tests/test_explore_template_contract.py` 遍历模板 registry 的全部 MediaWiki 项，真实生成临时草稿并通过 schema 与 preprocess_html 检验正文/编辑/TOC 效果，确认不注册生产策略。`test_explore_remediation_plan.py` 覆盖全部已识别 issue、输入深拷贝、确定性、证据 lazyload 与真实消费者效果；兼容 API 由 `test_explore_self_check.py` 覆盖。
+
+`test_explore_iterate.py` 使用临时策略文件，保留实际规划器/schema/文件读写，仅隔离转换网络边界，验证非法配置不改文件、不转换与静态站点边界。`test_explore_main_remediation.py` 保留实际 planner，验证无变化停止、有效更新重检、两次上限及失败身份/Gate 保留。所有 fixture 在测试后清理。证据见 [producer 修复 verification](../../openspec/changes/archive/2026-10-02-fix-explore-extraction-config-producers/verification.md)。
+
 ### 旧测试保留
 
 `scripts/pipeline/tests/` 下的旧测试保留原位（不迁移到 `tests/`），已全部迁移到 `unittest.TestCase`。新测试统一放 `tests/`。
