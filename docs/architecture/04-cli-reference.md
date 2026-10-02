@@ -328,3 +328,11 @@ python3 -m scripts.pipeline <subcommand> [args]
 ## HTML 内容准入结果
 
 fetch/crawl 在 selector 与 Markdown 转换前检查原始 HTML；本地转换使用同一次获取的 HTML。挑战页、空输出与读取失败不能成为成功正文。fetch manifest 包含 admission 与 diagnostic_path；诊断文件不作为 Extracted content 发布。Explore 无可用正文返回 failure/content_unavailable，不提示 freeze；结构化部分成功保留原状态。引擎不能提供 HTTP 元数据时为 null，不按退出码推定 200。
+
+### doctor 健康报告与 Explore 诊断
+
+`version_check` 必须覆盖配置中的全部选中引擎；缺脚本、空/坏 JSON、记录缺失或退出码矛盾返回 blocking 的 version_check_failed。合法非零退出的非健康报告仍保留引擎详情。
+
+checks 包含 blocking；可选 CloakBrowser 缺失额外报告 readiness=needs_preflight。此时 doctor 为 partial_success，且仅所有失败检查均非阻塞并无 reload Gate 时 dispatch_allowed=true。必需检查故障返回 failure；skill reload 仍阻塞 dispatch。next_action 给出实际故障的修复步骤。
+
+Explore 成功或失败均提供诊断文件入口及实际引擎链。内部调用/协议错误继续生成 handoff；普通内容不可用返回 failure，不提示将挑战页冻结为策略。

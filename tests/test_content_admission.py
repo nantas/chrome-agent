@@ -95,7 +95,7 @@ class AdmissionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             output = str(Path(tmp)/'page.html')
             envelope = {'success':True, 'html':FIXTURE.read_text(), 'http_status':200}
-            with patch.object(probe_chain.subprocess, 'run', return_value=CompletedProcess([],0,json.dumps(envelope),'')):
+            with patch.object(probe_chain, '_cloakbrowser_preflight', return_value={'ok': True, 'path': 'fixture-python'}), patch.object(probe_chain.subprocess, 'run', return_value=CompletedProcess([],0,json.dumps(envelope),'')):
                 result = probe_chain._run_cloakbrowser_fetch(str(Path.cwd()), 'https://example.invalid', output)
             self.assertEqual(result['status'], 'failure')
             self.assertEqual(result['admission']['reason'], 'challenge_page')

@@ -29,6 +29,8 @@ def _build_success(engine, html, output_path, http_status=None):
         "engine": engine,
         "status": "success" if admission["admitted"] else "failure",
         "admission": admission,
+        "stage": "admission",
+        "executed": True,
         "process_exit": 0,
         "error_type": admission["protection_type"] or admission["reason"],
         "http_status": http_status,
@@ -47,19 +49,26 @@ def _build_failure(engine, stderr, http_status=None, stdout="", process_exit=Non
         "http_status": http_status,
         "error_type": _classify_error(stderr, http_status),
         "detail": detail,
+        "stage": "process",
+        "executed": True,
     }
 
 
-def _capture_html(command, output_path, repo_root):
+def _capture_html(command, output_path, repo_root, stdout_html=False):
     """Only promote the current process's output, never a previous run's file."""
     with tempfile.TemporaryDirectory(prefix='chrome-agent-probe-') as directory:
         temporary = os.path.join(directory, 'page.html')
         command = [temporary if arg == output_path else arg for arg in command]
         try:
-            result = subprocess.run(command, capture_output=True, text=True, cwd=repo_root)
+            result = subprocess.run(command, capture_output=True, text=True, cwd=repo_root, timeout=120)
+        except subprocess.TimeoutExpired:
+            return subprocess.CompletedProcess(command, 1, "", "timeout")
         except OSError:
             return subprocess.CompletedProcess(command, 1, '', 'engine_unavailable')
+        Path(output_path + ".stderr.txt").write_text(result.stderr or "", encoding="utf-8")
         if result.returncode == 0:
+            if stdout_html and result.stdout.strip():
+                Path(temporary).write_text(result.stdout, encoding="utf-8")
             if not os.path.isfile(temporary):
                 result.output_error = 'missing_output'
                 return result
@@ -104,7 +113,7 @@ def _run_obscura_fetch(repo_root: str, url: str, output_path: str) -> dict:
         }
 
     cli = preflight["path"]
-    result = _capture_html([cli, "fetch", url, "--dump", "html", "--quiet", "--output", output_path], output_path, repo_root)
+    result = _capture_html([cli, "fetch", url, "--dump", "html", "--quiet"], output_path, repo_root, stdout_html=True)
 
     if getattr(result, 'output_error', None):
         return _build_failure("obscura-fetch", result.output_error, process_exit=result.returncode)
@@ -128,27 +137,40 @@ def _run_cloakbrowser_fetch(repo_root: str, url: str, output_path: str) -> dict:
             "detail": "cloakbrowser_fetcher.py not found",
         }
 
+    preflight = _cloakbrowser_preflight(repo_root)
+    if not preflight["ok"]:
+        return {"engine": "cloakbrowser-fetch", "status": "failure", "stage": "preflight",
+                "error_type": "preflight_failed", "process_exit": preflight.get("process_exit"),
+                "detail": preflight["detail"][:500]}
     try:
         result = subprocess.run(
-            [str(Path.home() / ".cache/chrome-agent-cloakbrowser/bin/python"), script, url, "--json"],
-            capture_output=True,
-            text=True,
-            cwd=repo_root,
+            [preflight["path"], script, url, "--json"],
+            capture_output=True, text=True, cwd=repo_root, timeout=120,
         )
-    except OSError:
-        return _build_failure("cloakbrowser-fetch", "engine_unavailable")
+    except subprocess.TimeoutExpired:
+        return _build_failure("cloakbrowser-fetch", "timeout")
+    except OSError as exc:
+        return _build_failure("cloakbrowser-fetch", "engine_unavailable", stdout=str(exc))
+    Path(output_path + ".stderr.txt").write_text(result.stderr or "", encoding="utf-8")
 
     try:
         parsed = json.loads(result.stdout)
-        if parsed.get("success") and result.returncode == 0:
-            html = parsed.get("html") or ""
-            Path(output_path).write_text(html, encoding="utf-8")
-            return _build_success("cloakbrowser-fetch", html, output_path, parsed.get("http_status"))
-    except json.JSONDecodeError:
-        pass
+        if not isinstance(parsed, dict) or not isinstance(parsed.get("success"), bool):
+            raise ValueError("Missing boolean success field")
+        if parsed["success"] and not isinstance(parsed.get("html"), str):
+            raise ValueError("Missing HTML string")
+    except (ValueError, TypeError):
+        return _build_failure("cloakbrowser-fetch", "invalid_response", stdout=result.stdout, process_exit=result.returncode)
+    if parsed["success"] and result.returncode == 0:
+        html = parsed["html"]
+        Path(output_path).write_text(html, encoding="utf-8")
+        return _build_success("cloakbrowser-fetch", html, output_path, parsed.get("http_status"))
 
     stderr = result.stderr.strip()
-    http_status = _extract_http_status(stderr)
+    error = parsed.get("error") or {}
+    if not stderr:
+        stderr = str(error.get("message") or error.get("category") or "") if isinstance(error, dict) else str(error)
+    http_status = parsed.get("http_status")
     return _build_failure("cloakbrowser-fetch", stderr, http_status, result.stdout, result.returncode)
 
 
@@ -160,8 +182,22 @@ def _run_chrome_devtools_mcp(repo_root: str, url: str, output_path: str) -> dict
         "engine": "chrome-devtools-mcp",
         "status": "pending",
         "error_type": "cli_fallback_required",
-        "detail": "Requires Node.js MCP gateway; handled by CLI layer if earlier engines fail.",
+        "detail": "Not executed. Requires explicit browser authorization before manual fallback.",
     }
+
+
+def _cloakbrowser_preflight(repo_root: str) -> dict:
+    try:
+        result = subprocess.run(["bash", "./scripts/cloakbrowser-cli.sh", "preflight"],
+                                cwd=repo_root, capture_output=True, text=True, timeout=180)
+        fields = dict(line.split("=", 1) for line in result.stdout.splitlines() if "=" in line)
+        executable = fields.get("RESOLVED_CLI_PATH", "").strip()
+        ok = (result.returncode == 0 and fields.get("STATUS") in ("available", "repaired")
+              and os.path.isabs(executable) and os.path.isfile(executable) and os.access(executable, os.X_OK))
+        return {"ok": ok, "path": executable, "process_exit": result.returncode,
+                "detail": (result.stderr or result.stdout or "Invalid CloakBrowser preflight output")[:500]}
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        return {"ok": False, "path": None, "detail": str(exc)[:500]}
 
 
 def _scrapling_preflight(repo_root: str) -> dict:
@@ -234,7 +270,9 @@ def _extract_http_status(text: str) -> Optional[int]:
 
 def _classify_error(stderr: str, http_status: Optional[int]) -> str:
     s = stderr.lower()
-    if s in ("missing_output", "engine_unavailable"):
+    if "unexpected argument" in s or "unrecognized arguments" in s:
+        return "invalid_invocation"
+    if s in ("missing_output", "engine_unavailable", "invalid_response", "internal_error"):
         return s
     if "just a moment" in s:
         return "cloudflare-managed"
@@ -260,6 +298,7 @@ def probe(repo_root: str, url: str, run_dir: str) -> dict:
             "html_content": raw HTML or None,
         }
     """
+    os.makedirs(run_dir, exist_ok=True)
     results = []
     success_engine = None
     html_path = None
@@ -268,19 +307,31 @@ def probe(repo_root: str, url: str, run_dir: str) -> dict:
     for engine in ENGINES:
         output_path = os.path.join(run_dir, f"probe_{engine.replace('-', '_')}.html")
 
-        if engine == "scrapling-get":
-            res = _run_scrapling_get(repo_root, url, output_path)
-        elif engine == "obscura-fetch":
-            res = _run_obscura_fetch(repo_root, url, output_path)
-        elif engine == "cloakbrowser-fetch":
-            res = _run_cloakbrowser_fetch(repo_root, url, output_path)
-        elif engine == "chrome-devtools-mcp":
-            res = _run_chrome_devtools_mcp(repo_root, url, output_path)
-        else:
-            continue
+        try:
+            if engine == "scrapling-get":
+                res = _run_scrapling_get(repo_root, url, output_path)
+            elif engine == "obscura-fetch":
+                res = _run_obscura_fetch(repo_root, url, output_path)
+            elif engine == "cloakbrowser-fetch":
+                res = _run_cloakbrowser_fetch(repo_root, url, output_path)
+            elif engine == "chrome-devtools-mcp":
+                res = _run_chrome_devtools_mcp(repo_root, url, output_path)
+            else:
+                continue
+        except Exception as exc:
+            res = _build_failure(engine, "internal_error", stdout=str(exc))
+
 
         if res.get("status") == "success":
             res = _build_success(engine, _read_html(res.get("output_path", "")), res.get("output_path"), res.get("http_status"))
+        res.setdefault("stage", "pending" if res.get("status") == "pending" else "preflight" if res.get("error_type") == "preflight_failed" else "process")
+        res.setdefault("executed", res.get("status") != "pending")
+        res.setdefault("process_exit", None)
+        stderr_path = output_path + ".stderr.txt"
+        if os.path.isfile(stderr_path):
+            res["stderr_path"] = stderr_path
+        res["diagnostic_path"] = output_path + ".attempt.json"
+        Path(res["diagnostic_path"]).write_text(json.dumps(res, ensure_ascii=False, indent=2), encoding="utf-8")
         results.append(res)
 
         if res.get("status") == "success":
@@ -289,7 +340,10 @@ def probe(repo_root: str, url: str, run_dir: str) -> dict:
             html_content = _read_html(html_path)
             break
 
+    diagnostic_path = os.path.join(run_dir, "probe-chain.json")
+    Path(diagnostic_path).write_text(json.dumps({"results": results, "success_engine": success_engine}, ensure_ascii=False, indent=2), encoding="utf-8")
     return {
+        "diagnostic_path": diagnostic_path,
         "results": results,
         "success_engine": success_engine,
         "html_path": html_path,

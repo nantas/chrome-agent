@@ -37,6 +37,10 @@ function runExplore(t, target = TARGET, missingDeps = false, blocked = false) {
     fs.writeFileSync(path.join(root, "scripts", "explore", "main.py"),
       'import json, sys\nprint(json.dumps({"result":"partial_success","probe_chain":{"results":[],"success_engine":"offline"},"scaffold":{},"architecture_gate":{"status":"fail"}}))\nsys.exit(2)\n');
   }
+  if (blocked === "internal") {
+    fs.writeFileSync(path.join(root, "scripts", "explore", "probe_chain.py"),
+      'def probe(*args):\n    return {"results": [{"engine":"obscura-fetch","status":"failure","stage":"process","process_exit":2,"error_type":"invalid_invocation","detail":"unexpected argument"}], "success_engine": None}\n');
+  }
   const env = { ...process.env };
   delete env.PYTHONPATH;
   env.CHROME_AGENT_PYTHON = process.env.CHROME_AGENT_PYTHON || "python3";
@@ -59,8 +63,11 @@ function runExplore(t, target = TARGET, missingDeps = false, blocked = false) {
     return { result, root };
   }
   assert.equal(result.result, "failure");
-  if (blocked) {
+  if (blocked && blocked !== "internal") {
     assert.equal(result.reason, "content_unavailable");
+    assert.ok(result.engine_path);
+    assert.ok(result.artifacts.length > 0);
+    assert.ok(result.artifacts.every((a) => fs.existsSync(a.path)));
     assert.equal(result.handoff_path, undefined);
     assert.doesNotMatch(result.summary, /discovery completed|Success engine/);
     assert.doesNotMatch(result.next_action, /freeze/);
@@ -119,3 +126,12 @@ test("handoff bounds the target slug to 80 characters", (t) => {
 test("content failure survives real Python to CLI boundary", (t) => { runExplore(t, TARGET, false, true); });
 
 test("recognized partial outcome retains exit-2 workflow semantics", (t) => { runExplore(t, TARGET, false, "partial"); });
+
+test("internal engine contract failure retains evidence and triggers handoff", (t) => {
+  const {result, document} = runExplore(t, TARGET, false, "internal");
+  assert.match(document, /unexpected argument/);
+  assert.equal(result.reason, "invalid_invocation");
+  assert.equal(result.discovery.engine_chain[0].process_exit, 2);
+  assert.ok(result.artifacts.length > 0);
+  assert.match(result.engine_path, /obscura-fetch:failure:invalid_invocation/);
+});

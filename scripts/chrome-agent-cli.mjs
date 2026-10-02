@@ -851,19 +851,19 @@ function runCloakbrowserFetch(repoRoot, targetUrl, outputPath, extraArgs = []) {
   const preflight = spawnSync("bash", ["./scripts/cloakbrowser-cli.sh", "preflight"], {
     cwd: repoRoot,
     encoding: "utf8",
+    timeout: 180_000,
   });
-  if (preflight.status !== 0) {
-    return {
-      ok: false,
-      preflight: { ok: false },
-      summary: "CloakBrowser preflight failed. Re-run scripts/cloakbrowser-cli.sh preflight to provision the managed venv.",
-      stderr: `${preflight.stdout ?? ""}${preflight.stderr ?? ""}`.trim(),
-    };
+  const fields = Object.fromEntries((preflight.stdout || "").split(/\r?\n/)
+    .filter((line) => line.includes("=")).map((line) => [line.slice(0, line.indexOf("=")), line.slice(line.indexOf("=") + 1)]));
+  const managedPython = (fields.RESOLVED_CLI_PATH || "").trim();
+  let executable = false;
+  try { executable = path.isAbsolute(managedPython) && fs.statSync(managedPython).isFile(); fs.accessSync(managedPython, fs.constants.X_OK); }
+  catch { executable = false; }
+  if (preflight.error || preflight.status !== 0 || !["available", "repaired"].includes(fields.STATUS) || !executable) {
+    return { ok: false, preflight: { ok: false }, error_type: "preflight_failed",
+      summary: "CloakBrowser preflight failed. Re-run scripts/cloakbrowser-cli.sh preflight.",
+      stderr: `${preflight.error?.message || ""} ${preflight.stdout || ""} ${preflight.stderr || ""}`.trim().slice(0, 1000) };
   }
-
-  const preflightStdout = preflight.stdout || "";
-  const resolvedCliMatch = preflightStdout.match(/^RESOLVED_CLI_PATH=(.+)$/m);
-  const managedPython = resolvedCliMatch ? resolvedCliMatch[1].trim() : "python3";
 
   const args = ["scripts/cloakbrowser_fetcher.py", targetUrl, "--json", ...extraArgs];
   const result = spawnSync(managedPython, args, { cwd: repoRoot, encoding: "utf8", maxBuffer: 50 * 1024 * 1024 });
@@ -1857,16 +1857,33 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
             || (ddResult.status === 3 && (discoveryResult.reason !== "content_unavailable" || discoveryResult.probe_chain.success_engine !== null))) {
           throw new Error("Invalid deep discovery outcome contract");
         }
+        const evidencePath = path.join(runDir, "discovery-result.json");
+        fs.writeFileSync(evidencePath, JSON.stringify(discoveryResult, null, 2));
         if (ddResult.status === 3) {
+          const chain = discoveryResult.probe_chain.results;
+          const enginePath = `strategy_registry -> strategy_gap -> ${chain.map((attempt) => `${attempt.engine}:${attempt.status}:${attempt.error_type || "none"}`).join(" -> ") || "no_attempts"}`;
+          const evidence = [absoluteArtifact(evidencePath, "disposable", "Deep discovery diagnostic")];
+          for (const attempt of chain) {
+            for (const key of ["diagnostic_path", "output_path", "stderr_path"]) {
+              if (attempt[key] && fs.existsSync(attempt[key])) evidence.push(absoluteArtifact(attempt[key], "disposable", `${attempt.engine} ${key}`));
+            }
+          }
+          const internal = chain.find((attempt) => ["invalid_invocation", "internal_error", "invalid_response"].includes(attempt.error_type));
+          const extra = { reason: discoveryResult.reason, workflow: "platform_analysis", run_dir: runDir,
+            engine_path: enginePath, discovery: { engine_chain: chain, protection: discoveryResult.protection, content_profile: {} },
+            scaffold: null, samples: [] };
+          if (internal) {
+            return { ...internalFailure({ command: "explore", target: targetUrl, repoRef, runDir,
+              reason: internal.error_type, summary: `${internal.engine}: ${internal.detail || internal.error_type}`,
+              stderr: internal.detail, exitCode: internal.process_exit,
+              resultMsg: "Probe chain failed with an internal engine contract error; inspect the handoff.",
+              enginePath, workflow: "platform_analysis", artifacts: evidence }), ...extra, reason: internal.error_type };
+          }
           return makeResult("explore", targetUrl, repoRef,
-            "No usable page content was acquired; review engine evidence before retrying.", [],
-            "Review the blocked attempts and arrange an authorized fallback if required.", "failure", {
-              reason: discoveryResult.reason, workflow: "platform_analysis", run_dir: runDir,
-              discovery: { engine_chain: discoveryResult.probe_chain.results,
-                protection: discoveryResult.protection, content_profile: {} },
-              scaffold: null, samples: [],
-            });
+            "No usable page content was acquired; review each engine's execution and admission evidence.", evidence,
+            "Review discovery-result.json and repair failed preflights or execution errors; if only content rejection remains, obtain explicit browser authorization before manual fallback.", "failure", extra);
         }
+
       } catch (parseErr) {
         // Handoff: deep discovery returned invalid JSON is internal
         return internalFailure({
@@ -1907,6 +1924,8 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
     const samples = discoveryResult.samples ?? [];
     const selfCheck = discoveryResult.self_check ?? {};
 
+    const evidencePath = path.join(runDir, "discovery-result.json");
+    if (fs.existsSync(evidencePath)) artifacts.push(absoluteArtifact(evidencePath, "disposable", "Deep discovery diagnostic"));
     const successEngine = probe.success_engine ?? "none";
     const apiTypes = apis.map((a) => a.type).join(", ") || "none detected";
     const pageType = struct.page_type ?? "unknown";
@@ -1929,7 +1948,7 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
 
     const extraFields = {
       workflow: "platform_analysis",
-      engine_path: `strategy_registry -> strategy_gap -> deep_discovery:${successEngine} -> protection:${protectionType}`,
+      engine_path: `strategy_registry -> strategy_gap -> ${(probe.results || []).map((attempt) => `${attempt.engine}:${attempt.status}`).join(" -> ")} -> deep_discovery:${successEngine} -> protection:${protectionType}`,
       discovery: {
         engine_chain: probe.results ?? [],
         api: apis,
@@ -2991,21 +3010,39 @@ function runAutoUpdateGlobalFiles(repoRoot, changedFiles) {
 
 function runEngineVersionCheck(repoRoot) {
   const scriptPath = path.join(repoRoot, "scripts", "engine-version-check.sh");
-  if (!fs.existsSync(scriptPath)) {
-    return { all_ok: true, engines: [] };
-  }
-  const result = spawnSync("bash", [scriptPath, "--json"], {
-    cwd: repoRoot,
-    encoding: "utf8",
-    timeout: 30_000,
-  });
-  if (!result.stdout) {
-    return { all_ok: true, engines: [] };
-  }
   try {
-    return JSON.parse(result.stdout);
-  } catch {
-    return { all_ok: true, engines: [] };
+    const manifest = JSON.parse(fs.readFileSync(path.join(repoRoot, "configs", "engine-versions.json"), "utf8"));
+    const expected = Object.keys(manifest.engines);
+    if (!expected.length) throw new Error("No configured engines");
+    if (!fs.existsSync(scriptPath)) throw new Error(`Checker missing: ${scriptPath}`);
+    const result = spawnSync("bash", [scriptPath, "--json"], {
+      cwd: repoRoot, encoding: "utf8", timeout: 40_000,
+    });
+    if (result.error) throw new Error(`Checker execution: ${result.error.code}: ${result.error.message}`);
+    if (result.signal || ![0, 1].includes(result.status)) throw new Error(`Checker exit ${result.status}: ${result.stderr || result.signal || "unknown"}`);
+    let report;
+    try { report = JSON.parse(result.stdout); }
+    catch { throw new Error(`Checker returned empty/invalid JSON: ${result.stderr || "no diagnostic output"}`); }
+    if (!report || typeof report.all_ok !== "boolean" || !Array.isArray(report.engines)) throw new Error("Invalid checker schema");
+    const names = report.engines.map((entry) => entry?.engine);
+    if (names.length !== expected.length || new Set(names).size !== names.length || expected.some((name) => !names.includes(name))) {
+      throw new Error("Checker engine coverage differs from configured engines");
+    }
+    const validStatuses = new Set(["detected", "match", "not_installed", "detect_failed", "version_parse_failed", "hash_mismatch", "inspection_timeout", "inspection_failed", "no_detector"]);
+    for (const entry of report.engines) {
+      if (typeof entry.needs_update !== "boolean" || !validStatuses.has(entry.status) ||
+          entry.expected !== manifest.engines[entry.engine].expected_version ||
+          !(entry.detected === null || typeof entry.detected === "string") ||
+          (!entry.needs_update && (!["detected", "match"].includes(entry.status) || entry.detected !== entry.expected))) {
+        throw new Error(`Invalid engine record: ${entry.engine}`);
+      }
+    }
+    const healthy = report.engines.every((entry) => !entry.needs_update);
+    if (report.all_ok !== healthy || result.status !== (healthy ? 0 : 1)) throw new Error("Checker exit/status inconsistency");
+    return report;
+  } catch (error) {
+    return { all_ok: false, engines: [], error: "version_check_failed", blocking: true,
+      detail: String(error.message).slice(0, 1000) };
   }
 }
 
@@ -3175,29 +3212,38 @@ function runDoctor(repoRoot, repoRef, resolutionMode, check = null) {
     }
   }
 
-  // Add version check results as doctor checks
+  if (versionCheck.error) {
+    checks.push({ name: "version_check_failed", ok: false, blocking: true,
+      detail: versionCheck.detail, remediation: `Repair engine-version-check.sh: ${versionCheck.detail}` });
+  }
   for (const ve of versionCheck.engines) {
+    const lazyMissing = ve.engine === "cloakbrowser" && ve.status === "not_installed";
     checks.push({
-      name: `version_${ve.engine}`,
-      ok: !ve.needs_update,
-      detail: `${ve.engine}: ${ve.detected ?? "not installed"} (expected: ${ve.expected})`,
+      name: `version_${ve.engine}`, ok: !ve.needs_update,
+      blocking: ve.needs_update && !lazyMissing,
+      readiness: lazyMissing ? "needs_preflight" : ve.needs_update ? "unavailable" : "ready",
+      detail: `${ve.engine}: ${ve.detected ?? ve.status} (expected: ${ve.expected}); ${ve.status}`,
+      remediation: lazyMissing ? "Run scripts/cloakbrowser-cli.sh preflight when this fallback is selected."
+        : `Inspect scripts/engine-version-check.sh --engine ${ve.engine} --json and repair ${ve.status}.`,
     });
   }
-
+  for (const check of checks) check.blocking ??= !check.ok;
   const broken = checks.filter((check) => !check.ok);
-  const resultState = broken.length === 0 ? "success" : preflight.ok || repoShapeIsValid(repoRoot) ? "partial_success" : "failure";
+  const dispatchAllowed = !skillReloadRequired && broken.every((check) => check.blocking === false);
+  const resultState = skillReloadRequired ? "partial_success"
+    : broken.length === 0 ? "success" : dispatchAllowed ? "partial_success" : "failure";
 
   let summary;
   let nextAction;
-  if (broken.length === 0) {
+  if (broken.length === 0 && !skillReloadRequired) {
     summary = `Launcher and repository prerequisites are healthy. ${resolutionSummary(repoRef, resolutionMode)}`;
     nextAction = "none";
   } else if (skillReloadRequired) {
-    summary = `Doctor found ${broken.length} issue(s): ${broken.map((check) => check.name).join(", ")}. Global skill and runtime files have been auto-updated.`;
-    nextAction = "Global skill and runtime files have been updated. Please reload the skill (restart the session or re-read the skill file), then retry your command.";
+    summary = `Doctor requires skill reload. Global skill and runtime files have been auto-updated.`;
+    nextAction = "Reload the skill (restart the session or re-read the skill file), then rerun doctor before dispatch.";
   } else {
-    summary = `Doctor found ${broken.length} issue(s): ${broken.map((check) => check.name).join(", ")}.`;
-    nextAction = "Install the global launcher, set CHROME_AGENT_REPO or supply an explicit --repo <path|repo://id>, and repair Scrapling CLI availability.";
+    summary = `Doctor found ${broken.length} issue(s): ${broken.map((check) => check.name).join(", ")}. ${resolutionSummary(repoRef, resolutionMode)}`;
+    nextAction = `${dispatchAllowed ? "Dispatch permitted: all failed checks are explicitly non-blocking." : "Dispatch blocked."} ${broken.map((check) => check.remediation || `Repair ${check.name}: ${check.detail}`).join(" ")}`;
   }
 
   return makeResult(
@@ -3219,6 +3265,7 @@ function runDoctor(repoRoot, repoRef, resolutionMode, check = null) {
       workflow: "runtime_support",
       engine_path: `doctor -> repo_resolution:${resolutionMode} -> scrapling_preflight:${preflight.status ?? "unavailable"}`,
       version_check: versionCheck,
+      dispatch_allowed: dispatchAllowed,
     },
   );
 }

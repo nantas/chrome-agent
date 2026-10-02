@@ -379,3 +379,9 @@ Freeze now validates before removing any markers or publishing registry metadata
 probe 每个成功候选先检查原始 HTML。无可用正文时 main 返回 result=failure、reason=content_unavailable、exit 3；结构分析、草稿生成、样本转换不执行。诊断仍保留各引擎结果，末级 pending 不代表已运行浏览器。CLI 保留该外部失败，不生成内部崩溃 handoff 或 freeze 建议。exit 2 的结构化 partial_success 保留；未知错误/无效 JSON 仍走内部 handoff。样本获取失败参与 self-check failure 汇总，不能因零检查而通过。
 
 此前 wiki.gg 挑战页被误当 success 的缺口由 fix-challenge-page-admission 处理；验证见 `openspec/changes/archive/2026-10-02-fix-challenge-page-admission/verification.md`。
+
+## Probe 尝试证据
+
+每次尝试记录 stage、executed、process_exit、error_type 和证据路径；stage 区分 preflight/process/admission/pending。未执行的浏览器 fallback 为 pending，不能当作已尝试成功。每个 attempt 落盘 JSON，stderr 与 HTML 分开，probe-chain.json 汇总尝试链；CLI 的 discovery-result.json 保留完整 discovery 结果。
+
+没有正文时仍返回 engine_path 和诊断 artifacts。参数/响应协议等内部错误触发现有 handoff；内容拒绝继续呈现明确的失败与授权 fallback 指引，不自动接管用户浏览器。恢复取得正文只允许进入后续 discovery，策略审查、freeze 和 crawl 确认门保持有效。

@@ -1,6 +1,8 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
-set -eu
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 MANAGED_ROOT="${CLOAKBROWSER_MANAGED_ROOT:-$HOME/.cache/chrome-agent-cloakbrowser}"
 MANAGED_PYTHON="$MANAGED_ROOT/bin/python"
@@ -28,7 +30,8 @@ install_managed() {
   log "CloakBrowser managed venv not available. Provisioning at $MANAGED_ROOT."
   mkdir -p "$(dirname "$MANAGED_ROOT")"
   uv venv "$MANAGED_ROOT" --python 3.11
-  uv pip install --python "$MANAGED_PYTHON" cloakbrowser
+  expected_version=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["engines"]["cloakbrowser"]["expected_version"])' "$SCRIPT_DIR/../configs/engine-versions.json")
+  uv pip install --python "$MANAGED_PYTHON" "cloakbrowser==$expected_version"
   log "CloakBrowser managed venv provisioned."
 }
 

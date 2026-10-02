@@ -231,3 +231,11 @@ Output includes per-engine `status` (`ok` / `version_mismatch` / `hash_mismatch`
 ## 内容准入与 fallback
 
 引擎退出 0 后须通过共享 `content_admission`，再选择 success_engine。挑战结构与页面级验证提示联合判定，正文提及 Cloudflare 或普通 Turnstile 组件不会单独触发拒绝；HTTP 状态未知为 null。Explore 受阻后继续既有链，全部不可用返回 failure，手动浏览器 fallback 仍需原授权。CloakBrowser 使用 success/html JSON 契约，应用层读取原始 HTML 并校验；标题等待机制不再以 cloudflare/attention 泛词直接拒绝。
+
+## Fallback 执行与版本就绪契约
+
+Explore 的 Obscura fetch 使用 `--dump html --quiet`，从 stdout 保存本次 HTML，stderr 单独留存；不传 `--output`。进程成功后仍须通过共享正文准入。
+
+Explore 与 fetch 的 CloakBrowser 均调用 `cloakbrowser-cli.sh preflight`，仅接受 available/repaired 状态和可执行的 RESOLVED_CLI_PATH，遵守 CLOAKBROWSER_MANAGED_ROOT。缺失时安装器读取 engine-versions.json 的 expected_version；不回退到系统 Python。
+
+版本检查逐引擎报告，缺失为 not_installed，超时/导入/解析错误单独分类。仅可懒安装的可选 CloakBrowser 缺失为非阻塞 readiness；版本不符或检查器异常仍阻塞。规范见 [执行契约](../../openspec/specs/engine-execution-contracts/spec.md) 和 [健康报告](../../openspec/specs/engine-health-reporting/spec.md)。

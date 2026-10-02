@@ -416,3 +416,11 @@ node --test tests/chrome-agent-runtime.test.mjs
 ### HTML 准入回归
 
 `tests/test_content_admission.py` 使用脱敏 wiki.gg fixture 验证组合信号、反例、probe fallback、main 停止、sample、CDP、跨路径等价及陈旧输出拒绝。`tests/content-admission-fetch.test.mjs` 保留真实 fetch/bridge 函数，隔离引擎，验证 selector 前校验和单次远端获取。`tests/explore-handoff.test.mjs` 的 failure 用例走真实 Python 入口；partial 用例隔离 producer 验证 exit-2 协议。生产 resume/assembly 覆盖在 `tests/pipeline/test_conversion_resume.py`，API 单页入口在 `tests/test_standalone_convert.py`，失败诊断不得缓存的 crawl 回归在 `tests/crawl_scrapling.test.mjs`。
+
+### 引擎执行契约回归
+
+`tests/test_engine_version_check.py` 在临时仓库中启动真实版本脚本，验证逐引擎缺失/超时/解析/导入失败。`tests/engine-health.test.mjs` 验证 checker 数据与退出码、覆盖率、doctor blocking/readiness 和 Node CloakBrowser 预检路径。
+
+`tests/test_fallback_contracts.py` 用严格 argv 可执行 fixture 验证 Obscura stdout，使用真实 shell preflight、临时 managed root 与受控 uv 验证 CloakBrowser 安装生命周期及版本固定；不污染真实全局环境。`tests/explore-handoff.test.mjs` 验证真实 Python→CLI 诊断与内部错误 handoff。
+
+模拟回归不能替代真实 CLI 契约核对。真实 Obscura 禁止本地 IP，故本地 HTTP fixture 可能被其安全策略拒绝，必须如实记录；通过标准 doctor→explore 另行验证真实目标，分开报告引擎执行、正文准入和策略后续结果。

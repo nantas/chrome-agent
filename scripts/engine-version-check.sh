@@ -48,7 +48,7 @@ fi
 
 # Delegate all detection + update logic to Python
 python3 - "$MANIFEST" "$REPO_ROOT" "$ENGINE_FILTER" "$DO_UPDATE" "$FORCE_UPDATE" "$JSON_OUTPUT" <<'PYEOF'
-import json, os, sys, subprocess, hashlib, stat, shutil, urllib.request
+import json, os, sys, subprocess, hashlib, stat, shutil, urllib.request, re
 
 manifest_path = sys.argv[1]
 repo_root = sys.argv[2]
@@ -71,7 +71,7 @@ if engine_filter:
 
 def log(msg):
     if not json_output:
-        print(msg)
+        print(msg, file=sys.stderr)
 
 
 def expand(p):
@@ -93,14 +93,22 @@ def md5_file(path):
 
 # ─── Detection ───
 
-def detect_scrapling(cfg):
-    python_bin = expand(cfg["detection"]["managed_path"])
+def detect_python_package(cfg, package):
+    custom_root = os.environ.get("CLOAKBROWSER_MANAGED_ROOT") if package == "cloakbrowser" else None
+    python_bin = os.path.join(custom_root, "bin", "python") if custom_root else expand(cfg["detection"]["managed_path"])
     if not os.path.isfile(python_bin):
         return None, "missing"
-    out, rc = run([python_bin, "-c", "from importlib.metadata import version; print(version('scrapling'))"])
-    if rc != 0 or not out:
+    out, rc = run([python_bin, "-c", f"from importlib.metadata import version; print(version('{package}'))"],
+                  timeout=cfg["detection"].get("timeout_seconds", 10))
+    if rc != 0:
         return None, "detect_failed"
+    if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)+(?:[a-zA-Z0-9.+-]*)", out):
+        return None, "version_parse_failed"
     return out, "detected"
+
+
+def detect_scrapling(cfg):
+    return detect_python_package(cfg, "scrapling")
 
 
 def detect_obscura(cfg):
@@ -125,11 +133,7 @@ def detect_obscura(cfg):
 
 
 def detect_cloakbrowser(cfg):
-    python_bin = expand(cfg["detection"]["managed_path"])
-    out, rc = run([python_bin, "-c", "import cloakbrowser; print(cloakbrowser.__version__)"])
-    if rc != 0 or not out:
-        return None, "missing"
-    return out, "detected"
+    return detect_python_package(cfg, "cloakbrowser")
 
 
 DETECTORS = {
@@ -137,6 +141,18 @@ DETECTORS = {
     "obscura": detect_obscura,
     "cloakbrowser": detect_cloakbrowser,
 }
+
+
+def inspect_engine(detector, cfg):
+    try:
+        detected, status = detector(cfg)
+        return detected, "not_installed" if status == "missing" else status, ""
+    except FileNotFoundError as exc:
+        return None, "not_installed", str(exc)[:500]
+    except subprocess.TimeoutExpired as exc:
+        return None, "inspection_timeout", str(exc)[:500]
+    except Exception as exc:
+        return None, "inspection_failed", str(exc)[:500]
 
 
 # ─── Update ───
@@ -215,7 +231,7 @@ for engine_name, cfg in engines_cfg.items():
         all_ok = False
         continue
 
-    detected, status = detector(cfg)
+    detected, status, detail = inspect_engine(detector, cfg)
 
     # Determine needs_update
     if force_update:
@@ -242,7 +258,7 @@ for engine_name, cfg in engines_cfg.items():
             update_result = "success" if ok else "failed"
             if ok:
                 # Re-detect after update
-                detected, status = detector(cfg)
+                detected, status, detail = inspect_engine(detector, cfg)
                 needs_update = (detected != expected)
         else:
             update_result = "no_updater"
@@ -254,10 +270,13 @@ for engine_name, cfg in engines_cfg.items():
         "status": status,
         "needs_update": needs_update,
         "update_result": update_result,
+        "detail": detail,
     })
 
 
 # ─── Output ───
+
+all_ok = all(not result["needs_update"] for result in results)
 
 if json_output:
     print(json.dumps({"all_ok": all_ok, "engines": results}, indent=2))
