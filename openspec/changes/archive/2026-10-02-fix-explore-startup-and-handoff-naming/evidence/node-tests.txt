@@ -1,0 +1,11 @@
+✖ repo-venv.sh preflight with venv available returns STATUS=available (4957.477792ms)
+ℹ tests 114
+ℹ suites 0
+ℹ pass 113
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 5749.519416
+✖ repo-venv.sh preflight with venv available returns STATUS=available (4957.477792ms)
+First run: STATUS was 'repaired', expected 'available'; venv was initially absent.

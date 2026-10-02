@@ -1,0 +1,499 @@
+{
+  "result": "success",
+  "command": "doctor",
+  "target": "runtime",
+  "repo_ref": "env:CHROME_AGENT_REPO",
+  "summary": "capability-registry is consistent with code, specs, and AGENTS.md.",
+  "artifacts": [
+    {
+      "path": "scripts/lib/extraction/preprocessor.py (convert.cleanup_ops)",
+      "lifecycle": "durable",
+      "description": "impl_strip_fandom_infobox_tables",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/lib/extraction/preprocessor.py (convert.cleanup_ops)",
+      "lifecycle": "durable",
+      "description": "impl_convert_ambox_to_text",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/lib/extraction/preprocessor.py (convert.cleanup_ops)",
+      "lifecycle": "durable",
+      "description": "impl_unwrap_image_wrappers",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/lib/extraction/preprocessor.py (convert.cleanup_ops)",
+      "lifecycle": "durable",
+      "description": "impl_strip_footer",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/lib/extraction/preprocessor.py (convert.cleanup_ops)",
+      "lifecycle": "durable",
+      "description": "impl_strip_edit_links",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/lib/extraction/preprocessor.py (convert.cleanup_ops)",
+      "lifecycle": "durable",
+      "description": "impl_strip_skip_links",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/lib/extraction/preprocessor.py (convert.cleanup_ops)",
+      "lifecycle": "durable",
+      "description": "impl_strip_category_links",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/lib/extraction/preprocessor.py (convert.cleanup_ops)",
+      "lifecycle": "durable",
+      "description": "impl_convert_nested_images",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/lib/extraction/converter.py (convert.cleanup_ops)",
+      "lifecycle": "durable",
+      "description": "impl_strip_empty_parens",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/lib/extraction/converter.py (convert.cleanup_ops)",
+      "lifecycle": "durable",
+      "description": "impl_fix_separators",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/lib/extraction/converter.py (convert.cleanup_ops)",
+      "lifecycle": "durable",
+      "description": "impl_normalize_internal",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/lib/extraction/infobox.py (extract.infobox_handlers)",
+      "lifecycle": "durable",
+      "description": "impl_text",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/lib/extraction/infobox.py (extract.infobox_handlers)",
+      "lifecycle": "durable",
+      "description": "impl_extract_cur_id",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/lib/extraction/infobox.py (extract.infobox_handlers)",
+      "lifecycle": "durable",
+      "description": "impl_count_images",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/lib/extraction/infobox.py (extract.infobox_handlers)",
+      "lifecycle": "durable",
+      "description": "impl_dedup_pools",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/lib/extraction/infobox.py (extract.infobox_handlers)",
+      "lifecycle": "durable",
+      "description": "impl_simplify_collection",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/pipeline/converters/card_stats.py (extract.special_capabilities)",
+      "lifecycle": "durable",
+      "description": "impl_card_stats",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/pipeline/converters/link_fixer.py (extract.special_capabilities)",
+      "lifecycle": "durable",
+      "description": "impl_link_fixer",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/pipeline/pipeline/phases/fetch.py (fetch.engines)",
+      "lifecycle": "durable",
+      "description": "impl_mediawiki-api",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/explore/probe_chain.py (fetch.engines)",
+      "lifecycle": "durable",
+      "description": "impl_scrapling-get",
+      "action": "checked"
+    },
+    {
+      "path": "configs/engine-registry.json (fetch.engines)",
+      "lifecycle": "durable",
+      "description": "impl_obscura-fetch",
+      "action": "checked"
+    },
+    {
+      "path": "configs/engine-registry.json (fetch.engines)",
+      "lifecycle": "durable",
+      "description": "impl_obscura-serve-pool",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/explore/probe_chain.py (fetch.engines)",
+      "lifecycle": "durable",
+      "description": "impl_scrapling-fetch",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/explore/probe_chain.py (fetch.engines)",
+      "lifecycle": "durable",
+      "description": "impl_scrapling-bulk-fetch",
+      "action": "checked"
+    },
+    {
+      "path": "configs/engine-registry.json (fetch.engines)",
+      "lifecycle": "durable",
+      "description": "impl_cloakbrowser-fetch",
+      "action": "checked"
+    },
+    {
+      "path": "configs/engine-registry.json (fetch.engines)",
+      "lifecycle": "durable",
+      "description": "impl_scrapling-stealthy-fetch",
+      "action": "checked"
+    },
+    {
+      "path": "configs/engine-registry.json (fetch.engines)",
+      "lifecycle": "durable",
+      "description": "impl_chrome-devtools-mcp",
+      "action": "checked"
+    },
+    {
+      "path": "configs/engine-registry.json (fetch.engines)",
+      "lifecycle": "durable",
+      "description": "impl_chrome-cdp",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/pipeline/pipeline/phases/fetch_cdp_api.py (fetch.engines)",
+      "lifecycle": "durable",
+      "description": "impl_cdp-api-bridge",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/explore/discovery_allpages.py (discover.kernels)",
+      "lifecycle": "durable",
+      "description": "impl_allpages_discovery",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/explore/discovery_homepage.py (discover.kernels)",
+      "lifecycle": "durable",
+      "description": "impl_homepage_discovery",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/explore/page_discovery.py (discover.adapters)",
+      "lifecycle": "durable",
+      "description": "impl_page_discovery",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/lib/mediawiki-crawl.mjs (discover.adapters)",
+      "lifecycle": "durable",
+      "description": "impl_mediawiki_crawl_workflow",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/lib/manifest_contract.py (discover.adapters)",
+      "lifecycle": "durable",
+      "description": "impl_manifest_contract",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/explore/strategy_lifecycle.py (discover.adapters)",
+      "lifecycle": "durable",
+      "description": "impl_strategy_lifecycle",
+      "action": "checked"
+    },
+    {
+      "path": "scripts/lib/extraction/schema.py (discover.adapters)",
+      "lifecycle": "durable",
+      "description": "impl_extraction_schema",
+      "action": "checked"
+    },
+    {
+      "path": "openspec/specs/convert/spec.md",
+      "lifecycle": "durable",
+      "description": "spec_convert",
+      "action": "checked"
+    },
+    {
+      "path": "openspec/specs/extract/spec.md",
+      "lifecycle": "durable",
+      "description": "spec_extract",
+      "action": "checked"
+    },
+    {
+      "path": "openspec/specs/fetch/spec.md",
+      "lifecycle": "durable",
+      "description": "spec_fetch",
+      "action": "checked"
+    },
+    {
+      "path": "openspec/specs/discover-kernel/spec.md",
+      "lifecycle": "durable",
+      "description": "spec_discover",
+      "action": "checked"
+    },
+    {
+      "path": "AGENTS.md §2 row for convert",
+      "lifecycle": "durable",
+      "description": "agents_convert",
+      "action": "checked"
+    },
+    {
+      "path": "AGENTS.md §2 row for extract",
+      "lifecycle": "durable",
+      "description": "agents_extract",
+      "action": "checked"
+    },
+    {
+      "path": "AGENTS.md §2 row for fetch",
+      "lifecycle": "durable",
+      "description": "agents_fetch",
+      "action": "checked"
+    },
+    {
+      "path": "AGENTS.md §2 row for discover",
+      "lifecycle": "durable",
+      "description": "agents_discover",
+      "action": "checked"
+    }
+  ],
+  "next_action": "none",
+  "workflow": null,
+  "engine_path": null,
+  "checks": [
+    {
+      "name": "impl_strip_fandom_infobox_tables",
+      "ok": true,
+      "detail": "scripts/lib/extraction/preprocessor.py (convert.cleanup_ops)"
+    },
+    {
+      "name": "impl_convert_ambox_to_text",
+      "ok": true,
+      "detail": "scripts/lib/extraction/preprocessor.py (convert.cleanup_ops)"
+    },
+    {
+      "name": "impl_unwrap_image_wrappers",
+      "ok": true,
+      "detail": "scripts/lib/extraction/preprocessor.py (convert.cleanup_ops)"
+    },
+    {
+      "name": "impl_strip_footer",
+      "ok": true,
+      "detail": "scripts/lib/extraction/preprocessor.py (convert.cleanup_ops)"
+    },
+    {
+      "name": "impl_strip_edit_links",
+      "ok": true,
+      "detail": "scripts/lib/extraction/preprocessor.py (convert.cleanup_ops)"
+    },
+    {
+      "name": "impl_strip_skip_links",
+      "ok": true,
+      "detail": "scripts/lib/extraction/preprocessor.py (convert.cleanup_ops)"
+    },
+    {
+      "name": "impl_strip_category_links",
+      "ok": true,
+      "detail": "scripts/lib/extraction/preprocessor.py (convert.cleanup_ops)"
+    },
+    {
+      "name": "impl_convert_nested_images",
+      "ok": true,
+      "detail": "scripts/lib/extraction/preprocessor.py (convert.cleanup_ops)"
+    },
+    {
+      "name": "impl_strip_empty_parens",
+      "ok": true,
+      "detail": "scripts/lib/extraction/converter.py (convert.cleanup_ops)"
+    },
+    {
+      "name": "impl_fix_separators",
+      "ok": true,
+      "detail": "scripts/lib/extraction/converter.py (convert.cleanup_ops)"
+    },
+    {
+      "name": "impl_normalize_internal",
+      "ok": true,
+      "detail": "scripts/lib/extraction/converter.py (convert.cleanup_ops)"
+    },
+    {
+      "name": "impl_text",
+      "ok": true,
+      "detail": "scripts/lib/extraction/infobox.py (extract.infobox_handlers)"
+    },
+    {
+      "name": "impl_extract_cur_id",
+      "ok": true,
+      "detail": "scripts/lib/extraction/infobox.py (extract.infobox_handlers)"
+    },
+    {
+      "name": "impl_count_images",
+      "ok": true,
+      "detail": "scripts/lib/extraction/infobox.py (extract.infobox_handlers)"
+    },
+    {
+      "name": "impl_dedup_pools",
+      "ok": true,
+      "detail": "scripts/lib/extraction/infobox.py (extract.infobox_handlers)"
+    },
+    {
+      "name": "impl_simplify_collection",
+      "ok": true,
+      "detail": "scripts/lib/extraction/infobox.py (extract.infobox_handlers)"
+    },
+    {
+      "name": "impl_card_stats",
+      "ok": true,
+      "detail": "scripts/pipeline/converters/card_stats.py (extract.special_capabilities)"
+    },
+    {
+      "name": "impl_link_fixer",
+      "ok": true,
+      "detail": "scripts/pipeline/converters/link_fixer.py (extract.special_capabilities)"
+    },
+    {
+      "name": "impl_mediawiki-api",
+      "ok": true,
+      "detail": "scripts/pipeline/pipeline/phases/fetch.py (fetch.engines)"
+    },
+    {
+      "name": "impl_scrapling-get",
+      "ok": true,
+      "detail": "scripts/explore/probe_chain.py (fetch.engines)"
+    },
+    {
+      "name": "impl_obscura-fetch",
+      "ok": true,
+      "detail": "configs/engine-registry.json (fetch.engines)"
+    },
+    {
+      "name": "impl_obscura-serve-pool",
+      "ok": true,
+      "detail": "configs/engine-registry.json (fetch.engines)"
+    },
+    {
+      "name": "impl_scrapling-fetch",
+      "ok": true,
+      "detail": "scripts/explore/probe_chain.py (fetch.engines)"
+    },
+    {
+      "name": "impl_scrapling-bulk-fetch",
+      "ok": true,
+      "detail": "scripts/explore/probe_chain.py (fetch.engines)"
+    },
+    {
+      "name": "impl_cloakbrowser-fetch",
+      "ok": true,
+      "detail": "configs/engine-registry.json (fetch.engines)"
+    },
+    {
+      "name": "impl_scrapling-stealthy-fetch",
+      "ok": true,
+      "detail": "configs/engine-registry.json (fetch.engines)"
+    },
+    {
+      "name": "impl_chrome-devtools-mcp",
+      "ok": true,
+      "detail": "configs/engine-registry.json (fetch.engines)"
+    },
+    {
+      "name": "impl_chrome-cdp",
+      "ok": true,
+      "detail": "configs/engine-registry.json (fetch.engines)"
+    },
+    {
+      "name": "impl_cdp-api-bridge",
+      "ok": true,
+      "detail": "scripts/pipeline/pipeline/phases/fetch_cdp_api.py (fetch.engines)"
+    },
+    {
+      "name": "impl_allpages_discovery",
+      "ok": true,
+      "detail": "scripts/explore/discovery_allpages.py (discover.kernels)"
+    },
+    {
+      "name": "impl_homepage_discovery",
+      "ok": true,
+      "detail": "scripts/explore/discovery_homepage.py (discover.kernels)"
+    },
+    {
+      "name": "impl_page_discovery",
+      "ok": true,
+      "detail": "scripts/explore/page_discovery.py (discover.adapters)"
+    },
+    {
+      "name": "impl_mediawiki_crawl_workflow",
+      "ok": true,
+      "detail": "scripts/lib/mediawiki-crawl.mjs (discover.adapters)"
+    },
+    {
+      "name": "impl_manifest_contract",
+      "ok": true,
+      "detail": "scripts/lib/manifest_contract.py (discover.adapters)"
+    },
+    {
+      "name": "impl_strategy_lifecycle",
+      "ok": true,
+      "detail": "scripts/explore/strategy_lifecycle.py (discover.adapters)"
+    },
+    {
+      "name": "impl_extraction_schema",
+      "ok": true,
+      "detail": "scripts/lib/extraction/schema.py (discover.adapters)"
+    },
+    {
+      "name": "spec_convert",
+      "ok": true,
+      "detail": "openspec/specs/convert/spec.md"
+    },
+    {
+      "name": "spec_extract",
+      "ok": true,
+      "detail": "openspec/specs/extract/spec.md"
+    },
+    {
+      "name": "spec_fetch",
+      "ok": true,
+      "detail": "openspec/specs/fetch/spec.md"
+    },
+    {
+      "name": "spec_discover",
+      "ok": true,
+      "detail": "openspec/specs/discover-kernel/spec.md"
+    },
+    {
+      "name": "agents_convert",
+      "ok": true,
+      "detail": "AGENTS.md §2 row for convert"
+    },
+    {
+      "name": "agents_extract",
+      "ok": true,
+      "detail": "AGENTS.md §2 row for extract"
+    },
+    {
+      "name": "agents_fetch",
+      "ok": true,
+      "detail": "AGENTS.md §2 row for fetch"
+    },
+    {
+      "name": "agents_discover",
+      "ok": true,
+      "detail": "AGENTS.md §2 row for discover"
+    }
+  ],
+  "check": "capabilities"
+}

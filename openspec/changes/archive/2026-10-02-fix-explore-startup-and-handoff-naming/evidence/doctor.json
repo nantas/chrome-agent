@@ -1,0 +1,118 @@
+{
+  "result": "success",
+  "command": "doctor",
+  "target": "runtime",
+  "repo_ref": "env:CHROME_AGENT_REPO",
+  "summary": "Launcher and repository prerequisites are healthy. Resolved via CHROME_AGENT_REPO default (env:CHROME_AGENT_REPO).",
+  "artifacts": [
+    {
+      "path": "/Users/nantas-agent/.agents/scripts/chrome-agent.mjs",
+      "lifecycle": "durable",
+      "description": "runtime_script",
+      "action": "checked"
+    },
+    {
+      "path": "/Users/nantas-agent/.local/bin/chrome-agent",
+      "lifecycle": "durable",
+      "description": "user_shim",
+      "action": "checked"
+    },
+    {
+      "path": "/Users/nantas-agent/projects/chrome-agent",
+      "lifecycle": "durable",
+      "description": "env_default",
+      "action": "checked"
+    },
+    {
+      "path": "/Users/nantas-agent/projects/chrome-agent/AGENTS.md",
+      "lifecycle": "durable",
+      "description": "repo_shape",
+      "action": "checked"
+    },
+    {
+      "path": "/Users/nantas-agent/.cache/chrome-agent-scrapling/bin/scrapling",
+      "lifecycle": "durable",
+      "description": "scrapling_preflight",
+      "action": "checked"
+    },
+    {
+      "path": "/Users/nantas-agent/.cache/chrome-agent-obscura/bin/obscura",
+      "lifecycle": "durable",
+      "description": "obscura_preflight",
+      "action": "checked"
+    },
+    {
+      "path": "/Users/nantas-agent/.cache/chrome-agent-obscura/bin/obscura-worker",
+      "lifecycle": "durable",
+      "description": "obscura_worker",
+      "action": "checked"
+    },
+    {
+      "path": "f86c49339249542c4d95d4c65bb299e5c81e8318",
+      "lifecycle": "durable",
+      "description": "repo_freshness",
+      "action": "checked"
+    },
+    {
+      "path": "bs4, yaml available",
+      "lifecycle": "durable",
+      "description": "explore_deps",
+      "action": "checked"
+    }
+  ],
+  "next_action": "none",
+  "workflow": "runtime_support",
+  "engine_path": "doctor -> repo_resolution:env_default -> scrapling_preflight:available",
+  "checks": [
+    {
+      "name": "runtime_script",
+      "ok": true,
+      "detail": "/Users/nantas-agent/.agents/scripts/chrome-agent.mjs"
+    },
+    {
+      "name": "user_shim",
+      "ok": true,
+      "detail": "/Users/nantas-agent/.local/bin/chrome-agent"
+    },
+    {
+      "name": "env_default",
+      "ok": true,
+      "detail": "/Users/nantas-agent/projects/chrome-agent"
+    },
+    {
+      "name": "repo_shape",
+      "ok": true,
+      "detail": "/Users/nantas-agent/projects/chrome-agent/AGENTS.md"
+    },
+    {
+      "name": "scrapling_preflight",
+      "ok": true,
+      "detail": "/Users/nantas-agent/.cache/chrome-agent-scrapling/bin/scrapling"
+    },
+    {
+      "name": "obscura_preflight",
+      "ok": true,
+      "detail": "/Users/nantas-agent/.cache/chrome-agent-obscura/bin/obscura"
+    },
+    {
+      "name": "obscura_worker",
+      "ok": true,
+      "detail": "/Users/nantas-agent/.cache/chrome-agent-obscura/bin/obscura-worker"
+    },
+    {
+      "name": "repo_freshness",
+      "ok": true,
+      "detail": "f86c49339249542c4d95d4c65bb299e5c81e8318"
+    },
+    {
+      "name": "explore_deps",
+      "ok": true,
+      "detail": "bs4, yaml available"
+    }
+  ],
+  "resolution_mode": "env_default",
+  "version_check": {
+    "all_ok": true,
+    "engines": []
+  }
+}

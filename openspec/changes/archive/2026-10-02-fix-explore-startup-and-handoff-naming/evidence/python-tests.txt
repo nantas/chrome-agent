@@ -1,0 +1,8 @@
+test_revision_url_resolves_real_filename (test_validate_images_filename.TestImageFileTitle.test_revision_url_resolves_real_filename) ... ok
+test_special_redirect_branch_preserved (test_validate_images_filename.TestImageFileTitle.test_special_redirect_branch_preserved) ... ok
+test_cdn_revision_url_not_reported_missing (test_validate_images_filename.TestValidateImagesNoFalsePositive.test_cdn_revision_url_not_reported_missing) ... ok
+
+----------------------------------------------------------------------
+Ran 185 tests in 1.513s
+
+OK

@@ -304,6 +304,12 @@ node --test tests/chrome-agent-runtime.test.mjs
 - Framework: `node:test` + `node:assert/strict` (no third-party dependencies)
 - Must run from repository root
 
+### 入口子进程回归
+
+对脚本入口的启动问题，测试必须启动真实入口子进程，而不能只在测试进程内 import 模块。`tests/test_explore_startup.py` 移除继承的 `PYTHONPATH`，从仓库根和临时外部目录执行 `main.py --help`，断言帮助输出及退出码。入口以 `__file__` 推导自身仓库路径，不能假设 cwd 自动进入 Python 的包搜索路径。
+
+`tests/explore-handoff.test.mjs` 以临时仓库副本执行真实 CLI 和 Explore 入口，仅替换 probe 网络边界，检查已抵达 probe、失败 JSON、交接文件、目标 slug 与有/无 runDir 行为。fixture 使用临时目录并在测试结束清理，不访问真实网站或接管浏览器。
+
 ### 旧测试保留
 
 `scripts/pipeline/tests/` 下的旧测试保留原位（不迁移到 `tests/`），已全部迁移到 `unittest.TestCase`。新测试统一放 `tests/`。

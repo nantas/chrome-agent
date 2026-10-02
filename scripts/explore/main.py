@@ -21,7 +21,10 @@ import json
 import os
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# Direct script execution must support both sibling and repository package imports.
+_explore_dir = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(_explore_dir)))
+sys.path.insert(0, _explore_dir)
 
 from probe_chain import probe
 from api_discovery import discover

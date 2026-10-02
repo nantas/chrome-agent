@@ -101,7 +101,7 @@ A handoff document SHALL be a Markdown file with the following structure:
 
 Handoff documents SHALL be stored under `outputs/handoffs/<run-tag>/handoff.md` within the chrome-agent repository.
 
-The `<run-tag>` SHALL follow the same naming convention as existing run directories: `<timestamp>-<command>-<slug>`.
+The `<run-tag>` SHALL follow the same naming convention as existing run directories: `<timestamp>-<command>-<slug>`. The slug SHALL be derived from the target using the same normalization and 80-character maximum as existing run-directory slugification, with `target` as the fallback when normalization yields an empty string. Timestamp generation SHALL NOT be treated as a source of target slug.
 
 The `outputs/handoffs/` directory SHALL inherit the same .gitignore treatment as `outputs/` (excluded from version control).
 
@@ -117,6 +117,19 @@ The `outputs/handoffs/` directory SHALL inherit the same .gitignore treatment as
 - **WHEN** a handoff is generated for a command that exited before creating a run directory (e.g., preflight failure)
 - **THEN** the handoff SHALL still be written to `outputs/handoffs/<run-tag>/`
 - **THEN** the run-tag SHALL still use the standard timestamp-command-slug format
+
+#### Scenario: target-derived-slug
+- **WHEN** an internal failure generates a handoff for `https://darkestdungeon.wiki.gg/wiki/Darkest_Dungeon_Wiki_1`
+- **THEN** its run-tag SHALL end with `<command>-darkestdungeon-wiki-gg-wiki-darkest-dungeon-wiki-1`
+- **AND** the JSON handoff_path SHALL point to the written Markdown document with the original target and error details.
+
+#### Scenario: empty-normalized-slug
+- **WHEN** a handoff target normalizes to an empty slug
+- **THEN** its run-tag SHALL end with `<command>-target`, with or without a run directory.
+
+#### Scenario: bounded-normalized-slug
+- **WHEN** a target includes uppercase letters, punctuation, or a normalized slug longer than 80 characters
+- **THEN** the handoff slug SHALL use lowercase ASCII letters/digits with hyphen separators and SHALL contain at most 80 characters.
 
 ### Requirement: handoff-in-result-payload
 

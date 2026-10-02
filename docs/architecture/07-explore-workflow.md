@@ -31,6 +31,12 @@ URL input
 python3 scripts/explore/main.py <repo_root> <url> [--run-dir <dir>] [--samples <json>] [--quick]
 ```
 
+`main.py` 在导入管线模块前，根据 `__file__` 建立仓库根目录和 `scripts/explore/` 的导入路径。直接脚本入口不依赖调用方 cwd 或 `PYTHONPATH`；CLI 继续通过 `resolveAppPython()` 选择应用层解释器。仅设置子进程 `cwd=repoRoot` 无法替代这一步。
+
+启动回归测试：`python3 -m unittest tests.test_explore_startup -v`；真实 CLI 离线路由与交接测试：`node --test tests/explore-handoff.test.mjs`。后者保留真实入口导入，仅替换引擎/网络 probe 边界。
+
+内部失败交接目录使用 `<timestamp>-<command>-<slug>`，slug 由 `slugify(target)` 生成，与运行目录规则一致；即使尚未创建 runDir 也能生成有效名称。时间辅助函数只提供时间字段。交接出现后仍遵循 Handoff Gate。
+
 **Output**: JSON to stdout with all pipeline phase results:
 
 ```json

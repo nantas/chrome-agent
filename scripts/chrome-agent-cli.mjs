@@ -1657,7 +1657,8 @@ function isInternalFailure(command, errorInfo) {
  */
 function generateHandoff(context) {
   const { command, target, repoRef, runDir, error, strategy } = context;
-  const { stamp, slug } = nowParts();
+  const { stamp } = nowParts();
+  const slug = slugify(target);
   const runTag = `${stamp}-${command}-${slug}`;
   const handoffDir = path.join(inferredRepoRoot, "outputs", "handoffs", runTag);
   ensureDir(handoffDir);

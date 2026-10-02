@@ -11,6 +11,8 @@
 
 The system SHALL, when `explore` is executed against a URL not covered by an existing strategy, automatically execute a deep discovery pipeline before reporting a strategy gap.
 
+Deep discovery startup SHALL make repository-local packages and sibling Explore modules importable before importing pipeline modules, without requiring caller-provided PYTHONPATH or a particular working directory. The existing application-layer interpreter resolution and discovery/confirmation gates SHALL remain in effect.
+
 #### Scenario: chain-engine-probe
 - **WHEN** `explore` starts with no matching strategy
 - **THEN** the system SHALL attempt engine chain: `scrapling-get` → `obscura-fetch` → `cloakbrowser-fetch` → `chrome-devtools-mcp`
@@ -32,6 +34,18 @@ The system SHALL, when `explore` is executed against a URL not covered by an exi
 - **WHEN** the engine chain produces failures or partial results
 - **THEN** the system SHALL identify the protection mechanism (cloudflare-turnstile / cloudflare-managed / login-wall / rate-limit / none)
 - **THEN** the system SHALL record the detection basis (HTTP status, DOM markers, error message)
+
+#### Scenario: direct-entry-without-pythonpath
+- **WHEN** application dependencies are available and the real `scripts/explore/main.py --help` entry is launched as a child process with PYTHONPATH removed
+- **AND** its cwd is either the repository root or an unrelated temporary directory
+- **THEN** it SHALL exit 0 and display the Deep discovery CLI help
+- **AND** it SHALL NOT emit `ModuleNotFoundError: No module named 'scripts'`
+- **AND** it SHALL NOT fetch pages, create a scaffold, or start extraction.
+
+#### Scenario: strategy-gap-cli-startup
+- **WHEN** the real CLI routes a strategy-gap Explore request to the real main.py entry with application dependencies available and PYTHONPATH absent
+- **THEN** repository-local imports SHALL succeed before probe-chain execution
+- **AND** subsequent probe success or failure SHALL be reported through the existing Explore result/handoff contract.
 
 ### Requirement: user-interactive-confirmation
 

@@ -1,0 +1,13 @@
+{
+  "result": "failure",
+  "command": "explore",
+  "target": "https://darkestdungeon.wiki.gg/wiki/Darkest_Dungeon_Wiki_1",
+  "repo_ref": "env:CHROME_AGENT_REPO",
+  "summary": "Deep discovery pipeline failed (exit 1): Traceback (most recent call last):\n  File \"/Users/nantas-agent/projects/chrome-agent/scripts/explore/main.py\", line 241, in <module>\n    main()\n  File \"/Users/nantas-agent/projects/chrome-agent/scripts/explore/main.py\", line 85, in main\n    scaffold = generate(\n               ^^^^^^^^^\n  File \"/Users/nantas-agent/projects/chrome-agent/scripts/explore/strategy_scaffold_generator.py\", line 210, in generate\n    require_valid_extraction(scaffold[\"extraction\"])\n  File \"/Users/nantas-agent/projects/ch",
+  "artifacts": [],
+  "next_action": "The problem must be resolved in the chrome-agent repository. See handoff document at /Users/nantas-agent/projects/chrome-agent/outputs/handoffs/20261002T103634-explore-darkestdungeon-wiki-gg-wiki-darkest-dungeon-wiki-1/handoff.md.",
+  "workflow": "platform_analysis",
+  "engine_path": "strategy_registry -> strategy_gap -> deep_discovery_failed",
+  "handoff_path": "/Users/nantas-agent/projects/chrome-agent/outputs/handoffs/20261002T103634-explore-darkestdungeon-wiki-gg-wiki-darkest-dungeon-wiki-1/handoff.md",
+  "handoff_summary": "[explore] deep_discovery_failure Deep discovery pipeline failed (exit 1): Traceback (most recent call last):\n  File \"/Users/nantas-agent/projects/chrome-agent/scripts/explore/main.py\", line 241, in <m"
+}
