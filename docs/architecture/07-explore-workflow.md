@@ -373,3 +373,9 @@ External dependencies (from `scripts/explore/requirements.txt`):
 `python3 -m scripts.explore.page_discovery --strategy <path> --output <run-dir>` is separate from the eight-step site-analysis workflow. It dispatches existing allpages/homepage kernels, resolves canonical list identities within retained scope and produces a v2 manifest plus evidence-based summary. Public crawl invokes it for discovery-only; no re-probing/scaffolding of an already known site is required. Unknown counts/estimates remain null with reasons; observed API failures result in partial/failure, never fabricated success.
 
 Freeze now validates before removing any markers or publishing registry metadata. New drafts require recorded lifecycle.review_evidence and valid target entry points; failures retain original files and produce diagnostic evidence. Bootstrap drafts cannot be used by production strategy lookup.
+
+## 正文准入与失败传播（2026-10-02）
+
+probe 每个成功候选先检查原始 HTML。无可用正文时 main 返回 result=failure、reason=content_unavailable、exit 3；结构分析、草稿生成、样本转换不执行。诊断仍保留各引擎结果，末级 pending 不代表已运行浏览器。CLI 保留该外部失败，不生成内部崩溃 handoff 或 freeze 建议。exit 2 的结构化 partial_success 保留；未知错误/无效 JSON 仍走内部 handoff。样本获取失败参与 self-check failure 汇总，不能因零检查而通过。
+
+此前 wiki.gg 挑战页被误当 success 的缺口由 fix-challenge-page-admission 处理；验证见 `openspec/changes/archive/2026-10-02-fix-challenge-page-admission/verification.md`。

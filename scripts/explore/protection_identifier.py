@@ -4,6 +4,7 @@ import re
 from typing import Optional
 
 from bs4 import BeautifulSoup
+from scripts.lib.content_admission import classify_html
 
 
 def identify(engine_results: list[dict], html_content: Optional[str]) -> dict:
@@ -18,6 +19,11 @@ def identify(engine_results: list[dict], html_content: Optional[str]) -> dict:
     """
     # Check engine results for HTTP status codes and error messages
     for result in engine_results:
+        admission = result.get('admission') or {}
+        if admission.get('protection_type'):
+            return {'type': admission['protection_type'],
+                    'detection_basis': ', '.join(admission['signals']),
+                    'engine_override': 'cloakbrowser-fetch'}
         status = result.get("http_status")
         detail = (result.get("detail") or "").lower()
         stderr = (result.get("stderr") or "").lower()
@@ -55,25 +61,12 @@ def identify(engine_results: list[dict], html_content: Optional[str]) -> dict:
         soup = BeautifulSoup(html_content, "html.parser")
         text = soup.get_text(separator=" ", strip=True).lower()
 
-        if "just a moment" in text or "checking your browser" in text:
+        admission = classify_html(html_content)
+        if admission['protection_type']:
             return {
-                "type": "cloudflare-managed",
-                "detection_basis": "HTML contains 'Just a moment...'",
-                "engine_override": "cloakbrowser-fetch",
-            }
-
-        if soup.find("iframe", src=re.compile(r"turnstile|challenges\.cloudflare")):
-            return {
-                "type": "cloudflare-turnstile",
-                "detection_basis": "HTML contains Cloudflare Turnstile iframe",
-                "engine_override": "cloakbrowser-fetch",
-            }
-
-        if "recaptcha" in text or soup.find(class_=re.compile(r"g-recaptcha")):
-            return {
-                "type": "cloudflare-managed",
-                "detection_basis": "HTML contains reCAPTCHA marker (treated as high-protection managed challenge)",
-                "engine_override": "cloakbrowser-fetch",
+                'type': admission['protection_type'],
+                'detection_basis': ', '.join(admission['signals']),
+                'engine_override': 'cloakbrowser-fetch',
             }
 
         if "login" in text or "sign in" in text or "log in" in text:

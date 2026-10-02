@@ -51,7 +51,7 @@ class TestRunFetchCdp(unittest.TestCase):
     @patch("scripts.pipeline.pipeline.phases.fetch_cdp.cache_mod")
     @patch("scripts.pipeline.pipeline.phases.fetch_cdp.time.sleep")
     def test_cache_hit_skips(self, mock_sleep: object, mock_cache: MagicMock) -> None:
-        mock_cache.is_cached.return_value = True
+        mock_cache.load_page_cache.return_value = {"html": "<h1>Cached article</h1>"}
 
         pages = [{"url": "https://example.com/Page.html", "title": "Page"}]
 
@@ -65,7 +65,7 @@ class TestRunFetchCdp(unittest.TestCase):
     @patch("scripts.pipeline.pipeline.phases.fetch_cdp.cache_mod")
     @patch("scripts.pipeline.pipeline.phases.fetch_cdp.time.sleep")
     def test_cache_miss_fetches(self, mock_sleep: object, mock_cache: MagicMock) -> None:
-        mock_cache.is_cached.return_value = False
+        mock_cache.load_page_cache.return_value = None
 
         cdp_extract = MagicMock(
             return_value={"html": "<h1>Title</h1>"}
@@ -85,7 +85,7 @@ class TestRunFetchCdp(unittest.TestCase):
     @patch("scripts.pipeline.pipeline.phases.fetch_cdp.cache_mod")
     @patch("scripts.pipeline.pipeline.phases.fetch_cdp.time.sleep")
     def test_cdp_returns_none(self, mock_sleep: object, mock_cache: MagicMock) -> None:
-        mock_cache.is_cached.return_value = False
+        mock_cache.load_page_cache.return_value = None
 
         cdp_extract = MagicMock(return_value=None)
 
@@ -101,7 +101,7 @@ class TestRunFetchCdp(unittest.TestCase):
     @patch("scripts.pipeline.pipeline.phases.fetch_cdp.cache_mod")
     @patch("scripts.pipeline.pipeline.phases.fetch_cdp.time.sleep")
     def test_refetch_ignores_cache(self, mock_sleep: object, mock_cache: MagicMock) -> None:
-        mock_cache.is_cached.return_value = True
+        mock_cache.load_page_cache.return_value = {"html": "<h1>Cached article</h1>"}
 
         cdp_extract = MagicMock(
             return_value={"html": "<h1>Title</h1>"}

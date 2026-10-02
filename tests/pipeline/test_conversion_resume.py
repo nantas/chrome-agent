@@ -33,6 +33,23 @@ class ConversionResumeTests(unittest.TestCase):
         self.assertNotIn('Apple', load_state(self.output)['completed_pages'])
         self.assertEqual(self.file.read_text(), 'old markdown')
 
+    def test_challenge_cannot_resume_or_enter_assembly(self):
+        from scripts.pipeline.pipeline.phases.assemble import run_assemble
+        from scripts.pipeline.pipeline.registry import build_pipeline
+        html = (Path(__file__).parents[1] / 'fixtures/challenge-wikigg.html').read_text()
+        cache.save_page_cache(*self.args, {'title':'Apple','html':html,'content_acquisition':'html_rendered'})
+        self.file.write_text('old markdown')
+        save_state(self.output, {'completed_pages':['Apple']})
+        results, stats = self.run_conversion()
+        self.assertEqual(results['Apple']['reason'], 'challenge_page')
+        self.assertEqual(stats['failed'], 1)
+        self.assertNotIn('Apple', load_state(self.output)['completed_pages'])
+        strategies = build_pipeline(self.strategy, 'example.test')
+        run_assemble(self.output, self.manifest, results, self.strategy, 'example.test',
+                     strategies.list_page_assembler, strategies.link_resolver)
+        for index in Path(self.output).rglob('index.md'):
+            self.assertNotIn('Apple.md', index.read_text())
+
     def test_resume_requires_current_fingerprint(self):
         raw = {'title': 'Apple', 'html': '<p>new</p>', 'content_acquisition': 'html_rendered'}
         cache.save_page_cache(*self.args, raw)

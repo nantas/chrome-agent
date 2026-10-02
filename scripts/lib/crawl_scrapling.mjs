@@ -90,6 +90,7 @@ if (queue.length === 0) {
   queue.push({ url: startUrl, page: startPage, paginationIndex: 1 });
 }
 const visited = new Set();
+const admittedHtmlPaths = new Map();
 const artifacts = [];
 // events already declared above (let events)
 let failures = 0;
@@ -118,6 +119,7 @@ while (queue.length > 0 && (maxPages == null || visited.size < maxPages)) {
   const fetchResult = api.engine.runEngineFetch(repoRoot, fetcher, item.url, outputPath);
 
   if (fetchResult.ok) {
+    admittedHtmlPaths.set(item.url, outputPath);
     artifacts.push(api.report.absoluteArtifact(outputPath, "disposable", `Crawled page ${item.page.id}`));
     events.push(`Fetched ${item.url} via ${fetcher} for page ${item.page.id}.`);
   } else {
@@ -187,25 +189,15 @@ if (phase === "fetch" && visited.size > 0) {
   api.cache.ensureDir(domainCacheDir);
   let cacheWriteCount = 0;
   let cacheSkipCount = 0;
-  for (const url of visited) {
+  for (const url of admittedHtmlPaths.keys()) {
     const slug = api.cache.scraplingSlugFromUrl(url);
     if (!reFetch && api.cache.isScraplingCached(repoRoot, crawlDomain, slug)) {
       cacheSkipCount++;
       events.push(`Skipping cache write for ${url} (already cached)`);
       continue;
     }
-    // Find the fetched HTML file for this URL
-    let htmlContent = null;
-    for (const f of api.fs.readdirSync(runDir)) {
-      if (f.endsWith(".html")) {
-        const fpath = path.join(runDir, f);
-        const content = api.fs.readFileSync(fpath, "utf8");
-        if (content.includes(url) || f.includes(slug)) {
-          htmlContent = content;
-          break;
-        }
-      }
-    }
+    // Cache only the exact admitted acquisition, never directory-scanned evidence.
+    const htmlContent = api.fs.readFileSync(admittedHtmlPaths.get(url), "utf8");
     if (htmlContent) {
       api.cache.saveScraplingCache(repoRoot, crawlDomain, slug, htmlContent, {
         url, fetcher: "scrapling",

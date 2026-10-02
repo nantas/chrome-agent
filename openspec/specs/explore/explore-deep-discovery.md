@@ -9,7 +9,7 @@
 
 ### Requirement: deep-discovery
 
-The system SHALL, when `explore` is executed against a URL not covered by an existing strategy, automatically execute a deep discovery pipeline before reporting a strategy gap.
+The system SHALL, when `explore` is executed against a URL not covered by an existing strategy, automatically execute a deep discovery pipeline before reporting a strategy gap. Each engine candidate SHALL pass the shared fetch-content-admission contract before being selected as success_engine or passed to structure analysis. Rejected content SHALL continue through the existing engine chain; no usable content SHALL stop downstream structure mapping, scaffold generation and automatic sample work.
 
 Deep discovery startup SHALL make repository-local packages and sibling Explore modules importable before importing pipeline modules, without requiring caller-provided PYTHONPATH or a particular working directory. The existing application-layer interpreter resolution and discovery/confirmation gates SHALL remain in effect.
 
@@ -46,6 +46,19 @@ Deep discovery startup SHALL make repository-local packages and sibling Explore 
 - **WHEN** the real CLI routes a strategy-gap Explore request to the real main.py entry with application dependencies available and PYTHONPATH absent
 - **THEN** repository-local imports SHALL succeed before probe-chain execution
 - **AND** subsequent probe success or failure SHALL be reported through the existing Explore result/handoff contract.
+
+#### Scenario: challenge-fallback-recovery
+- **WHEN** the first engine returns challenge HTML and a later eligible engine returns admitted normal HTML
+- **THEN** the first attempt SHALL be failure with challenge evidence and the later engine SHALL be selected
+- **AND** only its admitted HTML SHALL be structurally analyzed
+
+#### Scenario: no-admitted-content
+- **WHEN** no engine produces admitted content, including when the last fallback requires manual action
+- **THEN** success_engine SHALL be null and the workflow SHALL return failure with the attempt evidence
+- **AND** it SHALL NOT invoke structure mapping, scaffold generation, sample conversion or freeze
+- **AND** existing strategy files SHALL remain unchanged
+- **AND** browser authorization requirements SHALL remain in effect
+
 
 ### Requirement: user-interactive-confirmation
 
@@ -202,13 +215,27 @@ Deep discovery SHALL be the only path for strategy-gap scenarios. The legacy bac
 
 ### Requirement: explore-preflight-failure
 
+The system SHALL report dependency and unstructured execution errors as failures, while preserving recognized structured workflow outcomes, their evidence and failure classification across the Python-to-CLI boundary. No admitted content SHALL produce result=failure and SHALL NOT produce a completed-discovery or freeze-readiness claim.
+
 #### Scenario: python-deps-missing
 - **WHEN** `runExplore()` checks Python dependencies and one or more are not importable
 - **THEN** the system SHALL return `result: "failure"` with `summary` containing the missing package names
 
 #### Scenario: deep-discovery-execution-failure
-- **WHEN** `scripts/explore/main.py` returns non-zero exit code
+- **WHEN** `scripts/explore/main.py` fails without a recognized structured workflow outcome
 - **THEN** the system SHALL return `result: "failure"` with `summary` containing the first 500 characters of stderr
+
+#### Scenario: structured-content-failure
+- **WHEN** main.py emits a recognized structured content-admission failure and nonzero exit code
+- **THEN** the CLI SHALL preserve result=failure, reason, engine evidence and diagnostic references
+- **AND** it SHALL NOT reclassify the external challenge as an internal pipeline crash
+- **AND** it SHALL NOT describe discovery as completed, report a successful engine or recommend freeze
+
+#### Scenario: structured-partial-outcome
+- **WHEN** main.py emits a recognized partial outcome backed by admitted content, such as an architecture-gate failure
+- **THEN** the CLI SHALL preserve partial_success and its evidence without converting it to a generic internal crash
+- **AND** freeze readiness SHALL NOT be inferred from scaffold existence alone
+
 
 ### Requirement: explore-legacy-fallback-removal
 

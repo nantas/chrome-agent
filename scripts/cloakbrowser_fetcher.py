@@ -126,10 +126,10 @@ def fetch_page(
         challenge_indicators = [
             "just a moment",
             "请稍候",
-            "attention",
+            "just a second",
             "checking your browser",
             "enable javascript",
-            "cloudflare",
+
         ]
         while time.time() - challenge_start < max_challenge_wait:
             title = page.title()
@@ -150,29 +150,10 @@ def fetch_page(
         except Exception:
             pass
 
-        # --- Check if still on challenge page after wait ---
-        final_title = page.title()
-        if any(ind in final_title.lower() for ind in challenge_indicators):
-            elapsed = time.time() - start_time
-            return {
-                "title": final_title,
-                "url": page.url,
-                "html": page.content(),
-                "content": None,
-                "success": False,
-                "error": {
-                    "category": "challenge",
-                    "type": "ChallengeNotResolved",
-                    "message": (
-                        f"Challenge page still present after {max_challenge_wait}s: "
-                        f"title='{final_title}'"
-                    ),
-                },
-                "timing": {"total_seconds": round(elapsed, 2)},
-                "_exit_code": 3,
-            }
-
+        # Final content admission is performed by the application-layer consumer.
+        # A title alone is insufficient to reject an ordinary article.
         # --- Check for block pages (CAPTCHA wall / WAF block) ---
+        final_title = page.title()
         content_text = page.evaluate("""() => {
             const body = document.body;
             if (!body) return '';
@@ -219,6 +200,7 @@ def fetch_page(
             "html": html_content,
             "content": content_text,
             "success": True,
+            "http_status": response.status if response else None,
             "error": None,
             "timing": {"total_seconds": round(elapsed, 2)},
         }

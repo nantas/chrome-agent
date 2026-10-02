@@ -13,14 +13,14 @@ main_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(main_module)
 
 class MainRemediationTests(unittest.TestCase):
-    def run_loop(self, kinds):
+    def run_loop(self, kinds, sample_failure=False):
         with tempfile.TemporaryDirectory() as directory:
             output = io.StringIO()
             failure_batches = [[{'check': 'S11', 'status': 'fail', 'fixable_type': kind, 'detail': 'original'}] for kind in kinds]
             probe = {'success_engine': 'offline', 'results': [], 'html_content': ''}
             scaffold = {'path': 'draft', 'template_id': 'mediawiki', 'content': '---\nextraction: {}\napi:\n  platform: mediawiki\n---\n'}
             args = ['main.py', directory, 'https://example.org', '--run-dir', directory, '--samples', '[{"title":"Test","url":"https://example.org"}]']
-            with patch('sys.argv', args), patch.object(main_module, 'probe', return_value=probe), patch.object(main_module, 'discover', return_value=[]), patch.object(main_module, 'identify', return_value={}), patch.object(main_module, 'generate', return_value=scaffold), patch.object(main_module, 'convert', return_value=[{'ok': True, 'title': 'Test', 'markdown': 'body'}]) as convert, patch.object(main_module, 'run_checks', side_effect=failure_batches), patch.object(main_module, 'architecture_gate_validate', return_value={'status': 'fail'}), contextlib.redirect_stdout(output):
+            with patch('sys.argv', args), patch.object(main_module, 'probe', return_value=probe), patch.object(main_module, 'discover', return_value=[]), patch.object(main_module, 'identify', return_value={}), patch.object(main_module, 'generate', return_value=scaffold), patch.object(main_module, 'convert', return_value=[{'ok': not sample_failure, 'title': 'Test', 'markdown': 'body', 'error':'challenge_page' if sample_failure else None}]) as convert, patch.object(main_module, 'run_checks', side_effect=failure_batches), patch.object(main_module, 'architecture_gate_validate', return_value={'status': 'fail'}), contextlib.redirect_stdout(output):
                 with self.assertRaises(SystemExit) as exit:
                     main_module.main()
                 self.assertEqual(exit.exception.code, 2)
@@ -45,3 +45,9 @@ class MainRemediationTests(unittest.TestCase):
         result, count = self.run_loop(['image_wrapper', 'space_normalization', 'table_class_missing'])
         self.assertEqual(count, 3)
         self.assertEqual(result['self_check']['auto_remediation_iterations'], 2)
+
+    def test_failed_samples_do_not_pass_empty_self_check(self):
+        result, count = self.run_loop([], sample_failure=True)
+        self.assertEqual(count, 1)
+        self.assertEqual(result['result'], 'partial_success')
+        self.assertFalse(result['self_check']['overall_pass'])

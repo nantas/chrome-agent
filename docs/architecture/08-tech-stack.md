@@ -412,3 +412,7 @@ node --test tests/chrome-agent-runtime.test.mjs
 - [01 — 系统总览](01-overview.md) — 多后端架构全景
 - [05 — 转换器架构](05-converter-architecture.md) — lib/extraction/ 统一提取引擎
 - [06 — 引擎选择](06-engine-selection.md) — Scrapling/Obscura/CloakBrowser 引擎详情
+
+### HTML 准入回归
+
+`tests/test_content_admission.py` 使用脱敏 wiki.gg fixture 验证组合信号、反例、probe fallback、main 停止、sample、CDP、跨路径等价及陈旧输出拒绝。`tests/content-admission-fetch.test.mjs` 保留真实 fetch/bridge 函数，隔离引擎，验证 selector 前校验和单次远端获取。`tests/explore-handoff.test.mjs` 的 failure 用例走真实 Python 入口；partial 用例隔离 producer 验证 exit-2 协议。生产 resume/assembly 覆盖在 `tests/pipeline/test_conversion_resume.py`，API 单页入口在 `tests/test_standalone_convert.py`，失败诊断不得缓存的 crawl 回归在 `tests/crawl_scrapling.test.mjs`。

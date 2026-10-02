@@ -451,6 +451,7 @@ function loadScraplingCache(repoRoot, domain, slug) {
   const htmlPath = path.join(dir, `${slug}.html`);
   const metaPath = path.join(dir, `${slug}.meta.json`);
   if (!fs.existsSync(htmlPath) || !fs.existsSync(metaPath)) return null;
+  if (!admitHtmlFile(repoRoot, htmlPath).admitted) return null;
   return {
     html: fs.readFileSync(htmlPath, "utf8"),
     meta: JSON.parse(fs.readFileSync(metaPath, "utf8")),
@@ -458,9 +459,7 @@ function loadScraplingCache(repoRoot, domain, slug) {
 }
 
 function isScraplingCached(repoRoot, domain, slug) {
-  const dir = scraplingCacheDir(repoRoot, domain);
-  return fs.existsSync(path.join(dir, `${slug}.html`)) &&
-         fs.existsSync(path.join(dir, `${slug}.meta.json`));
+  return loadScraplingCache(repoRoot, domain, slug) !== null;
 }
 
 function listScraplingCached(repoRoot, domain) {
@@ -782,6 +781,21 @@ function runScraplingPreflight(repoRoot, allowInstall) {
   };
 }
 
+function admitHtmlFile(repoRoot, filename, httpStatus = null) {
+  const args = ["-m", "scripts.lib.content_admission", filename];
+  if (Number.isInteger(httpStatus)) args.push("--http-status", String(httpStatus));
+  const result = spawnSync(resolveAppPython(repoRoot), args, {
+    cwd: repoRoot, encoding: "utf8",
+  });
+  try {
+    if (result.status === 0) {
+      const admission = JSON.parse(result.stdout);
+      if (typeof admission?.admitted === "boolean") return admission;
+    }
+  } catch { /* invalid bridge output is a failure */ }
+  return { admitted: false, reason: "admission_check_failed" };
+}
+
 function runScraplingFetch(repoRoot, fetcher, targetUrl, outputPath, extraArgs = []) {
   // Ensure the output directory exists before invoking Scrapling
   ensureDir(path.dirname(outputPath));
@@ -796,18 +810,39 @@ function runScraplingFetch(repoRoot, fetcher, targetUrl, outputPath, extraArgs =
     };
   }
 
-  const args = ["extract", fetcher, targetUrl, outputPath, ...extraArgs];
-  const result = spawnSync(preflight.resolvedCliPath, args, {
-    cwd: repoRoot,
-    encoding: "utf8",
-  });
-  return {
-    ok: result.status === 0,
-    preflight,
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-    command: [preflight.resolvedCliPath, ...args].join(" "),
-  };
+  const rawPath = `${outputPath}.raw.html`;
+  const local = targetUrl.startsWith("file://");
+  // Isolate each acquisition from old artifacts. Never consume a stale output.
+  const attemptDir = fs.mkdtempSync(path.join(path.dirname(outputPath), ".fetch-"));
+  const attemptPath = path.join(attemptDir, "page.html");
+  let result = { status: 0, stdout: "", stderr: "" };
+  let inputPath = local ? fileURLToPath(targetUrl) : attemptPath;
+  try {
+    if (!local) {
+      result = spawnSync(preflight.resolvedCliPath, ["extract", fetcher, targetUrl, attemptPath], {
+        cwd: repoRoot, encoding: "utf8",
+      });
+    }
+    if (result.status !== 0) return { ok: false, preflight, stderr: result.stderr || "Engine failed" };
+    const admission = admitHtmlFile(repoRoot, inputPath);
+    if (!admission.admitted) {
+      if (fs.existsSync(inputPath)) fs.copyFileSync(inputPath, rawPath);
+      return { ok: false, preflight, admission, diagnostic_path: rawPath, stderr: admission.reason };
+    }
+    if (outputPath.endsWith(".html") && extraArgs.length === 0) {
+      fs.copyFileSync(inputPath, outputPath);
+    } else {
+      const converted = path.join(attemptDir, path.basename(outputPath));
+      result = spawnSync(preflight.resolvedCliPath, ["extract", "get", `file://${inputPath}`, converted, ...extraArgs], {
+        cwd: repoRoot, encoding: "utf8",
+      });
+      if (result.status !== 0 || !fs.existsSync(converted)) return { ok: false, preflight, stderr: result.stderr || "Local conversion failed" };
+      fs.copyFileSync(converted, outputPath);
+    }
+    return { ok: true, preflight, admission, stdout: result.stdout || "", stderr: result.stderr || "" };
+  } finally {
+    fs.rmSync(attemptDir, { recursive: true, force: true });
+  }
 }
 
 function runCloakbrowserFetch(repoRoot, targetUrl, outputPath, extraArgs = []) {
@@ -830,18 +865,18 @@ function runCloakbrowserFetch(repoRoot, targetUrl, outputPath, extraArgs = []) {
   const resolvedCliMatch = preflightStdout.match(/^RESOLVED_CLI_PATH=(.+)$/m);
   const managedPython = resolvedCliMatch ? resolvedCliMatch[1].trim() : "python3";
 
-  const args = [managedPython, "scripts/cloakbrowser_fetcher.py", targetUrl, "--output", outputPath, "--json", ...extraArgs];
-  const result = spawnSync(args[0], args.slice(1), {
-    cwd: repoRoot,
-    encoding: "utf8",
-  });
-  return {
-    ok: result.status === 0,
-    preflight: { ok: true, resolvedCliPath: managedPython },
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? "",
-    command: args.join(" "),
-  };
+  const args = ["scripts/cloakbrowser_fetcher.py", targetUrl, "--json", ...extraArgs];
+  const result = spawnSync(managedPython, args, { cwd: repoRoot, encoding: "utf8", maxBuffer: 50 * 1024 * 1024 });
+  let parsed;
+  try { parsed = JSON.parse(result.stdout); } catch { return { ok: false, stderr: "Invalid CloakBrowser response" }; }
+  const rawPath = `${outputPath}.raw.html`;
+  if (typeof parsed.html === "string") fs.writeFileSync(rawPath, parsed.html);
+  if (result.status !== 0 || !parsed.success) return { ok: false, stderr: parsed.error?.category || "CloakBrowser failed", diagnostic_path: rawPath };
+  const admission = admitHtmlFile(repoRoot, rawPath, parsed.http_status);
+  if (!admission.admitted) return { ok: false, admission, stderr: admission.reason, diagnostic_path: rawPath };
+  if (outputPath.endsWith(".html")) fs.copyFileSync(rawPath, outputPath);
+  else return runScraplingFetch(repoRoot, "get", `file://${rawPath}`, outputPath);
+  return { ok: true, admission, stderr: "" };
 }
 
 /**
@@ -1425,6 +1460,11 @@ function convertTraversalToMarkdown(repoRoot, runDir, manifest, opts = {}) {
       // Use Scrapling --ai-targeted via file:// for DOM-quality Markdown conversion
       const tmpHtmlPath = path.join(runDir, `_tmp_${i}.html`);
       writeTextFile(tmpHtmlPath, prefetchedHtml[url]);
+      const admission = admitHtmlFile(repoRoot, tmpHtmlPath);
+      if (!admission.admitted) {
+        failed.push({ url, error: admission.reason });
+        continue;
+      }
       // Strategy-sourced selector (if declared) applies to file:// HTML conversion too;
       // fetcher is "get" here. Falls back to --ai-targeted when no selector.
       const fileArgs = buildScraplingExtractionArgs(strategy, "get");
@@ -1432,6 +1472,8 @@ function convertTraversalToMarkdown(repoRoot, runDir, manifest, opts = {}) {
       fs.unlinkSync(tmpHtmlPath);
       if (scraplingResult.ok) {
         successful.push({ url, path: mdPath });
+      } else if (scraplingResult.admission && !scraplingResult.admission.admitted) {
+        failed.push({ url, error: scraplingResult.admission.reason });
       } else {
         // Fallback to htmlToMarkdown when Scrapling CLI is unavailable
         const markdown = htmlToMarkdown(prefetchedHtml[url]);
@@ -1467,7 +1509,7 @@ function convertTraversalToMarkdown(repoRoot, runDir, manifest, opts = {}) {
   // Cleanup HTML intermediates
   if (cleanupHtml) {
     for (const file of fs.readdirSync(runDir)) {
-      if (file.endsWith(".html")) {
+      if (file.endsWith(".html") && !file.endsWith(".raw.html")) {
         fs.unlinkSync(path.join(runDir, file));
       }
     }
@@ -1804,9 +1846,27 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
       encoding: "utf8",
       maxBuffer: 50 * 1024 * 1024,
     });
-    if (ddResult.status === 0 && ddResult.stdout) {
+    if ([0, 2, 3].includes(ddResult.status) && ddResult.stdout) {
       try {
         discoveryResult = JSON.parse(ddResult.stdout);
+        const expectedOutcome = { 0: "success", 2: "partial_success", 3: "failure" }[ddResult.status];
+        if ((discoveryResult.result && discoveryResult.result !== expectedOutcome)
+            || (ddResult.status !== 0 && discoveryResult.result !== expectedOutcome)
+            || !Array.isArray(discoveryResult.probe_chain?.results)
+            || (ddResult.status !== 3 && !discoveryResult.probe_chain.success_engine)
+            || (ddResult.status === 3 && (discoveryResult.reason !== "content_unavailable" || discoveryResult.probe_chain.success_engine !== null))) {
+          throw new Error("Invalid deep discovery outcome contract");
+        }
+        if (ddResult.status === 3) {
+          return makeResult("explore", targetUrl, repoRef,
+            "No usable page content was acquired; review engine evidence before retrying.", [],
+            "Review the blocked attempts and arrange an authorized fallback if required.", "failure", {
+              reason: discoveryResult.reason, workflow: "platform_analysis", run_dir: runDir,
+              discovery: { engine_chain: discoveryResult.probe_chain.results,
+                protection: discoveryResult.protection, content_profile: {} },
+              scaffold: null, samples: [],
+            });
+        }
       } catch (parseErr) {
         // Handoff: deep discovery returned invalid JSON is internal
         return internalFailure({
@@ -1864,7 +1924,7 @@ function runExplore(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride
     }
 
     const nextAction = scaffold.path
-      ? `Review the generated scaffold at ${scaffold.path}, confirm samples, and run chrome-agent freeze ${scaffold.path} when ready.`
+      ? `Review the generated scaffold at ${scaffold.path} and validate samples and all gates before requesting freeze.`
       : `Create or refine a site strategy for ${new URL(targetUrl).hostname}.`;
 
     const extraFields = {
@@ -2001,6 +2061,8 @@ function runFetch(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride) 
     strategy_file: strategy ? path.relative(repoRoot, strategy.path) : null,
     page_id: matchingPage?.id ?? null,
     preflight_status: fetchResult.preflight?.status ?? null,
+    admission: fetchResult.admission ?? null,
+    diagnostic_path: fetchResult.diagnostic_path ?? null,
     output: path.resolve(outputPath),
   };
   writeTextFile(manifestPath, JSON.stringify(manifest, null, 2));
@@ -2009,7 +2071,7 @@ function runFetch(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride) 
   if (emitReport) {
     artifacts.unshift(absoluteArtifact(reportPath, "durable", "Fetch report"));
   }
-  if (fs.existsSync(outputPath)) {
+  if (fetchResult.ok && fs.existsSync(outputPath)) {
     artifacts.push(absoluteArtifact(outputPath, "disposable", "Extracted content"));
   }
   if (fs.existsSync(logPath)) {

@@ -17,6 +17,7 @@ from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional
 
 from .. import cache as cache_mod
+from scripts.lib.content_admission import classify_html
 
 log = logging.getLogger("pipeline.cdp")
 
@@ -85,7 +86,8 @@ def run_fetch_cdp(
         safe_path = _url_to_safe_path(url)
 
         # Check cache (unless re_fetch)
-        if not re_fetch and cache_mod.is_cached(repo_root, platform, domain, safe_path):
+        cached = cache_mod.load_page_cache(repo_root, platform, domain, safe_path) if not re_fetch else None
+        if cached and classify_html(cached.get('html'))['admitted']:
             log.debug("Cache hit: %s", safe_path)
             skipped += 1
             continue
@@ -98,6 +100,11 @@ def run_fetch_cdp(
                 failed += 1
                 continue
 
+            admission = classify_html(result.get('html'), result.get('http_status'))
+            if not admission['admitted']:
+                failed += 1
+                log.warning("CDP content rejected: %s", admission['reason'])
+                continue
             raw_data = {
                 "title": safe_path,
                 "url": url,

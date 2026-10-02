@@ -15,7 +15,7 @@ function writeExecutable(filename, source) {
   fs.chmodSync(filename, 0o755);
 }
 
-function runExplore(t, target = TARGET, missingDeps = false) {
+function runExplore(t, target = TARGET, missingDeps = false, blocked = false) {
   const temporary = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "explore-handoff-")));
   t.after(() => fs.rmSync(temporary, { recursive: true, force: true }));
   const root = path.join(temporary, "repo");
@@ -31,7 +31,12 @@ function runExplore(t, target = TARGET, missingDeps = false) {
     '#!/bin/bash\nset -euo pipefail\nprintf "%s\\n" "STATUS=ready"\n');
   // Replace only the engine/network boundary. main.py and its package imports stay real.
   fs.writeFileSync(path.join(root, "scripts", "explore", "probe_chain.py"),
-    'def probe(*args):\n    raise RuntimeError("OFFLINE_PROBE_REACHED")\n');
+    blocked ? 'def probe(*args):\n    return {"results": [], "success_engine": None}\n' : 'def probe(*args):\n    raise RuntimeError("OFFLINE_PROBE_REACHED")\n');
+  if (blocked === "partial") {
+    // Isolate the producer outcome for the exit-2 transport contract.
+    fs.writeFileSync(path.join(root, "scripts", "explore", "main.py"),
+      'import json, sys\nprint(json.dumps({"result":"partial_success","probe_chain":{"results":[],"success_engine":"offline"},"scaffold":{},"architecture_gate":{"status":"fail"}}))\nsys.exit(2)\n');
+  }
   const env = { ...process.env };
   delete env.PYTHONPATH;
   env.CHROME_AGENT_PYTHON = process.env.CHROME_AGENT_PYTHON || "python3";
@@ -46,9 +51,21 @@ function runExplore(t, target = TARGET, missingDeps = false) {
     cwd: temporary, env, encoding: "utf8", timeout: 15000,
   });
   assert.equal(child.error, undefined);
-  assert.equal(child.status, 1, child.stderr || child.stdout);
+  assert.equal(child.status, blocked === "partial" ? 0 : 1, child.stderr || child.stdout);
   const result = JSON.parse(child.stdout);
+  if (blocked === "partial") {
+    assert.equal(result.result, "partial_success");
+    assert.equal(result.handoff_path, undefined);
+    return { result, root };
+  }
   assert.equal(result.result, "failure");
+  if (blocked) {
+    assert.equal(result.reason, "content_unavailable");
+    assert.equal(result.handoff_path, undefined);
+    assert.doesNotMatch(result.summary, /discovery completed|Success engine/);
+    assert.doesNotMatch(result.next_action, /freeze/);
+    return { result, root };
+  }
   assert.ok(path.isAbsolute(result.handoff_path));
   assert.ok(result.handoff_path.startsWith(path.join(root, "outputs", "handoffs") + path.sep));
   const document = fs.readFileSync(result.handoff_path, "utf8");
@@ -98,3 +115,7 @@ test("handoff bounds the target slug to 80 characters", (t) => {
   assert.match(path.basename(path.dirname(result.handoff_path)),
     new RegExp(`^\\d{8}T\\d{6}-explore-${"a".repeat(80)}$`));
 });
+
+test("content failure survives real Python to CLI boundary", (t) => { runExplore(t, TARGET, false, true); });
+
+test("recognized partial outcome retains exit-2 workflow semantics", (t) => { runExplore(t, TARGET, false, "partial"); });

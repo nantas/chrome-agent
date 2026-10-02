@@ -8,10 +8,12 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Optional
 
 from bs4 import BeautifulSoup
+from scripts.lib.content_admission import classify_html
 
 ENGINES = [
     "scrapling-get",
@@ -21,26 +23,48 @@ ENGINES = [
 ]
 
 
-def _build_success(engine, html, output_path):
+def _build_success(engine, html, output_path, http_status=None):
+    admission = classify_html(html, http_status)
     return {
         "engine": engine,
-        "status": "success",
-        "http_status": 200,
+        "status": "success" if admission["admitted"] else "failure",
+        "admission": admission,
+        "process_exit": 0,
+        "error_type": admission["protection_type"] or admission["reason"],
+        "http_status": http_status,
         "page_title": _extract_title(html),
         "content_length": len(html) if html else 0,
         "output_path": output_path,
     }
 
 
-def _build_failure(engine, stderr, http_status=None, stdout=""):
+def _build_failure(engine, stderr, http_status=None, stdout="", process_exit=None):
     detail = stderr[:500] or stdout[:500]
     return {
         "engine": engine,
         "status": "failure",
+        "process_exit": process_exit,
         "http_status": http_status,
         "error_type": _classify_error(stderr, http_status),
         "detail": detail,
     }
+
+
+def _capture_html(command, output_path, repo_root):
+    """Only promote the current process's output, never a previous run's file."""
+    with tempfile.TemporaryDirectory(prefix='chrome-agent-probe-') as directory:
+        temporary = os.path.join(directory, 'page.html')
+        command = [temporary if arg == output_path else arg for arg in command]
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, cwd=repo_root)
+        except OSError:
+            return subprocess.CompletedProcess(command, 1, '', 'engine_unavailable')
+        if result.returncode == 0:
+            if not os.path.isfile(temporary):
+                result.output_error = 'missing_output'
+                return result
+            Path(output_path).write_bytes(Path(temporary).read_bytes())
+        return result
 
 
 def _run_scrapling_get(repo_root: str, url: str, output_path: str) -> dict:
@@ -55,20 +79,17 @@ def _run_scrapling_get(repo_root: str, url: str, output_path: str) -> dict:
         }
 
     cli = preflight["resolvedCliPath"]
-    result = subprocess.run(
-        [cli, "extract", "get", url, output_path],
-        capture_output=True,
-        text=True,
-        cwd=repo_root,
-    )
+    result = _capture_html([cli, "extract", "get", url, output_path], output_path, repo_root)
 
+    if getattr(result, 'output_error', None):
+        return _build_failure("scrapling-get", result.output_error, process_exit=result.returncode)
     if result.returncode == 0 and os.path.exists(output_path):
         html = _read_html(output_path)
         return _build_success("scrapling-get", html, output_path)
 
     stderr = result.stderr.strip()
     http_status = _extract_http_status(stderr)
-    return _build_failure("scrapling-get", stderr, http_status)
+    return _build_failure("scrapling-get", stderr, http_status, process_exit=result.returncode)
 
 
 def _run_obscura_fetch(repo_root: str, url: str, output_path: str) -> dict:
@@ -83,20 +104,17 @@ def _run_obscura_fetch(repo_root: str, url: str, output_path: str) -> dict:
         }
 
     cli = preflight["path"]
-    result = subprocess.run(
-        [cli, "fetch", url, "--dump", "html", "--quiet", "--output", output_path],
-        capture_output=True,
-        text=True,
-        cwd=repo_root,
-    )
+    result = _capture_html([cli, "fetch", url, "--dump", "html", "--quiet", "--output", output_path], output_path, repo_root)
 
+    if getattr(result, 'output_error', None):
+        return _build_failure("obscura-fetch", result.output_error, process_exit=result.returncode)
     if result.returncode == 0 and os.path.exists(output_path):
         html = _read_html(output_path)
         return _build_success("obscura-fetch", html, output_path)
 
     stderr = result.stderr.strip()
     http_status = _extract_http_status(stderr)
-    return _build_failure("obscura-fetch", stderr, http_status)
+    return _build_failure("obscura-fetch", stderr, http_status, process_exit=result.returncode)
 
 
 def _run_cloakbrowser_fetch(repo_root: str, url: str, output_path: str) -> dict:
@@ -110,24 +128,28 @@ def _run_cloakbrowser_fetch(repo_root: str, url: str, output_path: str) -> dict:
             "detail": "cloakbrowser_fetcher.py not found",
         }
 
-    result = subprocess.run(
-        ["python3", script, url, "--output", output_path, "--json"],
-        capture_output=True,
-        text=True,
-        cwd=repo_root,
-    )
+    try:
+        result = subprocess.run(
+            [str(Path.home() / ".cache/chrome-agent-cloakbrowser/bin/python"), script, url, "--json"],
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+        )
+    except OSError:
+        return _build_failure("cloakbrowser-fetch", "engine_unavailable")
 
     try:
         parsed = json.loads(result.stdout)
-        if parsed.get("ok"):
-            html = _read_html(output_path)
-            return _build_success("cloakbrowser-fetch", html, output_path)
+        if parsed.get("success") and result.returncode == 0:
+            html = parsed.get("html") or ""
+            Path(output_path).write_text(html, encoding="utf-8")
+            return _build_success("cloakbrowser-fetch", html, output_path, parsed.get("http_status"))
     except json.JSONDecodeError:
         pass
 
     stderr = result.stderr.strip()
     http_status = _extract_http_status(stderr)
-    return _build_failure("cloakbrowser-fetch", stderr, http_status, result.stdout)
+    return _build_failure("cloakbrowser-fetch", stderr, http_status, result.stdout, result.returncode)
 
 
 def _run_chrome_devtools_mcp(repo_root: str, url: str, output_path: str) -> dict:
@@ -212,9 +234,11 @@ def _extract_http_status(text: str) -> Optional[int]:
 
 def _classify_error(stderr: str, http_status: Optional[int]) -> str:
     s = stderr.lower()
-    if http_status == 403 or "just a moment" in s:
+    if s in ("missing_output", "engine_unavailable"):
+        return s
+    if "just a moment" in s:
         return "cloudflare-managed"
-    if http_status == 403 or "turnstile" in s or "cf-turnstile" in s:
+    if "turnstile" in s or "cf-turnstile" in s:
         return "cloudflare-turnstile"
     if http_status == 429 or "rate limit" in s or "too many requests" in s:
         return "rate-limit"
@@ -255,6 +279,8 @@ def probe(repo_root: str, url: str, run_dir: str) -> dict:
         else:
             continue
 
+        if res.get("status") == "success":
+            res = _build_success(engine, _read_html(res.get("output_path", "")), res.get("output_path"), res.get("http_status"))
         results.append(res)
 
         if res.get("status") == "success":

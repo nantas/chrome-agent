@@ -183,4 +183,10 @@ def admit_page(raw: Optional[dict], title: str, mode: str,
         return None, {**error, 'reason': 'missing_payload', 'missing_fields': missing}
     if mode not in ('html_rendered', 'wikitext_only', 'hybrid_wikitext_plus_rendered'):
         return None, {**error, 'reason': 'unknown_mode'}
+    from scripts.lib.content_admission import classify_html
+    fields = ['html'] if mode == 'html_rendered' else ['rendered_html'] if mode == 'hybrid_wikitext_plus_rendered' and HybridAcquisitionStrategy.requires_rendered(wt) else []
+    for field in fields:
+        admission = classify_html(raw.get(field))
+        if not admission['admitted']:
+            return None, {**error, 'reason': admission['reason'], 'admission': admission}
     return {**raw, 'content_acquisition': mode}, None

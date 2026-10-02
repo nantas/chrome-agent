@@ -65,6 +65,23 @@ extract:
       strategy_field: capabilities
 
 fetch:
+  kernels:
+    - name: content_admission
+      implemented_in: scripts/lib/content_admission.py
+      capability: fetch
+      sub_capability: content_admission
+      execution_path: shared
+      strategy_variant: generic
+      input_format: html_generic
+      relationship: kernel
+      equivalence: tests/test_content_admission.py
+      consumers:
+        - scripts/explore/probe_chain.py
+        - scripts/explore/sample_converter.py
+        - scripts/chrome-agent-cli.mjs
+        - scripts/pipeline/pipeline/cache.py
+        - scripts/pipeline/pipeline/phases/fetch_cdp.py
+        - scripts/pipeline/pipeline/phases/convert_html.py
   engines:
     - name: mediawiki-api
       implemented_in: scripts/pipeline/pipeline/phases/fetch.py

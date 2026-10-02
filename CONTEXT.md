@@ -96,3 +96,8 @@ _Avoid_: 靠读全量代码推断、靠问作者才知道关系
 - **缓存准入（cache admission）**：按 exact title、来源、当前 acquisition 和必需载荷决定能否复用；存在文件不等于兼容缓存。
 - **转换指纹（conversion fingerprint）**：绑定 raw、语义配置、模式、输出/链接上下文和内核 revision 的摘要。只有匹配指纹的完成页可 resume；时间戳不决定内容新鲜度。
 - **全页转换入口**：`convert_page_full` 统一 infobox 提取、预处理、正文转换、prepend 和 post-ops，CV4 注入状态，外层只加包装。
+
+## 抓取内容准入
+
+**Content Admission（正文准入）**：判定一次获取的页面能否作为正文消费；传输或进程成功不代表通过准入。挑战页只作为诊断证据，不作为成功正文。
+_Avoid_: HTTP 200 即成功、文件存在即成功、挑战页属于部分正文

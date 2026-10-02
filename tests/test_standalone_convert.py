@@ -107,3 +107,15 @@ class TestReconvertFileWithoutSourceUrl(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class TestStandaloneAdmission(unittest.TestCase):
+    def test_api_challenge_never_becomes_markdown(self):
+        from pathlib import Path
+        html = (Path(__file__).parent / 'fixtures/challenge-wikigg.html').read_text()
+        client = MagicMock()
+        client.parse.side_effect = [{'parse':{'text':{'*':html}}}, {'parse':{'images':[]}}]
+        with tempfile.TemporaryDirectory() as tmp, patch.object(standalone,'probe_api_endpoint',return_value='https://example.test/api.php'), patch.object(standalone,'ApiClient',return_value=client):
+            output = str(Path(tmp)/'out.md')
+            with self.assertRaisesRegex(RuntimeError, 'challenge_page'):
+                standalone.fetch_and_convert('https://example.test/wiki/Bad','example.test',output)
+            self.assertFalse(Path(output).exists())

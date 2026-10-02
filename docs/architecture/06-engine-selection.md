@@ -227,3 +227,7 @@ Output includes per-engine `status` (`ok` / `version_mismatch` / `hash_mismatch`
 - [01 — 系统总览](01-overview.md) — 多后端架构中的引擎定位
 - [04 — CLI 参考](04-cli-reference.md) — 命令路由如何触发引擎选择
 - [08 — 技术栈](08-tech-stack.md) — 引擎版本治理与依赖管理
+
+## 内容准入与 fallback
+
+引擎退出 0 后须通过共享 `content_admission`，再选择 success_engine。挑战结构与页面级验证提示联合判定，正文提及 Cloudflare 或普通 Turnstile 组件不会单独触发拒绝；HTTP 状态未知为 null。Explore 受阻后继续既有链，全部不可用返回 failure，手动浏览器 fallback 仍需原授权。CloakBrowser 使用 success/html JSON 契约，应用层读取原始 HTML 并校验；标题等待机制不再以 cloudflare/attention 泛词直接拒绝。

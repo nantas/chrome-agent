@@ -16,6 +16,7 @@ import os
 from typing import Dict, List, Optional
 
 from .. import cache as cache_mod
+from scripts.lib.content_admission import classify_html
 from scripts.lib.extraction.converter import convert_html_to_markdown
 
 log = logging.getLogger("pipeline.convert_html")
@@ -86,6 +87,12 @@ def run_convert_html(
         if not html:
             log.warning("Empty HTML in cache for %s — skipping", safe_path)
             skipped += 1
+            continue
+
+        admission = classify_html(html)
+        if not admission['admitted']:
+            failed += 1
+            log.warning("Cached content rejected: %s", admission['reason'])
             continue
 
         try:

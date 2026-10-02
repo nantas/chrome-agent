@@ -59,3 +59,7 @@
 `acquisition.py` 定义模式与动态 fallback → `cache.py::admit_page` 统一准入 → fetch 只跳过兼容缓存，失败标题交给 convert → convert 在 resume 前准入并计算指纹 → `convert_page_full` 复用 link-index/source_dir → assembly 只把本次成功页写入索引。Orchestrator 保留转换指纹并持久化失败原因。
 
 存储键由 cache 管理；Markdown 输出名由 manifest/输出命名治理管理。二者不可用同一有损替换代替。恢复入口：[MediaWiki extraction recovery](docs/playbooks/mediawiki-extraction-recovery.md)。
+
+## 正文准入边界
+
+`lib/content_admission.py` 是 fetch 的共享准入内核：Explore probe/sample、CLI HTML 获取与 Scrapling 缓存读取、MediaWiki cache/convert 和 CDP fetch/convert 均消费它。Node 经应用层 Python JSON bridge 调用；引擎环境只获取原始内容。判定在 selector/Markdown 前执行，失败证据不进入成功缓存或当前 assembly。

@@ -66,6 +66,17 @@ def main():
     # Phase 1: Probe chain
     probe_result = probe(repo_root, url, run_dir)
 
+    if not probe_result.get("success_engine"):
+        print(json.dumps({
+            "result": "failure", "reason": "content_unavailable", "target_url": url,
+            "probe_chain": {"results": probe_result["results"], "success_engine": None},
+            "api_discovery": [], "structure_mapping": {},
+            "protection": identify(probe_result["results"], None),
+            "scaffold": None, "samples": [], "self_check": None,
+            "run_dir": run_dir,
+        }))
+        sys.exit(3)
+
     # Phase 2: API discovery
     api_results = discover(url) if probe_result["success_engine"] else []
 
@@ -151,6 +162,10 @@ def main():
                     )
                     all_checks.extend(checks)
 
+            for sr in sample_results:
+                if not sr['ok']:
+                    all_checks.append({'check': 'content_admission', 'status': 'fail',
+                                       'detail': sr.get('error') or 'Sample acquisition failed'})
             self_check_summary = summarize(all_checks)
 
             # Auto-remediation: fix known issues and re-convert if needed
@@ -213,9 +228,10 @@ def main():
 
     # Output with exit code signaling gate result
     exit_code = 0
-    if gate_result and gate_result.get("status") == "fail":
+    if (gate_result and gate_result.get("status") == "fail") or any(not sr["ok"] for sr in sample_results):
         exit_code = 2  # partial_success: architecture violations
 
+    output["result"] = "partial_success" if exit_code == 2 else "success"
     print(json.dumps(output, indent=2, default=str))
     sys.exit(exit_code)
 

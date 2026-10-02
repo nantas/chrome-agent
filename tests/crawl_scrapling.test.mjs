@@ -262,3 +262,15 @@ test("seam surface uses named concern groups (no flat api.<helper> calls to grou
     "Spec: seam-surface-uses-named-concern-groups. Violations:\n" +
     flatViolations.map((v) => `  ${v.helper} should be ${v.shouldUse}`).join("\n"));
 });
+
+test("failed page diagnostic HTML cannot be written to production cache", async () => {
+  let writes = 0;
+  const api = stubApi({
+    engine: { runEngineFetch: () => ({ok:false, stderr:'challenge_page'}) },
+    fs: { readdirSync: () => ['page.raw.html'], readFileSync: () => '<h1>Just a moment</h1>https://example.com/home' },
+    cache: { saveScraplingCache: () => { writes++; } },
+  });
+  const result = await runCrawlScrapling(baseCtx(), {markdown:false, phase:'fetch'}, api);
+  assert.equal(result.result,'failure');
+  assert.equal(writes,0);
+});

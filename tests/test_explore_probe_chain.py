@@ -15,7 +15,7 @@ class TestBuildSuccess(unittest.TestCase):
         r = _build_success("scrapling-get", html, "/tmp/out.html")
         self.assertEqual(r["engine"], "scrapling-get")
         self.assertEqual(r["status"], "success")
-        self.assertEqual(r["http_status"], 200)
+        self.assertIsNone(r["http_status"])
         self.assertEqual(r["page_title"], "My Page")
         self.assertEqual(r["content_length"], len(html))
         self.assertEqual(r["output_path"], "/tmp/out.html")
@@ -32,7 +32,7 @@ class TestBuildFailure(unittest.TestCase):
         self.assertEqual(r["engine"], "scrapling-get")
         self.assertEqual(r["status"], "failure")
         self.assertEqual(r["http_status"], 403)
-        self.assertEqual(r["error_type"], "cloudflare-managed")
+        self.assertEqual(r["error_type"], "unknown")
         self.assertEqual(r["detail"], "HTTP 403 forbidden")
 
     def test_detail_truncated_to_500(self):

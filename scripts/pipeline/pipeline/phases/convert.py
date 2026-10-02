@@ -156,6 +156,10 @@ def convert_single_page(raw: dict, page_info: dict, manifest_pages: list[dict],
 
     # HTML-rendered path
     if is_html_rendered:
+        from scripts.lib.content_admission import classify_html
+        admission = classify_html(html)
+        if not admission['admitted']:
+            return {'title': title, 'status': 'error', 'error': admission['reason'], 'admission': admission}
         return _process_html_page(
             raw, title, source_dir, source_url, domain,
             manifest_pages, frontmatter_fields, extraction_config,

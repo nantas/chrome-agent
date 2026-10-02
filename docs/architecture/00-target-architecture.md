@@ -561,3 +561,7 @@ def preprocess_html(html, config):  # 无 context
 ## MediaWiki discovery contract restoration (2026-09-10)
 
 Discover has one page-enumeration ownership boundary in explore: `page_discovery.py` is a thin adapter over allpages/homepage kernels. CLI controls confirmation; pipeline consumes validated manifests only. The capability registry identifies adapters/infrastructure explicitly; it does not introduce a second discovery kernel. See `openspec/specs/discover-kernel/spec.md`.
+
+## Fetch content admission（2026-10-02）
+
+`lib/content_admission.py` 是 A=fetch/sub_capability=content_admission、B=shared、C=generic、D=HTML 的 kernel。probe/sample、CLI bridge、MediaWiki cache/convert、CDP fetch/convert 是消费边界；不新增引擎。注册见 capability-registry.yaml，等价证明见 tests/test_content_admission.py 与 tests/content-admission-fetch.test.mjs。成功获取候选必须先准入；该判定不是完整内容质量评分。

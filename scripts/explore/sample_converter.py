@@ -17,6 +17,9 @@ if __name__ == "__main__":
         sys.path.insert(0, _project_root)
 
 
+from scripts.lib.content_admission import admit_html_file
+
+
 def _fetch_sample(
     repo_root: str,
     url: str,
@@ -24,73 +27,16 @@ def _fetch_sample(
     output_path: str,
 ) -> dict:
     """Fetch a single sample page using the determined engine."""
-    if engine in ("scrapling-get", "get"):
-        preflight = subprocess.run(
-            ["./scripts/scrapling-cli.sh", "preflight", "--no-install"],
-            capture_output=True,
-            text=True,
-            cwd=repo_root,
-        )
-        cli = None
-        for line in (preflight.stdout + preflight.stderr).split("\n"):
-            if line.startswith("RESOLVED_CLI_PATH="):
-                cli = line.split("=", 1)[1]
-                break
-        if cli:
-            result = subprocess.run(
-                [cli, "extract", "get", url, output_path],
-                capture_output=True,
-                text=True,
-                cwd=repo_root,
-            )
-            return {
-                "ok": result.returncode == 0 and os.path.exists(output_path),
-                "path": output_path,
-                "error": result.stderr if result.returncode != 0 else None,
-            }
-        return {"ok": False, "error": "Scrapling CLI not available"}
-
-    elif engine in ("cloakbrowser-fetch", "cloakbrowser"):
-        script = os.path.join(repo_root, "scripts", "cloakbrowser_fetcher.py")
-        result = subprocess.run(
-            ["python3", script, url, "--output", output_path, "--json"],
-            capture_output=True,
-            text=True,
-            cwd=repo_root,
-        )
-        try:
-            parsed = json.loads(result.stdout)
-            return {
-                "ok": parsed.get("ok", False),
-                "path": output_path,
-                "error": parsed.get("error") if not parsed.get("ok") else None,
-            }
-        except json.JSONDecodeError:
-            return {"ok": False, "error": result.stderr or result.stdout}
-
-    elif engine == "mediawiki-api":
-        # mediawiki-api requires _fetch_via_mediawiki_api (called from convert())
-        return {"ok": False, "error": "mediawiki-api engine requires _fetch_via_mediawiki_api call"}
-
-    elif engine in ("obscura-fetch", "obscura"):
-        managed = Path.home() / ".cache" / "chrome-agent-obscura" / "bin" / "obscura"
-        env = os.environ.get("OBSCURA_CLI_PATH")
-        cli = env if env and os.path.exists(env) else str(managed)
-        if os.path.exists(cli):
-            result = subprocess.run(
-                [cli, "fetch", url, "--dump", "html", "--quiet", "--output", output_path],
-                capture_output=True,
-                text=True,
-                cwd=repo_root,
-            )
-            return {
-                "ok": result.returncode == 0 and os.path.exists(output_path),
-                "path": output_path,
-                "error": result.stderr if result.returncode != 0 else None,
-            }
-        return {"ok": False, "error": "Obscura CLI not available"}
-
-    return {"ok": False, "error": f"Unknown engine: {engine}"}
+    from scripts.explore.probe_chain import _run_scrapling_get, _run_obscura_fetch, _run_cloakbrowser_fetch
+    runners = {"scrapling-get": _run_scrapling_get, "get": _run_scrapling_get,
+               "obscura-fetch": _run_obscura_fetch, "obscura": _run_obscura_fetch,
+               "cloakbrowser-fetch": _run_cloakbrowser_fetch, "cloakbrowser": _run_cloakbrowser_fetch}
+    runner = runners.get(engine)
+    if runner is None:
+        return {"ok": False, "error": f"Unsupported HTML engine: {engine}"}
+    result = runner(repo_root, url, output_path)
+    return {"ok": result["status"] == "success", "path": output_path,
+            "error": result.get("error_type"), "admission": result.get("admission")}
 
 
 def _fetch_via_mediawiki_api(
@@ -177,6 +123,10 @@ def convert(
             fetch_result = _fetch_via_mediawiki_api(base_url, sample["title"], output_path)
         else:
             fetch_result = _fetch_sample(repo_root, sample["url"], engine, output_path)
+        if fetch_result["ok"]:
+            admission = admit_html_file(output_path)
+            if not admission['admitted']:
+                fetch_result = {'ok': False, 'error': admission['reason'], 'admission': admission}
         if not fetch_result["ok"]:
             results.append({
                 "title": sample["title"],
@@ -283,6 +233,11 @@ def main():
             if os.path.exists(tmp_html):
                 os.unlink(tmp_html)
             print(json.dumps({"ok": False, "error": fetch_result.get("error", "Fetch failed")}))
+            sys.exit(1)
+
+        admission = admit_html_file(tmp_html)
+        if not admission['admitted']:
+            print(json.dumps({'ok': False, 'error': admission['reason'], 'admission': admission}))
             sys.exit(1)
 
         # Read fetched HTML
