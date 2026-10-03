@@ -16,7 +16,9 @@ class TestTableSectionIntegrity(unittest.TestCase):
 
     def test_text_integrity_does_not_scan_url_hashes_as_versions(self):
         self.assertEqual(s5_text_integrity('[Sound](https://example.org/voice.wav?a1b2)')['status'], 'pass')
-        self.assertEqual(s5_text_integrity('version v2alpha')['status'], 'fail')
+        from scripts.explore.self_check import build_source_context
+        context = build_source_context('<p>version v2 alpha</p>', {}, input_scope='content_fragment')
+        self.assertEqual(s5_text_integrity('version v2alpha', context)['status'], 'fail')
 
     def test_heading_check_reads_linked_heading_as_rendered_text(self):
         html = '<h3><span class="mw-headline">The <a href="https://example.org/hero">Shieldbreaker</a></span></h3>'

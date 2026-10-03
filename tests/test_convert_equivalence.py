@@ -39,7 +39,8 @@ TITLE = "Bloody Gust"
 # a mirror that skips preprocess_html fails this test.
 RULES = {
     "image_handling": {"base_url": f"https://{DOMAIN}"},
-    "cleanup": ["strip_footer"],
+    "cleanup": ["strip_footer", "unwrap_list_item_wrappers"],
+    "heading_normalization": [{"heading_selector": "h3:has(.mw-headline)", "label_selector": ".group"}],
 }
 
 # Representative MediaWiki page body: /wiki/ link, external link, heading,
@@ -58,7 +59,9 @@ See <a href="https://example.com/guide">the guide</a> for details.</p>
 <tr><td rowspan="2">Gust</td><td>10</td><td>+10% | speed</td></tr>
 <tr><td colspan="2">Sweeping</td></tr>
 </table>
-<ul><li>First effect</li><li>Second effect</li></ul>
+<ul><big><li>First effect</li><li>Second effect</li></big></ul>
+<div><span class="ordinary"><img src="/images/canary.png"/></span><h2>Structural canary</h2></div>
+<h3><span class="mw-headline"><div style="display:none">Group</div></span></h3><div class="group">Group</div>
 <p>Deals 3 * 5 damage with effect_chance. Grants [Flight].</p>
 <p>See <a href="/wiki/Item_(DLC)" title="Item (DLC)">Item (DLC)</a> and
 <a href="/wiki/Isaac%27s_Tears" title="Isaac's Tears">Isaac's Tears</a>.</p>

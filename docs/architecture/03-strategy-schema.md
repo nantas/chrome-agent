@@ -549,3 +549,11 @@ MediaWiki extraction cleanup/text_normalization are supported string lists. Lazy
 模板、反馈迭代与自检修复必须使用消费者支持的配置：编辑链接用 `cleanup: [strip_edit_links]`；TOC 用 `cleanup_selectors: [".toc", "#toc"]`，保留已有有效 selector。不得生产 `strip_edit_sections`、`strip_toc` 或 `fix_lazyload_images`。lazyload 通过结构化 enabled/placeholder_pattern/real_src_attr 配置，属性来源必须为完整已有配置或显式证据；缺证据报告 unresolved，不能猜 data-src。
 
 修复诊断与 extraction 分离。MediaWiki iterate 在落盘及转换前校验候选，既有非法规则也拒绝更新，不能静默清洗；非 MediaWiki 保留原 schema 适用边界。草稿不自动冻结或注册。详见 [producer 修复 verification](../../openspec/changes/archive/2026-10-02-fix-explore-extraction-config-producers/verification.md)。
+
+## 标题配对配置（2026-10-04）
+
+`extraction.heading_normalization` 是可选列表，每项包含非空 CSS `heading_selector`、`label_selector`，可选 `label_aliases` 是非空字符串的精确源名称→可见名称字典。未知键、非法类型和 CSS 显式拒绝；缺省/空列表不处理。由 BeautifulSoup 选择器边界解析。
+
+配对仅限同父节点的下一元素兄弟（忽略注释/空白）；标签规范化后相等或命中显式别名，源节点须为 h1–h6 且包含隐藏语义文本。保留源 heading 层级/id，使用可见标签文本及其图片/链接；不匹配则不改内容并在来源审计中记录。DD2 配置声明 4 个 label_aliases，不做模糊匹配。对既有重复显示标签去重，重复预处理不重复标题。
+
+[验证与限制](../../openspec/changes/fix-conversion-structure-and-audit-fidelity/verification.md)。

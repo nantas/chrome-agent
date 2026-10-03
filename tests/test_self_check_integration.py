@@ -18,8 +18,8 @@ converter = importlib.import_module('sample_converter')
 
 class SourceIntegrationTests(unittest.TestCase):
     def test_main_and_iterate_share_real_source_checks(self):
-        html = '<img src="https://example.org/skin.png"><main><p>of of</p><img src="https://example.org/body.png"></main>'
-        rules = {'selectors': {'content': 'main'}}
+        html = '<img src="https://example.org/skin.png"><main><h3><span class="mw-headline"><div style="display:none">Group</div></span></h3><div class="group">Group</div><p>of of</p><img src="https://example.org/body.png"></main>'
+        rules = {'selectors': {'content': 'main'}, 'heading_normalization': [{'heading_selector': 'h3:has(.mw-headline)', 'label_selector': '.group'}]}
         samples = [{'title': 'Test', 'url': 'https://example.org/wiki/Test'}]
         with tempfile.TemporaryDirectory() as directory:
             scaffold = Path(directory) / 'strategy.md'

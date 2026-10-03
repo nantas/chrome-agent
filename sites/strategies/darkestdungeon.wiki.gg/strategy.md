@@ -1,8 +1,16 @@
 ---
 domain: darkestdungeon.wiki.gg
-description: 暗黑地牢一代及六项DLC：按确认清单通过正文HTML采集，遵循 robots 排除API
+description: 暗黑地牢系列（一代及六项DLC、二代）：按确认清单通过正文HTML采集，遵循 robots 排除API
 protection_level: high
 extraction:
+  heading_normalization:
+    - heading_selector: "h3:has(.mw-headline > div[style*='display:none'])"
+      label_selector: ".headerdd2"
+      label_aliases:
+        "Cultist (Cosmic)": "Cultist"
+        "Lost Battalion": "The Lost Battalion"
+        "Plague Eaters": "Plague Eaters (Gentry)"
+        "Shambler (Cosmic)": "Shambler"
   selectors:
     title: '#firstHeading'
     content: .mw-parser-output
@@ -13,6 +21,8 @@ extraction:
   cleanup:
   - strip_edit_links
   - unwrap_image_wrappers
+  - unwrap_list_item_wrappers
+
   - convert_nested_images
   - strip_empty_parens
   cleanup_selectors:
@@ -30,6 +40,8 @@ lifecycle:
     scope_review: outputs/dd1-scope-review/scope-review-final.json
     user_approved: 用户已确认一代本体及六项DLC全量范围、样本质量、目标raw目录及内部链接要求
     policy_probe: outputs/dd1-policy/robots.txt
+    dd2_quality_report: outputs/dd2-sample-staging/quality-report-apply-pipeline.json
+    dd2_user_approved: 用户已确认 DD2 六样本质量达标（章节/图像multiset/链接零缺失全对齐），沿用 DD1 采集路线（sitemap 发现 + 正文 HTML + 策略提取管线，robots 排除 api.php）
 structure:
   pages:
   - id: dd1_home
@@ -41,8 +53,18 @@ structure:
     requires_auth: false
     page_pattern:
     - regex:^https://darkestdungeon\.wiki\.gg/wiki/
+  - id: dd2_home
+    label: 暗黑地牢二代首页
+    url_example: https://darkestdungeon.wiki.gg/wiki/Darkest_Dungeon_II_Wiki
+    type: static_article
+    content_type: wiki_main_page
+    pagination: none
+    requires_auth: false
+    page_pattern:
+    - regex:^https://darkestdungeon\.wiki\.gg/wiki/
   entry_points:
   - dd1_home
+  - dd2_home
 samples:
 - page: Duelist (Darkest Dungeon)
   label: 已确认的正文结构回归样本
@@ -58,6 +80,18 @@ samples:
   label: 已确认的正文结构回归样本
 - page: Stress Bar
   label: 已确认的正文结构回归样本
+- page: Plague Doctor (Darkest Dungeon II)
+  label: DD2 已确认的正文结构回归样本
+- page: Plague Doctor (Darkest Dungeon II)/Shrine of Reflection
+  label: DD2 已确认的正文结构回归样本（英雄子页）
+- page: Carrion Eater (Darkest Dungeon II)
+  label: DD2 已确认的正文结构回归样本
+- page: Combat Mechanics (Darkest Dungeon II)
+  label: DD2 已确认的正文结构回归样本
+- page: Trinkets (Darkest Dungeon II)
+  label: DD2 已确认的正文结构回归样本
+- page: Tokens
+  label: DD2 已确认的正文结构回归样本（无后缀共享机制页）
 discovery:
   method: sitemap
   sitemap_url: https://darkestdungeon.wiki.gg/sitemaps/sitemap-index-darkestdungeon_en.xml
@@ -65,7 +99,9 @@ engine_preference:
   preferred: cloakbrowser-fetch
 ---
 
-# 暗黑地牢一代冻结采集策略
+# 暗黑地牢系列冻结采集策略
+
+覆盖暗黑地牢一代本体及六项DLC（440 页已产出），以及暗黑地牢二代（DD2 页面集含无后缀共享机制页，采样已确认）。两代共用同一 MediaWiki 实例与正文结构，均按正文 HTML 采集路线执行。
 
 正文通过 CLI 读取 /wiki/ HTML，使用站点地图发现并按用户确认清单过滤；不调用 robots 禁止的 API。策略已注册、冻结，图片保留来源 URL。共享转换器清除 style 和标题锚点组件；管理链接映射时核验重定向和 Markdown 章节。
 

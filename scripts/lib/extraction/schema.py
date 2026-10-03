@@ -32,7 +32,7 @@ def validate_extraction(config):
         fail('', config, 'map'); return errors
     # Additional platform-specific keys remain owned by their consumers/Gate;
     # only governed fields are shape checked here.
-    fields = {'cleanup','cleanup_selectors','image_filtering','image_handling','infobox','infobox_field_handlers','lazyload','selectors','table_options','text_normalization','url_conversion','youtube_cleanup','engine'}
+    fields = {'heading_normalization','cleanup','cleanup_selectors','image_filtering','image_handling','infobox','infobox_field_handlers','lazyload','selectors','table_options','text_normalization','url_conversion','youtube_cleanup','engine'}
     for key in config:
         if key not in fields and key != 'pipeline': fail(key, config[key], 'supported extraction field')
     if 'pipeline' in config:
@@ -44,6 +44,29 @@ def validate_extraction(config):
         for index, name in enumerate(value):
             if not isinstance(name, str) or name not in names:
                 fail(f'{key}[{index}]', name, 'supported operation name')
+    heading_rules = config.get('heading_normalization', [])
+    if not isinstance(heading_rules, list):
+        fail('heading_normalization', heading_rules, 'list[map]')
+    else:
+        import soupsieve
+        for index, rule in enumerate(heading_rules):
+            path = f'heading_normalization[{index}]'
+            if not isinstance(rule, dict):
+                fail(path, rule, 'map'); continue
+            keys = {'heading_selector', 'label_selector'}
+            for key in rule.keys() - keys - {'label_aliases'}:
+                fail(path + '.' + key, rule[key], 'supported field')
+            aliases = rule.get('label_aliases', {})
+            if not isinstance(aliases, dict) or not all(isinstance(k, str) and k.strip() and isinstance(v, str) and v.strip() for k, v in aliases.items()):
+                fail(path + '.label_aliases', aliases, 'map of nonempty exact source-to-visible labels')
+            for key in keys:
+                value = rule.get(key)
+                if not isinstance(value, str) or not value.strip():
+                    fail(path + '.' + key, value, 'nonempty CSS selector'); continue
+                try:
+                    soupsieve.compile(value)
+                except soupsieve.SelectorSyntaxError:
+                    fail(path + '.' + key, value, 'valid CSS selector')
     maps = {'lazyload': {'enabled','placeholder_pattern','real_src_attr'},
             'url_conversion': {'enabled'}, 'youtube_cleanup': {'enabled'},
             'image_filtering': {'skip_patterns'}, 'table_options': {'transpose_wider_than'}}

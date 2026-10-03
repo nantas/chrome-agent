@@ -69,3 +69,9 @@
 `crawl (ordinary/sitemap/cache/prefetched)` → admitted HTML → `CLI convertCrawlHtml` → application Python `lib/crawl_conversion.py` → `convert_page_full`。已匹配策略转换失败终止该页，不切换通用转换器；本次成功 URL 集合决定 artifacts/merge。
 
 `sample_converter` 声明 input_scope → main/iterate 以当前规则构造 `self_check.build_source_context` → run_checks：S1 应保留图片、S9 导航来源、S5 重复来源。raw 证据独立于转换清理结果，notes/skip 保留在汇总。
+
+## 结构规范化与审计边界（2026-10-04）
+
+strategy extraction → schema.validate_extraction → preprocessor（列表/标题配对）→ converter（DOM tooltip/共享渲染）；原始 HTML + 同一规则 → self_check（来源期望），batch_audit 只做本地输入/身份映射和检查汇总。正式镜像共用 convert_page_full；本机 collection 脚本不是新内核或正式测试依赖。
+
+[验证与限制](openspec/changes/fix-conversion-structure-and-audit-fidelity/verification.md)。

@@ -393,3 +393,13 @@ probe 每个成功候选先检查原始 HTML。无可用正文时 main 返回 re
 S1 比较应保留图片 multiset，过滤皮肤图并检测同数量换图、重复图丢失；S9 比较来源导航区域的链接序列，内容词不再触发失败，正文/导航重叠无法归因时 skip；S5 对可见文本逐次匹配来源重复，源文笔误进入 notes，新增重复仍 fail。图片位置保留为文本边界，避免图标旁数值被拼接。汇总保留 pass/fail/skip、notes 与 skipped_checks，notes 不进入自动修复。
 
 [验证记录](../../openspec/changes/archive/2026-10-03-fix-crawl-strategy-conversion-and-self-checks/verification.md) 包含真实六页重放与来源反例；skip 不代表该项已经完整验证。
+
+## 离线批量来源审计（2026-10-04）
+
+运行 `.venv/bin/python -m scripts.explore.batch_audit --manifest <json> --output <report.json>`。manifest 包含 extraction 快照及 pages；每页提供 id、绝对 HTTP(S) source_url、html_path、markdown_path、input_scope。相对文件路径以 manifest 目录解析；可选 link_mapping 将本地文件映射到来源 URL。报告不得覆盖输入，缺文件/重复身份/缺来源 URL 显式报错，不访问网络。
+
+S6 按表格位置和单元格语法识别 delimiter，短横线数据行仍计数；S8 核对原始保留范围及声明配对的标题层级/次数；S5 的版本样式候选与来源有限预算归因，已有标识记 note，真实新增仍失败。嵌套图片链接与括号目的地址正确解析。
+
+报告给出每项 pass/fail/skip、notes、未映射目标与 complete_validation，缺来源不能伪造 pass。exit 2 表示输入/检查失败，overall_pass 不代表所有检查适用且完成。209 页验证仍有 Crypt Keeper 合并单元格重复词归因边界，S9 正文/导航重叠及跨集未映射链接会显式 skip。
+
+[验证与限制](../../openspec/changes/fix-conversion-structure-and-audit-fidelity/verification.md)。

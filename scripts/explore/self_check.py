@@ -39,9 +39,21 @@ _FIX_TO_NORMALIZATION = {
 def _markdown_links(markdown: str) -> list[dict]:
     """Read inline Markdown destinations with balanced parentheses and escapes."""
     links = []
-    pattern = re.compile(r'(!?)\[((?:\\.|[^\]\\])*)\]\(')
-    for match in pattern.finditer(markdown):
-        start = match.end()
+    stack, brackets, escaped = [], {}, False
+    for index, char in enumerate(markdown):
+        if escaped:
+            escaped = False
+        elif char == '\\':
+            escaped = True
+        elif char == '[':
+            stack.append(index)
+        elif char == ']' and stack:
+            brackets[stack.pop()] = index
+    for opening, closing in sorted(brackets.items()):
+        if markdown[closing + 1:closing + 2] != '(':
+            continue
+        is_image = opening > 0 and markdown[opening - 1] == '!'
+        start = closing + 2
         depth, end, escaped = 1, start, False
         while end < len(markdown):
             char = markdown[end]
@@ -63,16 +75,18 @@ def _markdown_links(markdown: str) -> list[dict]:
             destination = destination[1:destination.index('>')]
         else:
             destination = re.split(r'\s+[\"\']', destination, maxsplit=1)[0]
-        links.append({'image': bool(match[1]), 'label': match[2],
+        links.append({'image': is_image, 'label': markdown[opening + 1:closing],
                       'url': re.sub(r'\\(.)', r'\1', destination),
-                      'start': match.start(), 'end': end + 1})
+                      'start': opening - int(is_image), 'end': end + 1})
     return links
 
 
 def _source_url(url: str, context: dict) -> str:
     from urllib.parse import urljoin
     from html import unescape
-    return urljoin(context.get('base_url', ''), unescape(url))
+    resolved = urljoin(context.get('base_url', ''), unescape(url))
+    # Markdown destinations escape parentheses; compare the same resource identity.
+    return re.sub(r'%(28|29|27|20)', lambda m: chr(int(m[1], 16)), resolved, flags=re.I)
 
 
 def build_source_context(html: str, extraction: dict, *, input_scope: str,
@@ -323,8 +337,13 @@ def _visible_markdown(markdown: str) -> str:
     from html import unescape
     text = re.sub(r'(?ms)^\s*(```|~~~).*?^\s*\1[^\n]*$', '', markdown)
     text = re.sub(r'`[^`]*`', '', text)
-    for link in reversed(_markdown_links(text)):
-        text = text[:link['start']] + ('\ufffc' if link['image'] else link['label']) + text[link['end']:]
+    top_links = []
+    for link in _markdown_links(text):
+        if not top_links or link['start'] >= top_links[-1]['end']:
+            top_links.append(link)
+    for link in reversed(top_links):
+        label = '\ufffc' if link['image'] else _visible_markdown(link['label'])
+        text = text[:link['start']] + label + text[link['end']:]
     text = re.sub(r'https?://[^\s)]+', '', text)
     text = re.sub(r'\\([\\*_[\]()|])', r'\1', text)
     text = re.sub(r'[*_]', '', text)
@@ -345,6 +364,8 @@ def _source_text(context: dict) -> str:
         if getattr(node, 'name', '') in {'script', 'style', 'pre', 'code'}:
             return ''
         value = ''.join(visit(child) for child in getattr(node, 'children', []))
+        if getattr(node, 'name', '') in {'td', 'th'}:
+            value = re.sub(r'\s+', ' ', value)
         return '\n' + value + '\n' if getattr(node, 'name', '') in blocks else value
     return visit(context['soup'])
 
@@ -363,21 +384,21 @@ def s5_text_integrity(markdown: str, source_context: Optional[dict] = None) -> d
     """S5: Scan for formatting anomalies including HTML residue."""
     anomalies = []
 
-    # Missing space around version numbers
-    # Exclude: entity IDs in backticks (e.g. `5.100.1`) and multi-segment dotted numbers (e.g. 5.350.57)
-    # KI-2: also strip image markdown to avoid false matches on URL hash fragments
-    _scan_md = re.sub(r'!\[.*?\]\([^)]+?\)', '', markdown)
-    _scan_md = re.sub(r'https?://[^\s)]+', '', _scan_md)
-    _version_pattern = re.compile(
-        r"(?<!`)"           # not preceded by backtick
-        r"([a-z])"
-        r"(\d+(?:\.\d+)?)"  # only match 1-2 segment numbers (version-like: 1.0, v2)
-        r"(?![\d.])"        # not followed by more digits/dots
-        r"([a-z])"
-        r"(?!`)"            # not followed by backtick
-    )
-    if _version_pattern.search(_scan_md):
-        anomalies.append("Missing space around version numbers")
+    from collections import Counter
+    notes = []
+    # Full visible identifiers are finite source evidence, not URL substrings.
+    version_pattern = re.compile(r'\b[A-Za-z]*[a-z]\d+(?:\.\d+)?[a-z][A-Za-z0-9]*\b')
+    versions = version_pattern.findall(_visible_markdown(markdown))
+    has_source = source_context is not None and not source_context.get('error')
+    version_uncertain = bool(versions) and not has_source
+    if has_source:
+        budget = Counter(version_pattern.findall(_source_text(source_context)))
+        for candidate in versions:
+            if budget[candidate]:
+                budget[candidate] -= 1
+                notes.append('Source-existing identifier/version text: ' + candidate)
+            else:
+                anomalies.append('Missing space around version numbers: ' + candidate)
 
     # Base64 placeholder residue
     if "data:image/gif;base64" in markdown:
@@ -390,7 +411,6 @@ def s5_text_integrity(markdown: str, source_context: Optional[dict] = None) -> d
     # Source occurrences form a finite budget; a typo never exempts new copies.
     from collections import Counter
     repeats = _repetitions(_visible_markdown(markdown))
-    notes = []
     uncertain = bool(repeats) and (source_context is None or bool(source_context.get('error')))
     if repeats and not uncertain:
         budget = Counter(_repetitions(_source_text(source_context)))
@@ -417,8 +437,8 @@ def s5_text_integrity(markdown: str, source_context: Optional[dict] = None) -> d
             "notes": notes,
             "fixable_type": "space_normalization" if "Missing space" in "; ".join(anomalies) else None,
         }
-    return {"check": "S5", "status": "skip" if uncertain else "pass",
-            "detail": "Repetition source evidence unavailable" if uncertain else "No introduced anomalies detected",
+    return {"check": "S5", "status": "skip" if uncertain or version_uncertain else "pass",
+            "detail": "Text attribution source evidence unavailable" if uncertain or version_uncertain else "No introduced anomalies detected",
             "notes": notes}
 
 
@@ -469,9 +489,29 @@ def s6_table_integrity(html: str, markdown: str) -> dict:
             else:
                 in_header_run = False
             html_rows += 1
-    md_rows = [line for line in markdown.splitlines()
-               if line.strip().startswith("|")
-               and not re.match(r"^\|[\s\-:|]+\|$", line.strip())]
+    # A delimiter belongs directly after a header at the beginning of a table.
+    # Once inside a table, punctuation-only rows are ordinary data.
+    def cells(line):
+        return re.split(r'(?<!\\)\|', line.strip().strip('|'))
+
+    md_rows = []
+    lines = markdown.splitlines()
+    index = 0
+    while index + 1 < len(lines):
+        header, delimiter = lines[index].strip(), lines[index + 1].strip()
+        header_cells, delimiter_cells = cells(header), cells(delimiter)
+        if (not header.startswith('|') or not delimiter.startswith('|')
+                or len(header_cells) != len(delimiter_cells)
+                or not all(re.fullmatch(r'\s*:?-+:?\s*', c) for c in delimiter_cells)):
+            index += 1
+            continue
+        if any(c.strip() for c in header_cells):
+            md_rows.append(header)
+        index += 2
+        while index < len(lines) and lines[index].strip().startswith('|'):
+            if any(c.strip() for c in cells(lines[index])):
+                md_rows.append(lines[index])
+            index += 1
     if html_rows == 0:
         return {"check": "S6", "status": "skip", "detail": "No data rows in original tables"}
 
@@ -510,7 +550,7 @@ def s7_image_wrapper(markdown: str, page_type: str = "article") -> dict:
 # ------------------------------------------------------------------
 
 
-def s8_section_completeness(html: str, markdown: str) -> dict:
+def s8_section_completeness(html: str, markdown: str, source_context: Optional[dict] = None) -> dict:
     """S8: Verify all mw-headline sections are preserved as Markdown headings."""
     if not html:
         return {"check": "S8", "status": "skip", "detail": "No HTML provided"}
@@ -518,11 +558,43 @@ def s8_section_completeness(html: str, markdown: str) -> dict:
     soup = BeautifulSoup(html, "html.parser")
     # Extract mw-headline texts (excluding TOC "Contents" heading)
     def plain_heading(text):
-        text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)
-        text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
+        text = _visible_markdown(text).replace('\ufffc', '')
         text = re.sub(r"[*`_]", "", text)
         text = re.sub(r"\s+([,.;:!?\)])", r"\1", text)
         return re.sub(r"\s+", " ", text).strip()
+
+    if source_context is not None:
+        from collections import Counter
+        from scripts.lib.extraction.preprocessor import heading_pairs
+        if source_context.get('error'):
+            return {'check': 'S8', 'status': 'skip', 'detail': source_context['error']}
+        body = source_context['body']
+        pairs, diagnostics = heading_pairs(body, source_context['extraction'].get('heading_normalization', []))
+        paired = {id(h): label for h, label in pairs}
+        expected = []
+        notes = [d['reason'] + ': ' + d['heading'] for d in diagnostics]
+        for heading in body.find_all(re.compile(r'^h[1-6]$')):
+            if id(heading) not in source_context['retained']:
+                continue
+            label = paired.get(id(heading)) or heading.select_one('.mw-headline') or heading
+            text = plain_heading(label.get_text(' ', strip=True))
+            if not text or text == 'Contents':
+                continue
+            hidden = heading.select('[style*="display:none"], [style*="display: none"]')
+            if id(heading) not in paired and (hidden or any('display:none' in a.get('style', '').replace(' ', '') for a in [heading, *heading.parents])):
+                notes.append('Hidden heading excluded: ' + text)
+                continue
+            expected.append((max(2, int(heading.name[1])), text))
+        actual = [(len(m.group(1)), plain_heading(m.group(2)))
+                  for m in re.finditer(r'^(#{1,6})[ \t]+(.+)$', markdown, re.M)]
+        missing = Counter(expected) - Counter(actual)
+        # A duplicate configured group is a semantic defect, even if one copy survived.
+        paired_texts = {plain_heading(h.get_text(' ', strip=True)) for _, h in pairs}
+        extra = {key: count for key, count in (Counter(actual) - Counter(expected)).items() if key[1] in paired_texts}
+        if missing or extra:
+            return {'check': 'S8', 'status': 'fail', 'detail': f'Heading mismatch: missing {dict(missing)}, extra {extra}', 'notes': notes, 'fixable_type': 'section_loss'}
+        return {'check': 'S8', 'status': 'skip' if diagnostics or not expected else 'pass',
+                'detail': f'{len(expected)} intended headings verified', 'notes': notes}
 
     expected_sections = []
     for span in soup.find_all("span", class_="mw-headline"):
@@ -685,6 +757,21 @@ def s12_infobox_semantic_quality(markdown: str) -> dict:
 # ------------------------------------------------------------------
 
 
+def _structural_source(context: dict) -> str:
+    """Retained original region for structural counts, not rendered cleanup output."""
+    original = context['body']
+    clone = copy.deepcopy(original)
+    pairs = list(zip(original.descendants, clone.descendants))
+    for source, target in reversed(pairs):
+        if id(source) not in context['retained'] and getattr(target, 'name', None):
+            target.decompose()
+    infobox = context['extraction'].get('infobox', {})
+    if infobox.get('enabled'):
+        for box in clone.select(infobox.get('selector', 'aside.portable-infobox')):
+            box.decompose()
+    return str(clone)
+
+
 def run_checks(
     html: str,
     markdown: str,
@@ -719,9 +806,9 @@ def run_checks(
     results.append(s3_infobox_extraction(wikitext, markdown))
     results.append(s4_empty_content(markdown))
     results.append(s5_text_integrity(markdown, source_context))
-    results.append(s6_table_integrity(html, markdown))
+    results.append(s6_table_integrity(_structural_source(source_context) if source_context and not source_context.get('error') else html, markdown))
     results.append(s7_image_wrapper(markdown, page_type))
-    results.append(s8_section_completeness(html, markdown))
+    results.append(s8_section_completeness(html, markdown, source_context))
     results.append(s9_navigation_leakage(markdown, source_context))
     results.append(s10_youtube_title_quality(markdown))
     results.append(s11_zero_relative_links(markdown))

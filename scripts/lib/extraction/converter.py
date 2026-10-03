@@ -79,30 +79,28 @@ class HtmlToMarkdownConverter:
         Processes HTML to combine tooltip spans where an icon link and text
         link point to the same URL into a single combined link element.
         """
-        # Remove opening tooltip spans (keep inner content)
-        html = re.sub(r'<span\s+class="tooltip"[^>]*>', '', html)
-        # Remove icon-size spans (keep inner content)
-        html = re.sub(r'<span\s+style="--tb-icon-size:[^"]*"[^>]*>', '', html)
-        # Remove all closing span tags
-        html = re.sub(r'</span>', '', html)
+        from bs4 import BeautifulSoup, NavigableString
 
-        # Merge consecutive <a> pairs with same href where first has <img>
-        def _merge_pair(m):
-            url1 = m.group(1)
-            img_tag = m.group(2)
-            url2 = m.group(3)
-            text = m.group(4)
-            if url1 == url2:
-                return f'<a href="{url1}">{img_tag} {text}</a>'
-            return m.group(0)
-
-        html = re.sub(
-            r'<a\s+href="([^"]*)"[^>]*>(<img[^>]*>)\s*</a>\s*'
-            r'<a\s+href="([^"]*)"[^>]*>([^<]+)</a>',
-            _merge_pair,
-            html,
-        )
-        return html
+        soup = BeautifulSoup(html, "html.parser")
+        for span in list(soup.find_all("span")):
+            icon_style = "--tb-icon-size:" in span.get("style", "")
+            if "tooltip" in (span.get("class") or []) or icon_style:
+                span.unwrap()
+        for icon in list(soup.find_all("a")):
+            if not icon.find("img") or icon.get_text(strip=True):
+                continue
+            sibling = icon.next_sibling
+            while isinstance(sibling, NavigableString) and not sibling.strip():
+                sibling = sibling.next_sibling
+            if (getattr(sibling, "name", None) != "a"
+                    or not icon.get("href") or icon.get("href") != sibling.get("href")
+                    or sibling.find("img") or not sibling.get_text(strip=True)):
+                continue
+            icon.append(" ")
+            for child in list(sibling.contents):
+                icon.append(child.extract())
+            sibling.decompose()
+        return str(soup)
 
     # ------------------------------------------------------------------
     # YouTube oEmbed extraction
@@ -277,7 +275,7 @@ class HtmlToMarkdownConverter:
             if level == 1:
                 level = 2
             text = self._render_inline_children(node, source_dir=source_dir)
-            return f'{"#" * level} {text}'.strip()
+            return f'{"#" * level} {text}'.strip() if text.strip() else ""
 
         if tag in {"ul", "ol"}:
             return self._render_list(node, source_dir=source_dir, level=list_level)
@@ -809,7 +807,7 @@ class HtmlToMarkdownConverter:
             if part == "\n":
                 result = result.rstrip() + "\n"
                 continue
-            if not result or result.endswith(("\n", " ")):
+            if not result or result.endswith(("\n", " ")) or (result.endswith("[") and not part.startswith("[")):
                 result += part
                 continue
             if part.startswith(("\n", ".", ",", ";", ":", "!", "?", ")", "]")):

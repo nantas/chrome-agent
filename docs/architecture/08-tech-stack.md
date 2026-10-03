@@ -436,3 +436,11 @@ node --test tests/chrome-agent-runtime.test.mjs
 `node --test tests/crawl-strategy-conversion.test.mjs` 运行真实 crawl 编排和应用层 Python bridge，只替换获取边界。覆盖普通/sitemap/cache/预取、空规则、infobox/post-op 等价、挑战页拒绝、bridge 失败、旧产物排除、准确 URL 身份和缓存范围限制。纯 fixture 不需要全局引擎或网络。
 
 `.venv/bin/python -m unittest tests.test_self_check_source tests.test_self_check_integration -v` 验证来源 scope、图片 multiset、S9 正反例、S5 notes/新增重复和 main/iterate 的真实转换与审计集成。图片边界、重复预算、来源缺失均有回归。现场 outputs 仅为附加证据，正式测试不依赖它。参见 [verification](../../openspec/changes/archive/2026-10-03-fix-crawl-strategy-conversion-and-self-checks/verification.md)。
+
+## 结构与离线审计回归（2026-10-04）
+
+定向运行 `.venv/bin/python -m unittest tests.test_conversion_structure tests.test_heading_normalization tests.test_audit_fidelity tests.test_batch_audit -v`；集成等价覆盖 `tests/test_convert_equivalence.py`、`tests/test_self_check_integration.py` 与 `node --test tests/crawl-strategy-conversion.test.mjs`。全部正式 fixture 自包含，网络仅在获取边界隔离；outputs 内 209 页重放仅作补充证据。
+
+本次全量 Python 287、Node 152、DD2 site-samples 13/13 通过。3 个 DD2 golden 经图片 multiset、链接目标、可见词项与原 DOM 子列表结构审查后更新，禁止仅因为旧 golden 失败就覆盖。
+
+[验证与限制](../../openspec/changes/fix-conversion-structure-and-audit-fidelity/verification.md)。

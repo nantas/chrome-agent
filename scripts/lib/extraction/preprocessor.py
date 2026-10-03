@@ -33,11 +33,61 @@ def preprocess_html(
     return _preprocess_explore(html, config)
 
 
+def heading_pairs(soup, rules: list) -> tuple:
+    """Find declared source pairs without mutating evidence; return diagnostics."""
+    import soupsieve
+    pairs, diagnostics, used = [], [], set()
+    for rule in rules:
+        for heading in soup.select(rule['heading_selector']):
+            if id(heading) in used:
+                continue
+            label = heading.find_next_sibling()
+            text = ' '.join(heading.get_text(' ', strip=True).split())
+            if (not re.fullmatch(r'h[1-6]', heading.name or '')
+                    or not heading.select('[style*="display:none"], [style*="display: none"]')
+                    or label is None or not soupsieve.match(rule['label_selector'], label)
+                    or not text or rule.get('label_aliases', {}).get(text, text) != ' '.join(label.get_text(' ', strip=True).split())):
+                diagnostics.append({'heading': text, 'reason': 'heading_pair_unmatched'})
+                continue
+            if id(label) in used:
+                diagnostics.append({'heading': text, 'reason': 'heading_pair_ambiguous'})
+                continue
+            used.update((id(heading), id(label)))
+            pairs.append((heading, label))
+    return pairs, diagnostics
+
+
+def normalize_heading_pairs(soup, rules: list) -> None:
+    pairs, _ = heading_pairs(soup, rules)
+    for heading, label in pairs:
+        identifiers = [dict((key, node[key]) for key in ('id', 'name') if node.has_attr(key))
+                       for node in heading.find_all(True) if node.has_attr('id') or node.has_attr('name')]
+        if not heading.get('id'):
+            for attrs in identifiers:
+                if attrs.get('id'):
+                    heading['id'] = attrs['id']
+                    break
+        heading.clear()
+        for attrs in identifiers:
+            if attrs.get('id') == heading.get('id'):
+                attrs = {key: value for key, value in attrs.items() if key != 'id'}
+            if not attrs:
+                continue
+            anchor = soup.new_tag('span', attrs=attrs)
+            heading.append(anchor)
+        for child in list(label.contents):
+            heading.append(child.extract())
+        label.decompose()
+
+
 def _preprocess_explore(html: str, config: dict) -> str:
     """Full 6-step preprocessing for explore path."""
     from bs4 import BeautifulSoup
 
     soup = BeautifulSoup(html, "html.parser")
+
+    # Normalize declared semantic headings before any hidden-content cleanup.
+    normalize_heading_pairs(soup, config.get('heading_normalization', []))
 
     # Step 1: Remove infobox container
     infobox_cfg = config.get("infobox", {})
@@ -131,6 +181,49 @@ def _apply_cleanup_ops(soup, cleanup: list[str]) -> None:
                     ".catlinks", "[class*=category]", "[id*=catlinks]"):
             for el in soup.select(sel):
                 el.decompose()
+
+    if "strip_empty_paragraphs" in cleanup:
+        # Optional empty-content cleanup; never discard named anchors.
+        for el in soup.find_all("p"):
+            if el.attrs is None:
+                continue
+            if el.has_attr("id") or el.has_attr("name") or el.select("[id], [name]") or el.find(["img", "table", "ul", "ol", "figure", "video", "audio", "iframe"]):
+                continue
+            if not el.get_text(strip=True):
+                el.decompose()
+
+    if "unwrap_nowrap_spans" in cleanup:
+        # Legacy presentation cleanup, not required for block-boundary integrity.
+        for el in list(soup.find_all("span", class_="nowrap")):
+            el.unwrap()
+
+    if "strip_empty_inline_tags" in cleanup:
+        # Preserve media and identifiers even when visible text is empty.
+        for el in soup.find_all(["span", "a", "b", "i", "em", "strong", "small", "big", "font", "u", "sup", "sub", "abbr"]):
+            if el.attrs is None:
+                continue
+            if el.has_attr("id") or el.has_attr("name") or el.select("[id], [name]") or el.find(["img", "table", "ul", "ol", "figure", "video", "audio", "iframe"]):
+                continue
+            if not el.get_text(strip=True):
+                el.decompose()
+
+    if "unwrap_list_item_wrappers" in cleanup:
+        # MediaWiki 容错渲染：li 被 big/span/div 等表现性元素包裹时不再是
+        # ul/ol 直接子节点，共享列表渲染器只接受直接 li。
+        # 解包这些包裹元素，使 li 回到直接子节点位置。
+        _WRAPPER_TAGS = ("big", "span", "div", "font", "b", "i", "small", "center", "p")
+        while True:  # Each successful pass removes a wrapper; finite DOM guarantees termination.
+            changed = False
+            for lst in soup.find_all(["ul", "ol"]):
+                for child in list(lst.children):
+                    if getattr(child, "name", None) not in _WRAPPER_TAGS:
+                        continue
+                    # Only li whose nearest list is this one belongs here.
+                    if any(li.find_parent(["ul", "ol"]) is lst for li in child.find_all("li")):
+                        child.unwrap()
+                        changed = True
+            if not changed:
+                break
 
     if "convert_nested_images" in cleanup:
         for fig in soup.find_all("figure"):

@@ -3,6 +3,10 @@
 # doctor --check capabilities cross-validates this file against code, specs, and AGENTS.md.
 
 convert:
+  normalizations:
+    - name: semantic_heading_pairs
+      implemented_in: scripts/lib/extraction/preprocessor.py
+      strategy_field: extraction.heading_normalization
   mirrors:
     - name: crawl_html_conversion
       implemented_in: scripts/lib/crawl_conversion.py
@@ -21,6 +25,18 @@ convert:
       implemented_in: scripts/lib/extraction/preprocessor.py
       strategy_field: extraction.cleanup
     - name: unwrap_image_wrappers
+      implemented_in: scripts/lib/extraction/preprocessor.py
+      strategy_field: extraction.cleanup
+    - name: unwrap_list_item_wrappers
+      implemented_in: scripts/lib/extraction/preprocessor.py
+      strategy_field: extraction.cleanup
+    - name: strip_empty_inline_tags
+      implemented_in: scripts/lib/extraction/preprocessor.py
+      strategy_field: extraction.cleanup
+    - name: strip_empty_paragraphs
+      implemented_in: scripts/lib/extraction/preprocessor.py
+      strategy_field: extraction.cleanup
+    - name: unwrap_nowrap_spans
       implemented_in: scripts/lib/extraction/preprocessor.py
       strategy_field: extraction.cleanup
     - name: strip_footer
@@ -118,6 +134,16 @@ fetch:
 
 # Existing discover capability: kernels plus explicitly identified thin adapters.
 discover:
+  audits:
+    - name: source_aware_batch_audit
+      implemented_in: scripts/explore/batch_audit.py
+      capability: discover
+      sub_capability: site_analysis
+      execution_path: explore
+      strategy_variant: config_driven
+      input_format: html_generic
+      relationship: standalone
+      equivalence: tests/test_batch_audit.py
   kernels:
     - name: allpages_discovery
       implemented_in: scripts/explore/discovery_allpages.py

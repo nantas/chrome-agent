@@ -571,3 +571,9 @@ Discover has one page-enumeration ownership boundary in explore: `page_discovery
 `lib/crawl_conversion.py` 是 convert / scrapling_traversal / config_driven / HTML 的应用层镜像，委托 `convert_page_full`，注册及等价证明见 capability-registry.yaml 与 `tests/crawl-strategy-conversion.test.mjs`。普通、sitemap、预取和缓存入口复用已准入 HTML。匹配策略的转换失败不得退回 Scrapling/JS 通用转换；独立 fetch 与无策略通用路线保持原契约。
 
 自检保留 raw HTML、显式来源 scope 和策略内容范围；检查器不以转换后清理结果作为唯一来源证据。实施证据见 [verification](../../openspec/changes/archive/2026-10-03-fix-crawl-strategy-conversion-and-self-checks/verification.md)。
+
+## 共享结构规范化与离线审计（2026-10-04）
+
+convert 仍只有 converter.py 一个 HTML 内核。tooltip 解包为 DOM 结构操作，列表包装与语义标题经 extraction 配置驱动；无站点转换器分叉。preprocessor.heading_pairs 是转换/来源审计共用的声明解释器，审计从原始 HTML 构造期望，不用渲染结果自证正确。新增 explore/batch_audit.py 是 discover/site_analysis 的离线质量入口，调用 self_check；能力注册在 convert.normalizations 与 discover.audits，测试为 tests/test_heading_normalization.py、tests/test_batch_audit.py。
+
+[验证与限制](../../openspec/changes/fix-conversion-structure-and-audit-fidelity/verification.md)。

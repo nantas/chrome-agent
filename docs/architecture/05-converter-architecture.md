@@ -273,3 +273,11 @@ Key diagnostic: render individual blocks independently and compare to combined o
 `convertTraversalToMarkdown` 对已匹配策略调用 `convertCrawlHtml` → `python -m scripts.lib.crawl_conversion` → `convert_page_full`。bridge 通过 JSON stdin 接收 HTML 文件、隔离输出文件和规则；Node 使用 `resolveAppPython`，不在引擎 venv 执行应用代码。bridge 不实现转换算法。
 
 共享 core 字节在 crawl 链接相对化/merge 前比较；手工 DD2 基线的标题/来源包装不属于 core。成功后原子发布 Markdown，失败保留诊断而不执行 selector-only 或 JS 转换兜底。现有表格内核、infobox 和 post-ops 被直接复用。测试：`tests/crawl-strategy-conversion.test.mjs`；[验证记录](../../openspec/changes/archive/2026-10-03-fix-crawl-strategy-conversion-and-self-checks/verification.md)。
+
+## 结构保真修复（2026-10-04）
+
+`merge_tooltip_links` 只解包 tooltip/icon-size 目标容器，保留其他 span 完整嵌套，不再全局删除闭标签。同目的地的相邻图标/文字链接可合并，不同目的地保持独立。仅隐藏内容的空 heading 不输出裸井号。
+
+`unwrap_list_item_wrappers` 通过严格减少包装节点的迭代处理任意有限深度，尊重最近列表所属关系与嵌套编号。DD2 不再启用 strip_empty_inline_tags、strip_empty_paragraphs、unwrap_nowrap_spans 作为块边界绕过；这些可选操作仍兼容，空 id/name 锚点与媒体必须保留。标题规范化在隐藏清理前运行。测试覆盖真实 convert_page_full 及 explore/pipeline/crawl 镜像。
+
+[验证与限制](../../openspec/changes/fix-conversion-structure-and-audit-fidelity/verification.md)。
