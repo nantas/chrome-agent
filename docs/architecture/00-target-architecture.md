@@ -565,3 +565,9 @@ Discover has one page-enumeration ownership boundary in explore: `page_discovery
 ## Fetch content admission（2026-10-02）
 
 `lib/content_admission.py` 是 A=fetch/sub_capability=content_admission、B=shared、C=generic、D=HTML 的 kernel。probe/sample、CLI bridge、MediaWiki cache/convert、CDP fetch/convert 是消费边界；不新增引擎。注册见 capability-registry.yaml，等价证明见 tests/test_content_admission.py 与 tests/content-admission-fetch.test.mjs。成功获取候选必须先准入；该判定不是完整内容质量评分。
+
+## Crawl HTML 镜像（2026-10-03）
+
+`lib/crawl_conversion.py` 是 convert / scrapling_traversal / config_driven / HTML 的应用层镜像，委托 `convert_page_full`，注册及等价证明见 capability-registry.yaml 与 `tests/crawl-strategy-conversion.test.mjs`。普通、sitemap、预取和缓存入口复用已准入 HTML。匹配策略的转换失败不得退回 Scrapling/JS 通用转换；独立 fetch 与无策略通用路线保持原契约。
+
+自检保留 raw HTML、显式来源 scope 和策略内容范围；检查器不以转换后清理结果作为唯一来源证据。实施证据见 [verification](../../openspec/changes/archive/2026-10-03-fix-crawl-strategy-conversion-and-self-checks/verification.md)。

@@ -430,3 +430,9 @@ node --test tests/chrome-agent-runtime.test.mjs
 `tests/sitemap-discovery-files.test.mjs` 使用 node:test、临时文件和内置 zlib，执行真实 sitemap discovery 编排，只隔离 curl 网络边界。覆盖顶层/子文件 gzip、混合编码、扩展名反例、过滤去重、压缩损坏、部分失败及失败报告证据入口；同时验证旧 handoff 调用者的 manifest/log 链接与去重。测试不依赖真实网站、未跟踪策略或本机 outputs。
 
 运行 `node --test tests/sitemap-discovery-files.test.mjs tests/sitemap-driven-crawl.test.mjs tests/explore-handoff.test.mjs`。压缩能力必须在文件读取到编排的边界回归，仅对 XML parser 传入预解码字符串不足以覆盖该故障。
+
+### Crawl 与来源感知自检回归
+
+`node --test tests/crawl-strategy-conversion.test.mjs` 运行真实 crawl 编排和应用层 Python bridge，只替换获取边界。覆盖普通/sitemap/cache/预取、空规则、infobox/post-op 等价、挑战页拒绝、bridge 失败、旧产物排除、准确 URL 身份和缓存范围限制。纯 fixture 不需要全局引擎或网络。
+
+`.venv/bin/python -m unittest tests.test_self_check_source tests.test_self_check_integration -v` 验证来源 scope、图片 multiset、S9 正反例、S5 notes/新增重复和 main/iterate 的真实转换与审计集成。图片边界、重复预算、来源缺失均有回归。现场 outputs 仅为附加证据，正式测试不依赖它。参见 [verification](../../openspec/changes/archive/2026-10-03-fix-crawl-strategy-conversion-and-self-checks/verification.md)。

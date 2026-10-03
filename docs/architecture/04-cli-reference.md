@@ -344,3 +344,11 @@ Explore 成功或失败均提供诊断文件入口及实际引擎链。内部调
 顶层 gzip 损坏返回 `sitemap_decompress_error`；子文件损坏记录 `decompress_error`，部分失败继续汇总正常文件并返回告警，全部失败仍为 `sitemap_all_subs_failed`。解压成功但内容非 sitemap 时仍为解析错误。失败 handoff 链接实际存在的原始 sitemap 文件，不再列出未生成的 `manifest.json`。
 
 本路径仅产出发现清单；确认页面范围后才使用 `--from-manifest` 进入正文提取。实现与验证见 [gzip sitemap change](../../openspec/changes/archive/2026-10-03-fix-gzip-sitemap-discovery/verification.md)。
+
+## Crawl 策略转换契约（2026-10-03）
+
+已匹配策略的 crawl 在获取并准入 HTML 后，经应用层 Python bridge 调用共享 `convert_page_full`，消费完整 extraction；缺失 extraction 使用空规则，非法规则或转换失败明确记录失败，不降级通用 Markdown。该行为覆盖普通遍历、sitemap manifest、预取及 `--phase convert`。已获取字节直接用于转换；`--parallel` 不再为转换重复获取已取得的页面。
+
+缓存 `--phase convert --from-manifest` 不预检抓取引擎、不发起网络获取，保持 maxPages/excludeCategory 的范围缩减。当前成功页按 URL 记录；失败页的旧 Markdown 不列为本次产物、不参与 merge。独立 fetch 的 selector helper 和未匹配策略的通用路线不变。
+
+证据：[crawl 转换与自检 verification](../../openspec/changes/archive/2026-10-03-fix-crawl-strategy-conversion-and-self-checks/verification.md)。

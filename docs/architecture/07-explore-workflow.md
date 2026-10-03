@@ -385,3 +385,11 @@ probe 每个成功候选先检查原始 HTML。无可用正文时 main 返回 re
 每次尝试记录 stage、executed、process_exit、error_type 和证据路径；stage 区分 preflight/process/admission/pending。未执行的浏览器 fallback 为 pending，不能当作已尝试成功。每个 attempt 落盘 JSON，stderr 与 HTML 分开，probe-chain.json 汇总尝试链；CLI 的 discovery-result.json 保留完整 discovery 结果。
 
 没有正文时仍返回 engine_path 和诊断 artifacts。参数/响应协议等内部错误触发现有 handoff；内容拒绝继续呈现明确的失败与授权 fallback 指引，不自动接管用户浏览器。恢复取得正文只允许进入后续 discovery，策略审查、freeze 和 crawl 确认门保持有效。
+
+## Self-check 来源契约（2026-10-03）
+
+采样结果声明 `input_scope`：HTML 引擎为 full_document，MediaWiki API 为 content_fragment。main/iterate 每次用当前 extraction 调用 `build_source_context`，把 raw 来源、正文范围、独立 infobox 和明确排除区域传入 `run_checks(source_context=...)`。全文 selector 不命中明确报错；旧调用仍可用，证据不足的检查显式 skip。
+
+S1 比较应保留图片 multiset，过滤皮肤图并检测同数量换图、重复图丢失；S9 比较来源导航区域的链接序列，内容词不再触发失败，正文/导航重叠无法归因时 skip；S5 对可见文本逐次匹配来源重复，源文笔误进入 notes，新增重复仍 fail。图片位置保留为文本边界，避免图标旁数值被拼接。汇总保留 pass/fail/skip、notes 与 skipped_checks，notes 不进入自动修复。
+
+[验证记录](../../openspec/changes/archive/2026-10-03-fix-crawl-strategy-conversion-and-self-checks/verification.md) 包含真实六页重放与来源反例；skip 不代表该项已经完整验证。

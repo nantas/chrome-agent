@@ -1,39 +1,17 @@
-# Specification: explore-workflow
+# Specification Delta
 
-> Capability spec. Originated from openspec change [`capability-governance`](../../changes/capability-governance/proposal.md) — integrates a capability gate into the explore freeze phase.
+## Capability 对齐（已确认）
 
-## Purpose
+- Capability: `explore-workflow`
+- 来源: `proposal.md` / 用户确认 P-2～P-4
+- 变更类型: modified（增加既有 self_check 的来源契约）
+- 用户确认摘要: 修复 S1 全页计数、S9 内容词误报、S5 源文笔误误报，与 P-1 同一 change。
 
-Define explore capability gating and source-aware content validation so genuine conversion failures remain distinguishable from source defects and insufficient evidence.
+## 规范真源声明
 
-## Requirements
+本文件为自检行为真源；design/tasks/verification SHALL 引用本文件。
 
-### Requirement: capability-gate-module
-
-`scripts/explore/capability_gate.py` SHALL provide `check_requirements(strategy_scaffold, registry)` that returns a list of unmatched capability gaps. Each gap entry SHALL include `capability`, `issue`, and `detail` fields.
-
-#### Scenario: gate-detects-unknown-cleanup-op
-- **WHEN** scaffold contains `extraction.cleanup: ["unknown_op"]`
-- **AND** registry has no entry for `unknown_op`
-- **THEN** `check_requirements()` SHALL return a gap entry with `capability: "convert"` and `issue: "new_cleanup_op"`
-
-#### Scenario: gate-passes-known-cleanup-op
-- **WHEN** scaffold contains `extraction.cleanup: ["strip_fandom_infobox_tables"]`
-- **AND** registry has an entry for `strip_fandom_infobox_tables`
-- **THEN** `check_requirements()` SHALL return an empty list
-
-### Requirement: freeze-gap-check
-
-`scripts/explore/freeze.py` SHALL call `capability_gate.check_requirements()` before writing strategy.md. On gap detection, SHALL write `capability-gap.yaml` to the run directory and exit with a non-zero code.
-
-#### Scenario: freeze-exits-on-gap
-- **WHEN** gap is detected
-- **THEN** `capability-gap.yaml` SHALL be written
-- **AND** process SHALL exit with code 5 (CAPABILITY_GAP_EXIT_CODE)
-
-#### Scenario: freeze-continues-without-gap
-- **WHEN** no gaps are detected
-- **THEN** freeze SHALL write strategy.md normally and exit 0
+## ADDED Requirements
 
 ### Requirement: self-check-source-context
 Self-check SHALL distinguish original HTML, its declared input scope (full document or content fragment), strategy-selected source content, intentionally excluded content and separately retained infobox content. It SHALL preserve original evidence and SHALL NOT derive expected retention solely from already cleaned/converter-produced HTML. Main and iterate SHALL supply the same current extraction rules and source context. Legacy callers SHALL remain callable, but missing evidence SHALL be explicit and SHALL NOT fabricate a pass for an evidence-dependent check. A declared full-document selector that does not match SHALL produce an explicit scope failure rather than silently audit the whole page; explicitly identified API content fragments SHALL remain valid without an outer selector wrapper.

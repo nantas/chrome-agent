@@ -1,23 +1,17 @@
-# Specification: fetch-strategy-selector
-
-## Purpose
-
-Define configuration-driven selector handling for standalone fetch and shared conversion for matched-strategy crawl, preserving safe argument transport and explicit failure behavior.
+# Specification Delta
 
 ## Capability 对齐（已确认）
 
 - Capability: `fetch-strategy-selector`
-- 来源: `proposal.md` / 用户已确认 capabilities
-- 变更类型: `new`
-- 用户确认摘要: 用户确认采用单一新增 capability `fetch-strategy-selector`，范围覆盖 `fetch` 命令（`runFetch()`）与 `crawl` 命令的提取循环（一次性修复所有内容获取路径的同类 `--ai-targeted` 硬编码缺陷）。
+- 来源: `proposal.md` / P-1 共享转换路由的必要契约同步
+- 变更类型: modified
+- 用户确认摘要: 已匹配策略的 crawl 使用共享转换，失败不降级；独立 fetch 不扩大范围。
 
 ## 规范真源声明
 
-- 本文件是该 capability 在本次 change 中的行为规范真源
-- design / tasks / verification 必须引用本文件
-- 项目页面回写不得替代本文件
+本文件更新旧 selector-only 契约；design/tasks/verification SHALL 引用本文件。
 
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: strategy-content-selector-passthrough
 For standalone `fetch` using Scrapling-family Markdown conversion, the system SHALL obtain a nonempty content selector from the matched strategy and pass it as `-s <selector>` rather than `--ai-targeted`. For crawl with a matched strategy, the system SHALL instead pass complete extraction rules to the shared HTML conversion entry as specified by `convert`; it SHALL NOT require Scrapling selector-only conversion for normal, prefetched or cached HTML. Selectors SHALL remain configuration-driven. MediaWiki acquisition SHALL retain its strategy-path context; acquisition SHALL NOT masquerade as Markdown conversion.
@@ -70,12 +64,3 @@ Where selectors are passed to Scrapling, the system SHALL use discrete argv elem
 #### Scenario: selector-with-special-characters
 - **WHEN** a selector contains quotes, brackets or spaces
 - **THEN** it SHALL reach the selected consumer unchanged as data and SHALL NOT be interpreted by a shell.
-
-## 非目标（显式排除）
-
-以下行为明确不在本 capability 范围内，记录以防 scope creep：
-
-- **`extraction.selectors.title` 与 `cleanup` 字段的消费**：独立 fetch 仅消费 `content` 选择器；匹配策略的 crawl 按 convert 规范消费完整 extraction 配置，包含共享内核支持的 cleanup。
-- **`scrape` 与 `explore` 路径的同类修复**：这些路径（`chrome-agent-cli.mjs:2669/3450`）共享相同缺陷模式，但本 change 不修复；共享 helper 的引入使其可在后续 change 中低成本启用。
-- **提取质量的自适应回退**：独立 fetch 与未匹配策略的通用 crawl 路径中，`--ai-targeted` 回退是"无选择器"触发的确定性回退，不基于提取结果质量（如字节数阈值）做动态切换。匹配策略的 crawl 转换失败必须明确失败，禁止通用转换降级。
-- **选择器有效性校验**：独立 fetch 的参数透传不额外校验选择器语法或命中率；crawl 的配置与转换错误按 convert 的失败契约处理；无效选择器的诊断由站点策略维护流程（explore / 样本质量检测）负责。

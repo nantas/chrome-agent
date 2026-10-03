@@ -15,7 +15,7 @@ if _project_root not in sys.path:
 import yaml
 
 from sample_converter import convert
-from self_check import run_checks, summarize, plan_remediation
+from self_check import run_checks, summarize, plan_remediation, build_source_context
 from scripts.lib.extraction.schema import validate_extraction
 
 
@@ -103,6 +103,8 @@ def iterate(
                 html, sr["markdown"], "", known_pages, sr.get("type", "article"),
                 wiki_domain=domain,
                 skip_patterns=extraction.get("image_filtering", {}).get("skip_patterns"),
+                source_context=build_source_context(html, extraction,
+                    input_scope=sr.get("input_scope", "unknown"), source_url=sr.get("url", "")),
             )
             all_checks.extend(checks)
 

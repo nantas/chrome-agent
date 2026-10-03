@@ -63,3 +63,9 @@
 ## 正文准入边界
 
 `lib/content_admission.py` 是 fetch 的共享准入内核：Explore probe/sample、CLI HTML 获取与 Scrapling 缓存读取、MediaWiki cache/convert 和 CDP fetch/convert 均消费它。Node 经应用层 Python JSON bridge 调用；引擎环境只获取原始内容。判定在 selector/Markdown 前执行，失败证据不进入成功缓存或当前 assembly。
+
+## Crawl 转换与自检来源边界
+
+`crawl (ordinary/sitemap/cache/prefetched)` → admitted HTML → `CLI convertCrawlHtml` → application Python `lib/crawl_conversion.py` → `convert_page_full`。已匹配策略转换失败终止该页，不切换通用转换器；本次成功 URL 集合决定 artifacts/merge。
+
+`sample_converter` 声明 input_scope → main/iterate 以当前规则构造 `self_check.build_source_context` → run_checks：S1 应保留图片、S9 导航来源、S5 重复来源。raw 证据独立于转换清理结果，notes/skip 保留在汇总。

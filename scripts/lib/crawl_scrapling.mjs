@@ -32,7 +32,8 @@ export async function runCrawlScrapling(ctx, opts, api) {
 const pages = doc?.structure?.pages ?? [];
 let events = [];
 let fallbackReason = null;
-const preflight = api.cache.runScraplingPreflight(repoRoot, true);
+const cacheOnly = phase === "convert" && fromManifest;
+const preflight = cacheOnly ? { ok: true, status: "cache_only" } : api.cache.runScraplingPreflight(repoRoot, true);
 if (!preflight.ok) {
   if (emitReport) {
     const report = api.report.buildCrawlReport({
@@ -95,7 +96,7 @@ const artifacts = [];
 // events already declared above (let events)
 let failures = 0;
 
-while (queue.length > 0 && (maxPages == null || visited.size < maxPages)) {
+while (!cacheOnly && queue.length > 0 && (maxPages == null || visited.size < maxPages)) {
   const item = queue.shift();
   if (!item || visited.has(item.url)) {
     continue;
@@ -213,36 +214,20 @@ if (phase === "fetch" && visited.size > 0) {
 if (phase === "convert" && fromManifest) {
   const manifestData = JSON.parse(api.fs.readFileSync(fromManifest, "utf8"));
   const urls = manifestData.visited || [];
-  let convertOk = 0;
-  let convertFail = 0;
+  const prefetchedHtml = {};
   for (const url of urls) {
+    if (maxPages != null && visited.size >= maxPages) break;
+    const page = pages.find((item) => api.traversal.pagePatternMatches(item, url));
+    if (excludeCategory.some((cat) => [page?.id, page?.label].some((value) => value?.toLowerCase() === cat.toLowerCase()))) continue;
+    visited.add(url);
     const slug = api.cache.scraplingSlugFromUrl(url);
     const cached = api.cache.loadScraplingCache(repoRoot, crawlDomain, slug);
-    if (!cached) {
-      events.push(`Cache miss for ${url} — skipping`);
-      convertFail++;
-      continue;
-    }
-    const tmpHtmlPath = path.join(runDir, `_cached_${slug}.html`);
-    api.report.writeTextFile(tmpHtmlPath, cached.html);
-    const mdPath = api.convert.urlToStructuredPath(url, runDir);
-    const cachedArgs = api.cache.buildScraplingExtractionArgs(strategy, "get");
-    const scraplingResult = api.engine.runEngineFetch(repoRoot, "get", `file://${tmpHtmlPath}`, mdPath, cachedArgs);
-    if (scraplingResult.ok) {
-      convertOk++;
-      events.push(`Converted cached ${url} to Markdown`);
-    } else {
-      convertFail++;
-      events.push(`Failed to convert cached ${url}`);
-    }
-    try { api.fs.unlinkSync(tmpHtmlPath); } catch {}
+    prefetchedHtml[url] = cached?.html ?? null;
   }
-  phase2Result = {
-    successful: urls.slice(0, convertOk).map((url, i) => ({ url })),
-    failed: urls.slice(0, convertFail).map((url, i) => ({ url, error: "conversion_failed" })),
-    mergedPath: null,
-  };
-  console.log(`Scrapling convert phase: ${convertOk} converted, ${convertFail} failed`);
+  manifest.visited = [...visited];
+  phase2Result = api.convert.convertTraversalToMarkdown(repoRoot, runDir, manifest, {
+    strategy, prefetchedHtml, merge, cleanupHtml: !keepHtml, outputName: "crawl-output",
+  });
 }
 
 // Phase 2: Markdown conversion (standard path, not --phase fetch/convert)
@@ -250,7 +235,7 @@ let extractionMethod = "scrapling";
 let parallelFallbackReason = null;
 
 if (markdown && visited.size > 0 && phase !== "fetch" && phase2Result === null) {
-  if (parallel) {
+  if (parallel && !strategy) {
     const poolOutcome = await api.pool.withObscuraPool(repoRoot, [...visited], workers, 15, async (fetchResults) => {
       const prefetchedHtml = {};
       for (const r of fetchResults) {
@@ -287,9 +272,13 @@ if (markdown && visited.size > 0 && phase !== "fetch" && phase2Result === null) 
       merge,
       cleanupHtml: !keepHtml,
       outputName: "crawl-output",
+      prefetchedHtml: strategy ? Object.fromEntries([...admittedHtmlPaths].map(([url, filename]) => [url, api.fs.readFileSync(filename, "utf8")])) : null,
     });
   }
 
+}
+
+if (phase2Result) {
   manifest.phase2 = {
     successful_count: phase2Result.successful.length,
     failed_count: phase2Result.failed.length,
@@ -304,15 +293,13 @@ api.report.writeTextFile(manifestPath, JSON.stringify(manifest, null, 2));
 const finalArtifacts = [api.report.absoluteArtifact(manifestPath, "disposable", "Crawl manifest")];
 
 if (markdown) {
-  finalArtifacts.push(...api.convert.collectMarkdownArtifacts(runDir));
-  // Ensure merged file gets a descriptive label if found by api.convert.collectMarkdownArtifacts
-  for (const { url } of (phase2Result?.failed ?? [])) {
-    const idx = manifest.visited.indexOf(url);
-    if (idx >= 0) {
-      const errorPath = path.join(runDir, `${String(idx + 1).padStart(2, "0")}.md.error.log`);
-      if (api.fs.existsSync(errorPath)) {
-        finalArtifacts.push(api.report.absoluteArtifact(errorPath, "disposable", `Conversion error for ${url}`));
-      }
+  for (const entry of (phase2Result?.successful ?? [])) {
+    if (entry.path) finalArtifacts.push(api.report.absoluteArtifact(entry.path, "disposable", `Converted ${entry.url}`));
+  }
+  if (phase2Result?.mergedPath) finalArtifacts.push(api.report.absoluteArtifact(phase2Result.mergedPath, "disposable", "Merged crawl output"));
+  for (const entry of (phase2Result?.failed ?? [])) {
+    for (const filename of [entry.errorPath, entry.diagnosticPath]) {
+      if (filename && api.fs.existsSync(filename)) finalArtifacts.push(api.report.absoluteArtifact(filename, "disposable", `Conversion evidence for ${entry.url}`));
     }
   }
 } else {
@@ -324,9 +311,9 @@ if (markdown) {
 }
 
 const traversalOk = visited.size > 0 && failures === 0;
-const conversionOk = !markdown || (phase2Result && phase2Result.failed.length === 0);
+const conversionOk = !markdown || phase === "fetch" || (phase2Result && phase2Result.failed.length === 0);
 const resultState =
-  traversalOk && conversionOk ? "success" : visited.size > failures ? "partial_success" : "failure";
+  traversalOk && conversionOk ? "success" : (markdown && phase !== "fetch" ? phase2Result?.successful.length > 0 : visited.size > failures) ? "partial_success" : "failure";
 
 const finalExtractionMethod = extractionMethod;
 const finalFallbackReason = parallelFallbackReason ?? fallbackReason;
@@ -355,7 +342,7 @@ if (emitReport) {
 
 const summary =
   resultState === "success"
-    ? `Crawl completed within declared strategy boundaries and visited ${visited.size} page(s)${markdown ? `; ${phase2Result.successful.length} converted to Markdown` : ""}.`
+    ? `Crawl completed within declared strategy boundaries and visited ${visited.size} page(s)${markdown ? `; ${(phase2Result?.successful.length ?? 0)} converted to Markdown` : ""}.`
     : resultState === "partial_success"
       ? `Crawl visited ${visited.size} page(s)${markdown ? `; ${phase2Result.successful.length} converted, ${phase2Result.failed.length} failed` : ` with ${failures} fetch failure(s)`}.`
       : "Crawl failed before any page completed successfully.";

@@ -144,22 +144,6 @@ test("crawl convert loop (convertTraversalToMarkdown) consumes the helper at bot
   assert.equal(literalMatches, null, "convertTraversalToMarkdown must not hardcode ['--ai-targeted']");
 });
 
-test("runCrawlScrapling (incl. --phase convert cache fastpath) has no hardcoded ai-targeted", () => {
-  // runCrawlScrapling was extracted to scripts/lib/crawl_scrapling.mjs.
-  const crawlSrc = fs.readFileSync(path.join(repoRoot, "scripts", "lib", "crawl_scrapling.mjs"), "utf8");
-  const fnStart = crawlSrc.indexOf("async function runCrawlScrapling(");
-  assert.notEqual(fnStart, -1, "runCrawlScrapling must exist");
-  const nextAsync = crawlSrc.indexOf("\nasync function ", fnStart + 1);
-  const nextFn = crawlSrc.indexOf("\nfunction ", fnStart + 1);
-  const candidates = [nextAsync, nextFn].filter((x) => x !== -1);
-  const end = candidates.length ? Math.min(...candidates) : crawlSrc.length;
-  const slice = crawlSrc.slice(fnStart, end);
-
-  // The --phase convert cache fastpath must route cached HTML conversion
-  // through the helper too (strategy is in scope in runCrawlScrapling).
-  // After narrow-crawl-scrapling-seam-surface, the call is grouped:
-  // api.cache.buildScraplingExtractionArgs (named concern object).
-  assert.match(slice, /api\.cache\.buildScraplingExtractionArgs\(/, "runCrawlScrapling must call the helper (via api.cache bundle)");
-  const literalMatches = slice.match(/\[["']--ai-targeted["']\]/g);
-  assert.equal(literalMatches, null, "runCrawlScrapling must not hardcode ['--ai-targeted']");
-});
+// Matched crawl now delegates complete extraction to the shared application kernel.
+// Behavioral coverage (ordinary/sitemap/prefetched/cache) lives in
+// crawl-strategy-conversion.test.mjs; fetch/helper assertions above remain valid.

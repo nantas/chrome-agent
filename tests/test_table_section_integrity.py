@@ -97,7 +97,9 @@ class TestTableSectionIntegrity(unittest.TestCase):
     def test_true_word_and_phrase_repetition_still_detected(self):
         for text in ['hero hero', 'combat skill combat skill']:
             with self.subTest(text=text):
-                self.assertEqual(s5_text_integrity(text)['status'], 'fail')
+                from scripts.explore.self_check import build_source_context
+                context = build_source_context('<p>hero combat skill</p>', {}, input_scope='content_fragment')
+                self.assertEqual(s5_text_integrity(text, context)['status'], 'fail')
 
     def test_nested_skill_levels_retained_as_separate_tables(self):
         html = '<table><tr><th><h6><span class="mw-headline">Skill</span></h6></th></tr><tr><td>Level 1<div><table><tr><th>Further levels</th><th>Value</th></tr><tr><td>Level 2</td><td>+3%</td></tr><tr><td>Level 5</td><td>+5%</td></tr></table></div></td></tr></table>'

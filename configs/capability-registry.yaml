@@ -3,6 +3,16 @@
 # doctor --check capabilities cross-validates this file against code, specs, and AGENTS.md.
 
 convert:
+  mirrors:
+    - name: crawl_html_conversion
+      implemented_in: scripts/lib/crawl_conversion.py
+      capability: convert
+      execution_path: scrapling_traversal
+      strategy_variant: config_driven
+      input_format: html_generic
+      relationship: mirror
+      kernel: scripts/lib/extraction/converter.py
+      equivalence: tests/crawl-strategy-conversion.test.mjs
   cleanup_ops:
     - name: strip_fandom_infobox_tables
       implemented_in: scripts/lib/extraction/preprocessor.py

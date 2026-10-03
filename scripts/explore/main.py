@@ -32,7 +32,7 @@ from structure_mapper import map_structure
 from protection_identifier import identify
 from strategy_scaffold_generator import generate
 from sample_converter import convert
-from self_check import run_checks, summarize, plan_remediation
+from self_check import run_checks, summarize, plan_remediation, build_source_context
 from architecture_gate import validate as architecture_gate_validate
 
 # Startup dependency self-check
@@ -159,6 +159,8 @@ def main():
                         sr.get("type", "article"),
                         wiki_domain=domain,
                         skip_patterns=current_extraction.get("image_filtering", {}).get("skip_patterns"),
+                        source_context=build_source_context(sample_html, current_extraction,
+                            input_scope=sr.get("input_scope", "unknown"), source_url=sr.get("url", "")),
                     )
                     all_checks.extend(checks)
 

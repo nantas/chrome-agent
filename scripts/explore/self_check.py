@@ -36,12 +36,122 @@ _FIX_TO_NORMALIZATION = {
     "space_normalization": "fix_spaces",
 }
 
-# Navigation keywords for S9
-_NAV_KEYWORDS = [
-    "Achievements", "Challenges", "Characters", "Bosses", "Trinkets",
-    "Items", "Modes", "Curses", "Objects", "Seeds", "Effects", "Endings",
-    "Collection", "Version History", "Modding", "Music",
-]
+def _markdown_links(markdown: str) -> list[dict]:
+    """Read inline Markdown destinations with balanced parentheses and escapes."""
+    links = []
+    pattern = re.compile(r'(!?)\[((?:\\.|[^\]\\])*)\]\(')
+    for match in pattern.finditer(markdown):
+        start = match.end()
+        depth, end, escaped = 1, start, False
+        while end < len(markdown):
+            char = markdown[end]
+            if escaped:
+                escaped = False
+            elif char == '\\':
+                escaped = True
+            elif char == '(':
+                depth += 1
+            elif char == ')':
+                depth -= 1
+                if depth == 0:
+                    break
+            end += 1
+        if depth:
+            continue
+        destination = markdown[start:end].strip()
+        if destination.startswith('<') and '>' in destination:
+            destination = destination[1:destination.index('>')]
+        else:
+            destination = re.split(r'\s+[\"\']', destination, maxsplit=1)[0]
+        links.append({'image': bool(match[1]), 'label': match[2],
+                      'url': re.sub(r'\\(.)', r'\1', destination),
+                      'start': match.start(), 'end': end + 1})
+    return links
+
+
+def _source_url(url: str, context: dict) -> str:
+    from urllib.parse import urljoin
+    from html import unescape
+    return urljoin(context.get('base_url', ''), unescape(url))
+
+
+def build_source_context(html: str, extraction: dict, *, input_scope: str,
+                         source_url: str = '') -> dict:
+    """Capture original source regions without invoking renderer/preprocessor."""
+    context = {'raw_html': html, 'input_scope': input_scope, 'extraction': extraction,
+               'base_url': extraction.get('image_handling', {}).get('base_url') or source_url,
+               'error': None}
+    if not html:
+        context['error'] = 'source_unavailable'
+        return context
+    soup = BeautifulSoup(html, 'html.parser')
+    selector = extraction.get('selectors', {}).get('content')
+    try:
+        if input_scope == 'content_fragment':
+            body = soup
+        elif input_scope == 'full_document':
+            body = soup.select_one(selector) if selector else (soup.body or soup)
+        else:
+            context['error'] = 'source_scope_unknown'
+            return context
+        if body is None:
+            context['error'] = 'content_selector_no_match'
+            return context
+        infobox = extraction.get('infobox', {})
+        boxes = soup.select(infobox.get('selector', 'aside.portable-infobox')) if infobox.get('enabled') else []
+        regions = [body] + boxes
+        included = {id(node) for region in regions for node in [region, *region.descendants]}
+        selectors = list(extraction.get('cleanup_selectors', []))
+        # Explicit removal policy, not a replay of the transformation result.
+        cleanup = extraction.get('cleanup', [])
+        policy = {
+            'strip_edit_links': '.mw-editsection',
+            'strip_footer': '#catlinks, #mw-hidden-catlinks, .printfooter, .mw-footer, #footer',
+            'strip_category_links': '#catlinks, .mw-normal-catlinks, #mw-hidden-catlinks, .catlinks, [class*=category], [id*=catlinks]',
+            'strip_skip_links': '.skip-link, [class*=skip-to], #jump-to-nav, a[href^="#mw-"]',
+            'strip_fandom_infobox_tables': 'table.item-table-header, table.item-table-body, table.item-table-description, table.item-table-appearance, table.infobox-table, table.portable-infobox',
+        }
+        selectors.extend(value for key, value in policy.items() if key in cleanup)
+        excluded = {id(node) for sel in selectors for region in soup.select(sel)
+                    for node in [region, *region.descendants]}
+        # Infobox extraction happens before body cleanup and is separately retained.
+        box_nodes = {id(node) for box in boxes for node in [box, *box.descendants]}
+        retained = included - (excluded - box_nodes)
+        context.update(soup=soup, body=body, retained=retained, excluded=excluded)
+    except Exception as exc:
+        context['error'] = f'source_scope_invalid: {exc}'
+    return context
+
+
+def _s1_source_images(markdown: str, context: dict, skip_patterns=None) -> dict:
+    from collections import Counter
+    if context.get('error'):
+        return {'check': 'S1', 'status': 'skip' if context['error'] in {'source_unavailable', 'source_scope_unknown'} else 'fail',
+                'detail': context['error']}
+    rules = context['extraction']
+    patterns = skip_patterns if skip_patterns is not None else rules.get('image_filtering', {}).get('skip_patterns', [])
+    lazy = rules.get('lazyload', {})
+    expected = Counter()
+    for img in context['soup'].find_all('img'):
+        if id(img) not in context['retained']:
+            continue
+        src = img.get('src', '')
+        if lazy.get('enabled') and lazy.get('placeholder_pattern', '') in src:
+            src = img.get(lazy.get('real_src_attr', ''), '') or src
+        elif src.startswith('data:') and img.get('data-src'):
+            src = img['data-src']
+        if not src or src.startswith('data:') or any(re.search(p, src) for p in patterns):
+            continue
+        expected[_source_url(src, context)] += 1
+    images = [link for link in _markdown_links(markdown) if link['image']]
+    if any(link['url'].startswith('/images/') for link in images):
+        return {'check': 'S1', 'status': 'fail', 'detail': 'Relative image URLs', 'fixable_type': 'relative_image_url'}
+    actual = Counter(_source_url(link['url'], context) for link in images)
+    if actual == expected:
+        return {'check': 'S1', 'status': 'pass', 'detail': f'{sum(actual.values())} intended images retained'}
+    return {'check': 'S1', 'status': 'fail',
+            'detail': f'Image multiset mismatch: missing {dict(expected - actual)}, extra {dict(actual - expected)}',
+            'fixable_type': 'image_wrapper' if expected - actual else None}
 
 
 def s1_image_retention(html: str, markdown: str, skip_patterns: list[str] | None = None) -> dict:
@@ -209,7 +319,47 @@ def s4_empty_content(markdown: str) -> dict:
     return {"check": "S4", "status": "pass", "detail": f"Body length: {len(body)} chars"}
 
 
-def s5_text_integrity(markdown: str) -> dict:
+def _visible_markdown(markdown: str) -> str:
+    from html import unescape
+    text = re.sub(r'(?ms)^\s*(```|~~~).*?^\s*\1[^\n]*$', '', markdown)
+    text = re.sub(r'`[^`]*`', '', text)
+    for link in reversed(_markdown_links(text)):
+        text = text[:link['start']] + ('\ufffc' if link['image'] else link['label']) + text[link['end']:]
+    text = re.sub(r'https?://[^\s)]+', '', text)
+    text = re.sub(r'\\([\\*_[\]()|])', r'\1', text)
+    text = re.sub(r'[*_]', '', text)
+    return unescape(text)
+
+
+def _source_text(context: dict) -> str:
+    from bs4 import NavigableString, Comment
+    blocks = {'p', 'div', 'main', 'article', 'section', 'li', 'td', 'th', 'tr',
+              'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'br', 'ul', 'ol'}
+    def visit(node):
+        if isinstance(node, Comment):
+            return ''
+        if isinstance(node, NavigableString):
+            return str(node) if id(node) in context['retained'] else ''
+        if getattr(node, 'name', '') == 'img':
+            return '\ufffc'
+        if getattr(node, 'name', '') in {'script', 'style', 'pre', 'code'}:
+            return ''
+        value = ''.join(visit(child) for child in getattr(node, 'children', []))
+        return '\n' + value + '\n' if getattr(node, 'name', '') in blocks else value
+    return visit(context['soup'])
+
+
+def _repetitions(text: str) -> list[str]:
+    result = []
+    pattern = re.compile(r'\b(\w+(?:[ \t]+\w+){0,3})[ \t]+\1\b')
+    # Preserve block/cell boundaries: matching across unrelated blocks invents repetition.
+    for block in re.split(r'[\n|]', text):
+        block = re.sub(r'[ \t]+', ' ', block)
+        result.extend(match[1] for match in pattern.finditer(block))
+    return result
+
+
+def s5_text_integrity(markdown: str, source_context: Optional[dict] = None) -> dict:
     """S5: Scan for formatting anomalies including HTML residue."""
     anomalies = []
 
@@ -237,9 +387,19 @@ def s5_text_integrity(markdown: str) -> dict:
     if r"\*\*\*" in markdown or re.search(r"\\\*+", markdown):
         anomalies.append("Escape artifacts")
 
-    # Repeated link text
-    if re.search(r"\b(\w+(?:[ \t]+\w+){0,3})[ \t]+\1\b", markdown):
-        anomalies.append("Repeated link text")
+    # Source occurrences form a finite budget; a typo never exempts new copies.
+    from collections import Counter
+    repeats = _repetitions(_visible_markdown(markdown))
+    notes = []
+    uncertain = bool(repeats) and (source_context is None or bool(source_context.get('error')))
+    if repeats and not uncertain:
+        budget = Counter(_repetitions(_source_text(source_context)))
+        for repeated in repeats:
+            if budget[repeated]:
+                budget[repeated] -= 1
+                notes.append(f"Source-existing repetition: {repeated} {repeated}")
+            else:
+                anomalies.append(f"Introduced repeated text: {repeated} {repeated}")
 
     # NEW: Raw closing HTML tags
     if re.search(r"</a>|</span>|</div>", markdown):
@@ -254,9 +414,12 @@ def s5_text_integrity(markdown: str) -> dict:
             "check": "S5",
             "status": "fail",
             "detail": "; ".join(anomalies),
+            "notes": notes,
             "fixable_type": "space_normalization" if "Missing space" in "; ".join(anomalies) else None,
         }
-    return {"check": "S5", "status": "pass", "detail": "No anomalies detected"}
+    return {"check": "S5", "status": "skip" if uncertain else "pass",
+            "detail": "Repetition source evidence unavailable" if uncertain else "No introduced anomalies detected",
+            "notes": notes}
 
 
 def s6_table_integrity(html: str, markdown: str) -> dict:
@@ -404,29 +567,32 @@ def s8_section_completeness(html: str, markdown: str) -> dict:
     return {"check": "S8", "status": "pass", "detail": f"All {len(expected_sections)} sections present"}
 
 
-def s9_navigation_leakage(markdown: str) -> dict:
-    """S9: Verify navigation sidebar content has NOT leaked into Markdown."""
-    lines = markdown.split("\n")
-    consecutive_nav = 0
-    max_consecutive = 0
-
-    for line in lines:
-        has_nav = any(kw in line for kw in _NAV_KEYWORDS)
-        if has_nav:
-            consecutive_nav += 1
-            max_consecutive = max(max_consecutive, consecutive_nav)
-        else:
-            consecutive_nav = 0
-
-    if max_consecutive >= 3:
-        return {
-            "check": "S9",
-            "status": "fail",
-            "detail": f"Found {max_consecutive} consecutive lines with nav keywords",
-            "fixable_type": "nav_leak",
-        }
-
-    return {"check": "S9", "status": "pass", "detail": "No navigation leakage detected"}
+def s9_navigation_leakage(markdown: str, source_context: Optional[dict] = None) -> dict:
+    """Attribute excluded navigation sequences using source label/target pairs."""
+    if source_context is None or source_context.get('error'):
+        return {"check": "S9", "status": "skip", "detail": "Navigation source evidence unavailable"}
+    context = source_context
+    def pair(label, url):
+        return (re.sub(r'\s+', ' ', label).strip(), _source_url(url, context))
+    from collections import Counter
+    body_links = Counter(pair(a.get_text(' ', strip=True), a['href'])
+                  for a in context['soup'].find_all('a', href=True) if id(a) in context['retained'])
+    output = [pair(link['label'], link['url']) for link in _markdown_links(markdown) if not link['image']]
+    selectors = 'nav, [role="navigation"], .mw-portlet, .vector-menu, #mw-panel, .navbox, .navigation, .toc, #toc'
+    ambiguous = False
+    for region in context['soup'].select(selectors):
+        if id(region) in context['retained']:
+            continue
+        sequence = [pair(a.get_text(' ', strip=True), a['href']) for a in region.find_all('a', href=True)]
+        ambiguous = ambiguous or any(item in body_links and output.count(item) > body_links[item] for item in sequence)
+        exclusive = [item for item in sequence if item not in body_links and item[0]]
+        # Two adjacent, source-ordered links establish a sequence rather than a topic match.
+        for first, second in zip(exclusive, exclusive[1:]):
+            if first != second and any(a == first and b == second for a, b in zip(output, output[1:])):
+                return {"check": "S9", "status": "fail", "detail": f"Excluded navigation sequence: {first}, {second}",
+                        "fixable_type": "nav_leak"}
+    return {"check": "S9", "status": "skip" if ambiguous else "pass",
+            "detail": "Body/navigation overlap prevents attribution" if ambiguous else "No evidenced navigation leakage"}
 
 
 def s10_youtube_title_quality(markdown: str) -> dict:
@@ -527,6 +693,7 @@ def run_checks(
     page_type: str = "article",
     wiki_domain: str = "",
     skip_patterns: list[str] | None = None,
+    *, source_context: Optional[dict] = None,
 ) -> list[dict]:
     """Run all S1-S12 checks.
 
@@ -538,20 +705,24 @@ def run_checks(
         page_type: Page type (article, gallery, list).
         wiki_domain: Wiki domain for URL checks.
         skip_patterns: Image skip patterns for S1.
+        source_context: Original evidence from build_source_context; scope-dependent
+            checks explicitly skip when omitted. Low-level s1_image_retention is
+            retained for callers already supplying a known content fragment.
 
     Returns:
         List of check results: {check, status, detail, fixable_type?}
     """
     results = []
-    results.append(s1_image_retention(html, markdown, skip_patterns))
+    results.append(_s1_source_images(markdown, source_context, skip_patterns) if source_context is not None
+                   else {"check": "S1", "status": "skip", "detail": "Source scope unavailable"})
     results.append(s2_link_resolution(html, markdown, known_pages))
     results.append(s3_infobox_extraction(wikitext, markdown))
     results.append(s4_empty_content(markdown))
-    results.append(s5_text_integrity(markdown))
+    results.append(s5_text_integrity(markdown, source_context))
     results.append(s6_table_integrity(html, markdown))
     results.append(s7_image_wrapper(markdown, page_type))
     results.append(s8_section_completeness(html, markdown))
-    results.append(s9_navigation_leakage(markdown))
+    results.append(s9_navigation_leakage(markdown, source_context))
     results.append(s10_youtube_title_quality(markdown))
     results.append(s11_zero_relative_links(markdown))
     results.append(s12_infobox_semantic_quality(markdown))
@@ -574,6 +745,8 @@ def summarize(results: list[dict]) -> dict:
         "fail": fails,
         "skip": skips,
         "overall_pass": fails == 0,
+        "notes": [{"check": r["check"], "detail": note} for r in results for note in r.get("notes", [])],
+        "skipped_checks": [{"check": r["check"], "detail": r.get("detail", "")} for r in results if r["status"] == "skip"],
         "fixable_failures": fixable,
         "non_fixable_failures": non_fixable,
     }

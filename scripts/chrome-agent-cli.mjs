@@ -1442,6 +1442,27 @@ function collectMarkdownArtifacts(runDir) {
   return artifacts;
 }
 
+function convertCrawlHtml(repoRoot, htmlPath, mdPath, strategy) {
+  const attemptDir = fs.mkdtempSync(path.join(path.dirname(mdPath), ".convert-"));
+  const outputPath = path.join(attemptDir, "page.md");
+  try {
+    const result = spawnSync(resolveAppPython(repoRoot), ["-m", "scripts.lib.crawl_conversion"], {
+      cwd: repoRoot, encoding: "utf8",
+      input: JSON.stringify({ html_path: htmlPath, output_path: outputPath,
+        extraction: Object.hasOwn(strategy.document ?? {}, "extraction") ? strategy.document.extraction : {} }),
+    });
+    let response;
+    try { response = JSON.parse(result.stdout); } catch { /* handled below */ }
+    if (result.status !== 0 || !response?.ok || !fs.existsSync(outputPath)) {
+      return { ok: false, error: response?.error || result.error?.message || result.stderr || "conversion_bridge_failed" };
+    }
+    fs.renameSync(outputPath, mdPath);
+    return { ok: true };
+  } finally {
+    fs.rmSync(attemptDir, { recursive: true, force: true });
+  }
+}
+
 function convertTraversalToMarkdown(repoRoot, runDir, manifest, opts = {}) {
   const {
     fetcherFn = () => "get",
@@ -1466,6 +1487,29 @@ function convertTraversalToMarkdown(repoRoot, runDir, manifest, opts = {}) {
     const mdPath = urlToStructuredPath(url, runDir);
     ensureDir(path.dirname(mdPath));
     urlToPath[url] = mdPath;
+
+    if (strategy) {
+      const htmlPath = `${mdPath}.raw.html`;
+      try {
+        if (prefetchedHtml !== null) {
+          if (!prefetchedHtml[url]) throw new Error("acquired_html_unavailable");
+          writeTextFile(htmlPath, prefetchedHtml[url]);
+        } else {
+          const fetcher = fetcherFn(url);
+          const acquired = runEngineFetch(repoRoot, fetcher, url, htmlPath,
+            fetcher === "mediawiki-api" ? [strategy.path] : []);
+          if (!acquired.ok) throw new Error(acquired.stderr || "acquisition_failed");
+        }
+        const converted = convertCrawlHtml(repoRoot, htmlPath, mdPath, strategy);
+        if (!converted.ok) throw new Error(converted.error);
+        successful.push({ url, path: mdPath });
+      } catch (error) {
+        const errorPath = `${mdPath}.error.log`;
+        writeTextFile(errorPath, error.message);
+        failed.push({ url, error: error.message, errorPath, diagnosticPath: fs.existsSync(htmlPath) ? htmlPath : null });
+      }
+      continue;
+    }
 
     if (prefetchedHtml?.[url]) {
       // Use Scrapling --ai-targeted via file:// for DOM-quality Markdown conversion
@@ -3863,6 +3907,7 @@ async function runCrawlSitemapExtraction(repoRoot, repoRef, resolutionMode, runD
   }
 
   const visited = new Set();
+  const prefetchedHtml = {};
   const artifacts = [];
   let failures = 0;
 
@@ -3887,6 +3932,7 @@ async function runCrawlSitemapExtraction(repoRoot, repoRef, resolutionMode, runD
     const fetchResult = runEngineFetch(repoRoot, fetcher, url, outputPath);
 
     if (fetchResult.ok) {
+      prefetchedHtml[url] = fs.readFileSync(outputPath, "utf8");
       artifacts.push(absoluteArtifact(outputPath, "disposable", `Crawled page ${matchedPage?.id || url}`));
       events.push(`Fetched ${url} via ${fetcher}`);
     } else {
@@ -3920,6 +3966,7 @@ async function runCrawlSitemapExtraction(repoRoot, repoRef, resolutionMode, runD
         return selectFetcher(strategy, null);
       },
       strategy,
+      prefetchedHtml,
       concurrency,
       merge,
       cleanupHtml: !keepHtml,
@@ -3938,12 +3985,18 @@ async function runCrawlSitemapExtraction(repoRoot, repoRef, resolutionMode, runD
 
   const finalArtifacts = [absoluteArtifact(manifestPath, "disposable", "Crawl manifest")];
   if (markdown) {
-    finalArtifacts.push(...collectMarkdownArtifacts(runDir));
+    for (const entry of (phase2Result?.successful ?? [])) finalArtifacts.push(absoluteArtifact(entry.path, "disposable", `Converted ${entry.url}`));
+    if (phase2Result?.mergedPath) finalArtifacts.push(absoluteArtifact(phase2Result.mergedPath, "disposable", "Merged crawl output"));
+    for (const entry of (phase2Result?.failed ?? [])) {
+      for (const filename of [entry.errorPath, entry.diagnosticPath]) {
+        if (filename && fs.existsSync(filename)) finalArtifacts.push(absoluteArtifact(filename, "disposable", `Conversion evidence for ${entry.url}`));
+      }
+    }
   }
 
   const traversalOk = visited.size > 0 && failures === 0;
   const conversionOk = !markdown || (phase2Result && phase2Result.failed.length === 0);
-  const resultState = traversalOk && conversionOk ? "success" : "partial_success";
+  const resultState = traversalOk && conversionOk ? "success" : (markdown ? phase2Result?.successful.length > 0 : visited.size > failures) ? "partial_success" : "failure";
 
   if (emitReport) {
     const report = buildCrawlReport({

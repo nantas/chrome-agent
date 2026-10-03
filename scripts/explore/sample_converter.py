@@ -150,6 +150,7 @@ def convert(
             "type": sample.get("type", "article"),
             "markdown": md,
             "html_length": len(html),
+            "input_scope": "content_fragment" if engine == "mediawiki-api" else "full_document",
             "ok": True,
             "error": None,
         })
