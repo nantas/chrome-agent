@@ -336,3 +336,11 @@ fetch/crawl 在 selector 与 Markdown 转换前检查原始 HTML；本地转换�
 checks 包含 blocking；可选 CloakBrowser 缺失额外报告 readiness=needs_preflight。此时 doctor 为 partial_success，且仅所有失败检查均非阻塞并无 reload Gate 时 dispatch_allowed=true。必需检查故障返回 failure；skill reload 仍阻塞 dispatch。next_action 给出实际故障的修复步骤。
 
 Explore 成功或失败均提供诊断文件入口及实际引擎链。内部调用/协议错误继续生成 handoff；普通内容不可用返回 failure，不提示将挑战页冻结为策略。
+
+### Sitemap discovery 的 gzip 与失败证据
+
+`crawl --discovery-only` 的 sitemap 路径支持顶层及子 sitemap 的普通 XML 和 gzip 内容。下载后根据实际 gzip 文件头解压，再读取 XML；URL 是否以 `.gz` 结尾不决定解压行为。原始响应文件保留，URL 继续按既有 include/exclude 和去重规则生成清单。
+
+顶层 gzip 损坏返回 `sitemap_decompress_error`；子文件损坏记录 `decompress_error`，部分失败继续汇总正常文件并返回告警，全部失败仍为 `sitemap_all_subs_failed`。解压成功但内容非 sitemap 时仍为解析错误。失败 handoff 链接实际存在的原始 sitemap 文件，不再列出未生成的 `manifest.json`。
+
+本路径仅产出发现清单；确认页面范围后才使用 `--from-manifest` 进入正文提取。实现与验证见 [gzip sitemap change](../../openspec/changes/archive/2026-10-03-fix-gzip-sitemap-discovery/verification.md)。

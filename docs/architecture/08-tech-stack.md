@@ -424,3 +424,9 @@ node --test tests/chrome-agent-runtime.test.mjs
 `tests/test_fallback_contracts.py` 用严格 argv 可执行 fixture 验证 Obscura stdout，使用真实 shell preflight、临时 managed root 与受控 uv 验证 CloakBrowser 安装生命周期及版本固定；不污染真实全局环境。`tests/explore-handoff.test.mjs` 验证真实 Python→CLI 诊断与内部错误 handoff。
 
 模拟回归不能替代真实 CLI 契约核对。真实 Obscura 禁止本地 IP，故本地 HTTP fixture 可能被其安全策略拒绝，必须如实记录；通过标准 doctor→explore 另行验证真实目标，分开报告引擎执行、正文准入和策略后续结果。
+
+### Sitemap 文件读取与 handoff 回归
+
+`tests/sitemap-discovery-files.test.mjs` 使用 node:test、临时文件和内置 zlib，执行真实 sitemap discovery 编排，只隔离 curl 网络边界。覆盖顶层/子文件 gzip、混合编码、扩展名反例、过滤去重、压缩损坏、部分失败及失败报告证据入口；同时验证旧 handoff 调用者的 manifest/log 链接与去重。测试不依赖真实网站、未跟踪策略或本机 outputs。
+
+运行 `node --test tests/sitemap-discovery-files.test.mjs tests/sitemap-driven-crawl.test.mjs tests/explore-handoff.test.mjs`。压缩能力必须在文件读取到编排的边界回归，仅对 XML parser 传入预解码字符串不足以覆盖该故障。

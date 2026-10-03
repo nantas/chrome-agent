@@ -8,6 +8,7 @@ import process from "node:process";
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import YAML from "yaml";
+import { gunzipSync } from "node:zlib";
 import { buildScraplingExtractionArgs } from "./lib/scrapling-extraction-args.mjs";
 import { runMediawikiWorkflow, resolvePipelineTimeout } from "./lib/mediawiki-crawl.mjs";
 import { runCrawlScrapling } from "./lib/crawl_scrapling.mjs";
@@ -686,6 +687,16 @@ function selectFetcher(strategy, page) {
   return "get";
 }
 
+function readSitemapContent(filename) {
+  const bytes = fs.readFileSync(filename);
+  try {
+    const decoded = bytes[0] === 0x1f && bytes[1] === 0x8b ? gunzipSync(bytes) : bytes;
+    return { ok: true, content: decoded.toString("utf8") };
+  } catch (error) {
+    return { ok: false, reason: `decompress_error: ${error.message}` };
+  }
+}
+
 // ── Sitemap XML parsing ──
 // locRegex is function-local so parseSitemapXml remains a pure, self-contained
 // unit (the discovery layer — not this parser — performs HTTP fetches).
@@ -735,7 +746,7 @@ function resolveSitemapIndex(subSitemaps, fetchFn) {
   subSitemaps.forEach((subUrl, i) => {
     const fetched = fetchFn(subUrl, i);
     if (!fetched.ok) {
-      errors.push({ url: subUrl, reason: `HTTP ${fetched.httpCode}` });
+      errors.push({ url: subUrl, reason: fetched.reason ?? `HTTP ${fetched.httpCode}` });
       return;
     }
     const subParsed = parseSitemapXml(fetched.content);
@@ -1698,7 +1709,7 @@ function isInternalFailure(command, errorInfo) {
  * Returns { path: string, summary: string }.
  */
 function generateHandoff(context) {
-  const { command, target, repoRef, runDir, error, strategy } = context;
+  const { command, target, repoRef, runDir, error, strategy, artifacts = [] } = context;
   const { stamp } = nowParts();
   const slug = slugify(target);
   const runTag = `${stamp}-${command}-${slug}`;
@@ -1754,16 +1765,26 @@ function generateHandoff(context) {
 
   lines.push("## Run Artifacts");
   lines.push("");
+  const evidence = new Map();
+  for (const artifact of artifacts) {
+    if (artifact.path && fs.existsSync(artifact.path)) {
+      evidence.set(path.resolve(artifact.path), artifact.description || path.basename(artifact.path));
+    }
+  }
   if (runDir && fs.existsSync(path.resolve(runDir))) {
     const absRunDir = path.resolve(runDir);
-    lines.push(`- **Manifest**: ${path.join(absRunDir, "manifest.json")}`);
     for (const file of fs.readdirSync(absRunDir)) {
       if (file.endsWith(".log") || file.endsWith(".json")) {
-        lines.push(`- **${file}**: ${path.join(absRunDir, file)}`);
+        const filename = path.join(absRunDir, file);
+        if (!evidence.has(filename)) evidence.set(filename, file);
       }
     }
-  } else {
-    lines.push("- No run directory was created before the failure.");
+  }
+  for (const [filename, description] of evidence) {
+    lines.push(`- **${description}**: ${filename}`);
+  }
+  if (evidence.size === 0) {
+    lines.push("- No run artifacts were created before the failure.");
   }
   lines.push("");
 
@@ -2368,7 +2389,7 @@ function internalFailure({
   const error = { reason, summary };
   if (stderr !== undefined) error.stderr = stderr;
   if (exitCode !== undefined) error.exitCode = exitCode;
-  const handoff = generateHandoff({ command, target: targetUrl, repoRef, runDir, error, strategy });
+  const handoff = generateHandoff({ command, target: targetUrl, repoRef, runDir, error, strategy, artifacts: allArtifacts });
   return makeResult(
     command, targetUrl, repoRef, resultMsg, allArtifacts,
     `The problem must be resolved in the chrome-agent repository. See handoff document at ${handoff.path}.`,
@@ -3580,8 +3601,13 @@ async function runCrawlSitemapDiscovery(repoRoot, repoRef, resolutionMode, runDi
   const sitemapUrl = doc?.discovery?.sitemap_url ?? `https://${doc.domain}/sitemap.xml`;
 
   // Fetch sitemap (use curl — scrapling CLI doesn't handle XML)
+  const sitemapArtifacts = [];
   const tempPath = path.join(runDir, "_sitemap.xml");
+  fs.rmSync(tempPath, { force: true });
   const sitemapFetch = spawnSync("curl", ["-sL", "-o", tempPath, "-w", "%{http_code}", sitemapUrl], { encoding: "utf8", timeout: 30_000 });
+  if (fs.existsSync(tempPath)) {
+    sitemapArtifacts.push(absoluteArtifact(tempPath, "disposable", "Raw sitemap response"));
+  }
   const httpCode = parseInt(sitemapFetch.stdout?.trim() || "0", 10);
   const fetchOk = sitemapFetch.status === 0 && httpCode >= 200 && httpCode < 400;
   if (!fetchOk) {
@@ -3592,13 +3618,23 @@ async function runCrawlSitemapDiscovery(repoRoot, repoRef, resolutionMode, runDi
       stderr: fetchErr,
       resultMsg: "Sitemap unreachable.",
       enginePath: "sitemap_discovery -> sitemap_unreachable",
-      artifacts: [absoluteArtifact(tempPath, "disposable", "Sitemap fetch attempt")],
+      artifacts: sitemapArtifacts,
     });
   }
 
   // Parse sitemap
-  const sitemapContent = fs.existsSync(tempPath) ? fs.readFileSync(tempPath, "utf8") : "";
-  const parsed = parseSitemapXml(sitemapContent);
+  const decoded = readSitemapContent(tempPath);
+  if (!decoded.ok) {
+    return internalFailure({
+      command: "crawl", target: targetUrl, repoRef, runDir, strategy,
+      reason: "sitemap_decompress_error", summary: "Sitemap gzip could not be decompressed.",
+      stderr: decoded.reason,
+      resultMsg: "Sitemap decompression error.",
+      enginePath: "sitemap_discovery -> decompress_error",
+      artifacts: sitemapArtifacts,
+    });
+  }
+  const parsed = parseSitemapXml(decoded.content);
 
   if (parsed.error) {
     return internalFailure({
@@ -3607,7 +3643,7 @@ async function runCrawlSitemapDiscovery(repoRoot, repoRef, resolutionMode, runDi
       stderr: parsed.reason || "",
       resultMsg: "Sitemap parse error.",
       enginePath: "sitemap_discovery -> parse_error",
-      artifacts: [absoluteArtifact(tempPath, "disposable", "Sitemap content")],
+      artifacts: sitemapArtifacts,
     });
   }
 
@@ -3631,7 +3667,7 @@ async function runCrawlSitemapDiscovery(repoRoot, repoRef, resolutionMode, runDi
         stderr: "",
         resultMsg: "Sitemap index empty.",
         enginePath: "sitemap_discovery -> index_empty",
-        artifacts: [absoluteArtifact(tempPath, "disposable", "Sitemap index")],
+        artifacts: sitemapArtifacts,
       });
     }
     // Inject a curl-based fetcher so resolveSitemapIndex stays a pure,
@@ -3639,12 +3675,15 @@ async function runCrawlSitemapDiscovery(repoRoot, repoRef, resolutionMode, runDi
     // fail, dedup, nested-index) is covered by tests with a fake fetcher.
     const fetchFn = (subUrl, i) => {
       const subTempPath = path.join(runDir, `_sitemap_sub_${i}.xml`);
+      fs.rmSync(subTempPath, { force: true });
       const subFetch = spawnSync("curl", ["-sL", "-o", subTempPath, "-w", "%{http_code}", subUrl], { encoding: "utf8", timeout: 30_000 });
+      if (fs.existsSync(subTempPath)) {
+        sitemapArtifacts.push(absoluteArtifact(subTempPath, "disposable", `Raw sub-sitemap response: ${subUrl}`));
+      }
       const subHttpCode = parseInt(subFetch.stdout?.trim() || "0", 10);
       const subOk = subFetch.status === 0 && subHttpCode >= 200 && subHttpCode < 400;
       if (!subOk) return { ok: false, httpCode: subHttpCode || subFetch.status };
-      const content = fs.existsSync(subTempPath) ? fs.readFileSync(subTempPath, "utf8") : "";
-      return { ok: true, httpCode: subHttpCode, content };
+      return { ...readSitemapContent(subTempPath), httpCode: subHttpCode };
     };
     const subResolution = resolveSitemapIndex(subSitemaps, fetchFn);
     const subSitemapErrors = subResolution.errors;
@@ -3658,7 +3697,7 @@ async function runCrawlSitemapDiscovery(repoRoot, repoRef, resolutionMode, runDi
         stderr: failedList,
         resultMsg: "All sub-sitemaps failed.",
         enginePath: "sitemap_discovery -> all_subs_failed",
-        artifacts: [absoluteArtifact(tempPath, "disposable", "Sitemap index")],
+        artifacts: sitemapArtifacts,
       });
     }
 
@@ -3714,7 +3753,7 @@ async function runCrawlSitemapDiscovery(repoRoot, repoRef, resolutionMode, runDi
       stderr: "",
       resultMsg: "No URLs matched page_pattern.",
       enginePath: "sitemap_discovery -> no_pattern_match",
-      artifacts: [absoluteArtifact(tempPath, "disposable", "Sitemap content")],
+      artifacts: sitemapArtifacts,
     });
   }
 
