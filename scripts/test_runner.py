@@ -236,7 +236,7 @@ def _make_site_sample_test(
             from scripts.lib.extraction.converter import convert_page_full
             strategy_path = REPO_ROOT / "sites/strategies" / domain / "strategy.md"
             strategy = parse_strategy(str(strategy_path)) if strategy_path.exists() else {}
-            if strategy.get("api", {}).get("platform") == "mediawiki":
+            if strategy.get("extraction") or strategy.get("api", {}).get("platform") == "mediawiki":
                 md_output = convert_page_full(html, strategy.get("extraction", {}))
             else:
                 md_output = convert_html_to_markdown(html, wiki_domain="")

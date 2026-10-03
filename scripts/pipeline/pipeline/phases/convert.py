@@ -83,7 +83,7 @@ def _resolve_hero_image_url(html: Optional[str],
 log = logging.getLogger("pipeline")
 
 # Bump when conversion semantics change in a way not represented in config.
-CONVERTER_CONTRACT_REVISION = 4
+CONVERTER_CONTRACT_REVISION = 7
 
 
 def _digest(value) -> str:

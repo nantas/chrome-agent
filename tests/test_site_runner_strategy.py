@@ -34,3 +34,15 @@ class SiteRunnerStrategyTests(unittest.TestCase):
             saved = save_page_cache(tmp, 'mediawiki', 'example.org', {'title': 'A/B', 'html': '<p>Body</p>'})
             with patch.object(test_runner, 'REPO_ROOT', root):
                 self.assertEqual(test_runner._resolve_cache_path('A/B', 'example.org'), saved)
+
+    def test_html_strategy_extraction_is_used_without_api(self):
+        import gzip
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);domain='example.org';folder=root/'sites/strategies'/domain;folder.mkdir(parents=True)
+            (folder/'strategy.md').write_text('---\ndomain: example.org\nextraction:\n  cleanup: [strip_footer]\n---\n')
+            samples=folder/'samples';samples.mkdir();(samples/'Example.md').write_text('Body')
+            (samples/'Example.html.gz').write_bytes(gzip.compress(b'<p>Body</p><div id="footer">FOOTER</div>',mtime=0))
+            with patch.object(test_runner,'REPO_ROOT',root):
+                case=test_runner._make_site_sample_test(domain,'Example','Example')('test_sample')
+                result=unittest.TestResult();case.run(result)
+                self.assertTrue(result.wasSuccessful(),str(result.failures)+str(result.errors))

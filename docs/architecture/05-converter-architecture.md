@@ -263,3 +263,7 @@ Key diagnostic: render individual blocks independently and compare to combined o
 ## Shared configuration validation and index links
 
 `lib/extraction/schema.py` validates governed extraction fields before preprocessing; cleanup operation names resolve through capability-registry and their shared implementations. Gate audits shared consumers after shape checks, ignoring docstring examples. Both converter and strategy link resolvers use index.md for admitted list pages. Site sample runner uses MediaWiki cache and the actual strategy through convert_page_full, rather than generic conversion.
+
+## 表格完整性修复（2026-10-03）
+
+当前 active change `fix-wiki-table-sample-integrity` 修正旧式嵌套表格处理：`_render_cell_content` 从父格中移除所有嵌套表格（包含 div 内的表格）；`_render_table` 在所属父片段后递归输出子表格，不再丢弃技能数值。完整宽度的单格标题行输出独立 Markdown 标题。合并格延续槽位保留标签文本，但不重复图片。上述规则在共享内核生效，无站点特化。S6 比直接结构行，避免嵌套双计数，不以 mw-collapsible 判断导航；S5 使用完整词边界。全量核验进一步保留 thead/tfoot、caption 和晋升标题格的嵌套表；多行表头按列合并为单行 GFM 表头。富文本 pre 保留资产，纯文本 pre 保持代码；文字尖括号转义。S6 区分布局空行与数据行并计入表头折叠，S8 比渲染后标题，S5 的版本扫描不检查 URL。`CONVERTER_CONTRACT_REVISION=7` 使包含中间版本 6 的旧转换缓存失效。回归见 `tests/test_table_section_integrity.py`。

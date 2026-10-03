@@ -317,6 +317,22 @@
                 "rate-limit-api"
             ],
             "file": "growagarden.fandom.com/strategy.md"
+        },
+        {
+            "domain": "darkestdungeon.wiki.gg",
+            "description": "暗黑地牢一代及六项DLC：按确认清单通过正文HTML采集，遵循 robots 排除API",
+            "protection_level": "high",
+            "page_types": [
+                "static_article"
+            ],
+            "pagination": [
+                "none"
+            ],
+            "entry_points": [
+                "dd1_home"
+            ],
+            "anti_crawl_refs": [],
+            "file": "darkestdungeon.wiki.gg/strategy.md"
         }
     ]
 }

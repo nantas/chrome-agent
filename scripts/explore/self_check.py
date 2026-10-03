@@ -217,6 +217,7 @@ def s5_text_integrity(markdown: str) -> dict:
     # Exclude: entity IDs in backticks (e.g. `5.100.1`) and multi-segment dotted numbers (e.g. 5.350.57)
     # KI-2: also strip image markdown to avoid false matches on URL hash fragments
     _scan_md = re.sub(r'!\[.*?\]\([^)]+?\)', '', markdown)
+    _scan_md = re.sub(r'https?://[^\s)]+', '', _scan_md)
     _version_pattern = re.compile(
         r"(?<!`)"           # not preceded by backtick
         r"([a-z])"
@@ -237,7 +238,7 @@ def s5_text_integrity(markdown: str) -> dict:
         anomalies.append("Escape artifacts")
 
     # Repeated link text
-    if re.search(r"(\w[\w\s]{1,15}?) +\1", markdown):
+    if re.search(r"\b(\w+(?:[ \t]+\w+){0,3})[ \t]+\1\b", markdown):
         anomalies.append("Repeated link text")
 
     # NEW: Raw closing HTML tags
@@ -259,37 +260,55 @@ def s5_text_integrity(markdown: str) -> dict:
 
 
 def s6_table_integrity(html: str, markdown: str) -> dict:
-    """S6: Verify table row count within 5% tolerance."""
+    """S6: Compare rendered structural rows, allowing 10% deviation."""
     if not html:
         return {"check": "S6", "status": "skip", "detail": "No HTML provided"}
 
     soup = BeautifulSoup(html, "html.parser")
-    # Exclude navigation tables (navbox, nav-box, mw-collapsible)
-    _nav_classes = {"navbox", "nav-box", "mw-collapsible", "nav-main", "nav-header", "nav-footer"}
-    tables = [
-        t for t in soup.find_all("table")
-        if len(t.find_all("tr")) > 2 and not (_nav_classes & set(t.get("class") or []))
-    ]
-
-    if not tables:
+    # Collapsible tables can hold gameplay data, not just navigation. Count
+    # each direct row once: descendant-row counting double counts nested tables.
+    nav_classes = {"navbox", "nav-box", "nav-main", "nav-header", "nav-footer"}
+    tables = [t for t in soup.find_all("table")
+              if not (nav_classes & set(t.get("class") or []))]
+    if not any(len(t.find_all("tr")) > 2 for t in tables):
         return {"check": "S6", "status": "skip", "detail": "No data tables in original"}
-
-    # Count original <tr> rows (excluding header rows)
     html_rows = 0
     for table in tables:
-        for tr in table.find_all("tr"):
-            # Skip header rows (rows with only <th>)
-            cells = tr.find_all(["th", "td"])
-            if cells and all(c.name == "th" for c in cells):
+        rows = [r for r in table.find_all("tr") if r.find_parent("table") is table]
+        width = max((sum(int(c.get("colspan", 1) or 1) for c in r.find_all(["th", "td"], recursive=False)) for r in rows), default=0)
+        in_header_run = True
+        header_counted = False
+        for row in rows:
+            cells = row.find_all(["th", "td"], recursive=False)
+            if not cells:
                 continue
+            # Full-width heading-only rows become standalone section headings.
+            is_section = (len(cells) == 1
+                          and int(cells[0].get("colspan", 1) or 1) >= width
+                          and cells[0].find(re.compile(r"^h[1-6]$")) is not None)
+            if is_section:
+                in_header_run = True
+                header_counted = False
+                continue
+            # A nested-table container or empty media/control row is layout,
+            # not an additional textual data row. Its child tables are counted
+            # separately above. Images still make an otherwise empty row data.
+            direct = copy.deepcopy(row)
+            for nested in direct.find_all("table"):
+                nested.decompose()
+            if not direct.get_text(strip=True) and direct.find("img") is None:
+                in_header_run = False
+                continue
+            if in_header_run and all(c.name == "th" for c in cells):
+                if header_counted:
+                    continue
+                header_counted = True
+            else:
+                in_header_run = False
             html_rows += 1
-
-    # Count markdown table data rows
-    md_rows = [
-        l for l in markdown.split("\n")
-        if l.strip().startswith("|") and "---" not in l and not re.match(r"^\|[\s\-:|]+\|$", l.strip())
-    ]
-
+    md_rows = [line for line in markdown.splitlines()
+               if line.strip().startswith("|")
+               and not re.match(r"^\|[\s\-:|]+\|$", line.strip())]
     if html_rows == 0:
         return {"check": "S6", "status": "skip", "detail": "No data rows in original tables"}
 
@@ -335,9 +354,16 @@ def s8_section_completeness(html: str, markdown: str) -> dict:
 
     soup = BeautifulSoup(html, "html.parser")
     # Extract mw-headline texts (excluding TOC "Contents" heading)
+    def plain_heading(text):
+        text = re.sub(r"!\[[^\]]*\]\([^)]*\)", "", text)
+        text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
+        text = re.sub(r"[*`_]", "", text)
+        text = re.sub(r"\s+([,.;:!?\)])", r"\1", text)
+        return re.sub(r"\s+", " ", text).strip()
+
     expected_sections = []
     for span in soup.find_all("span", class_="mw-headline"):
-        text = span.get_text(strip=True)
+        text = plain_heading(span.get_text(" ", strip=True))
         if text and text != "Contents":
             expected_sections.append(text)
 
@@ -349,7 +375,7 @@ def s8_section_completeness(html: str, markdown: str) -> dict:
     for line in markdown.split("\n"):
         m = re.match(r"^#{1,6}\s+(.+)$", line.strip())
         if m:
-            md_headings.add(m.group(1).strip())
+            md_headings.add(plain_heading(m.group(1)))
 
     # Check each expected section
     missing = []

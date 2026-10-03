@@ -28,7 +28,7 @@ def assert_no_raw_html_tags(md_text: str) -> None:
 
     # Match opening tags like <div>, <span>, <table>, etc.
     pattern = re.compile(
-        r"<(?P<tag>div|span|table|tr|td|th|ul|ol|li|p|br|hr|img|a|strong|em|b|i|"
+        r"(?<!\\)<(?P<tag>div|span|table|tr|td|th|ul|ol|li|p|br|hr|img|a|strong|em|b|i|"
         r"h[1-6]|section|article|header|footer|nav|main|pre|code|blockquote)"
         r"(?:\s[^>]*)?/?>",
         re.IGNORECASE,
@@ -46,7 +46,7 @@ def assert_no_raw_html_tags(md_text: str) -> None:
         matches.append(m.group(0))
 
     # Also check for unclosed angle-bracket patterns that are clearly HTML
-    html_block_pattern = re.compile(r"</?(?:div|span|table|section|article|header|footer|nav)\b[^>]*>", re.IGNORECASE)
+    html_block_pattern = re.compile(r"(?<!\\)</?(?:div|span|table|section|article|header|footer|nav)\b[^>]*>", re.IGNORECASE)
     for m in html_block_pattern.finditer(stripped):
         tag_text = m.group(0)
         if tag_text not in matches:

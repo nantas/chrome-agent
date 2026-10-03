@@ -290,6 +290,11 @@ class HtmlToMarkdownConverter:
             ).strip()
 
         if tag == "pre":
+            # MediaWiki uses indented rich text for warnings/advice as well
+            # as code. A code fence would discard assets and disable links.
+            if node.css("img, a"):
+                body = self._render_inline_children(node, source_dir=source_dir)
+                return "\n".join("> " + line for line in body.splitlines())
             code = node.text(deep=True, separator="", strip=False)
             if code is None:
                 code = ""
@@ -362,31 +367,16 @@ class HtmlToMarkdownConverter:
     # ------------------------------------------------------------------
 
     def _render_cell_content(self, cell, source_dir: str = "") -> str:
-        """Render a <th> or <td> cell's inline content, skipping nested <table> elements.
-
-        Returns the rendered Markdown for non-table children, or empty string if
-        the cell contains only nested table(s).  A warning is logged when a nested
-        table is detected and skipped.
-        """
-        has_nested_table = any(
-            child.tag == "table" for child in self._child_nodes(cell)
-        )
-        if not has_nested_table:
+        """Render a cell without nested grids, emitted separately by _render_table."""
+        if not cell.css("table"):
             return self._render_inline_children(cell, source_dir=source_dir) or ""
-
-        # Found nested table(s) — log warning and render non-table children only
-        log.warning(
-            "Nested <table> found inside cell — skipping recursive rendering "
-            "to prevent grid corruption. Cell text content will be preserved."
-        )
-        parts = []
-        for child in self._child_nodes(cell):
-            if child.tag == "table":
-                continue
-            rendered = self._render_inline(child, source_dir=source_dir)
-            if rendered:
-                parts.append(rendered)
-        return self._join_inline_parts(parts) or ""
+        # Parent grid contains only its own cells. Nested tables are emitted
+        # separately by _render_table, including tables inside wrapper divs.
+        clone_tree = HTMLParser("<table><tr>" + cell.html + "</tr></table>")
+        clone = clone_tree.css_first(cell.tag)
+        for nested in reversed(clone.css("table")):
+            nested.decompose()
+        return self._render_inline_children(clone, source_dir=source_dir) or ""
 
     def _build_table_grid(self, node, source_dir: str = "") -> list[list[str]]:
         """Parse a <table> node into a normalized 2D grid, expanding colspan/rowspan."""
@@ -396,12 +386,7 @@ class HtmlToMarkdownConverter:
 
         # Only collect direct child <tr> elements (via <tbody> if present)
         # to avoid mixing rows from nested tables into the parent grid
-        tr_nodes: list = []
-        for child in self._child_nodes(node):
-            if child.tag == "tr":
-                tr_nodes.append(child)
-            elif child.tag == "tbody":
-                tr_nodes.extend(c for c in self._child_nodes(child) if c.tag == "tr")
+        tr_nodes = self._direct_table_rows(node)
         if not tr_nodes:
             return []
 
@@ -454,17 +439,27 @@ class HtmlToMarkdownConverter:
                 # Cap colspan to not exceed MAX_COLS
                 colspan = min(colspan, MAX_COLS - col_idx)
 
-                # Expand colspan into current row
-                for _ in range(colspan):
+                # Repeated labels convey merged-cell context, but an asset must
+                # occur only in its original slot. Render the continuation from
+                # HTML rather than stripping Markdown URLs with a fragile regex.
+                continuation = content
+                if (colspan > 1 or rowspan > 1) and cell.css("img"):
+                    clone_tree = HTMLParser("<table><tr>" + cell.html + "</tr></table>")
+                    clone = clone_tree.css_first(cell.tag)
+                    for image in clone.css("img"):
+                        image.decompose()
+                    continuation = self._render_cell_content(clone, source_dir=source_dir) or ""
+
+                for span_index in range(colspan):
                     if len(row) < MAX_COLS:
-                        row.append(content)
+                        row.append(content if span_index == 0 else continuation)
 
                 # Register rowspan for future rows
                 if rowspan > 1:
                     for c in range(colspan):
                         span_col = col_idx + c
                         if span_col < MAX_COLS:
-                            col_spans[span_col] = (rowspan - 1, content)
+                            col_spans[span_col] = (rowspan - 1, continuation)
 
                 col_idx += colspan
 
@@ -557,6 +552,13 @@ class HtmlToMarkdownConverter:
             return ""
 
         max_cols = len(grid[0])
+        if header_row_count > 1:
+            # GFM permits exactly one header row before the separator. Merge
+            # each column's hierarchy instead of emitting stray pipe paragraphs.
+            headers = [" → ".join(row[col] for row in grid[:header_row_count]
+                                  if row[col]) for col in range(max_cols)]
+            grid = [headers] + grid[header_row_count:]
+            header_row_count = 1
 
         def normalize_cell(cell: str) -> str:
             # Replace newlines (from <br>) with space to keep table rows atomic
@@ -594,31 +596,72 @@ class HtmlToMarkdownConverter:
 
     def _render_table(self, node, source_dir: str = "") -> str:
         """Render an HTML table as a Markdown table using grid-based parsing."""
+        captions = [self._render_block(c, source_dir=source_dir)
+                    for c in self._child_nodes(node) if c.tag == "caption"]
         # Build normalized grid
         grid = self._build_table_grid(node, source_dir=source_dir)
         if not grid:
-            return ""
+            return "\n\n".join(c for c in captions if c)
 
-        # Detect header_row_count: count consecutive all-<th> rows
-        header_row_count = 0
-        for row_node in node.css("tr"):
-            children = list(self._child_nodes(row_node))
-            th_cells = [c for c in children if c.tag == "th"]
-            td_cells = [c for c in children if c.tag == "td"]
-            if th_cells and not td_cells:
-                header_row_count += 1
-            else:
-                break
+        # Match grid rows to direct source rows, excluding nested tables.
+        rows = self._direct_table_rows(node)
+        rows = [r for r in rows if any(c.tag in {"th", "td"} for c in self._child_nodes(r))]
 
-        # Check transpose threshold
-        table_options = self.config.get("table_options", {})
-        transpose_threshold = table_options.get("transpose_wider_than")
-        if transpose_threshold is not None and len(grid[0]) > transpose_threshold:
-            grid = self._transpose_grid(grid, header_row_count)
-            # After transpose, first row becomes the new header
-            header_row_count = 1
+        def render_nested(source_rows):
+            nested_parts = []
+            for source_row in source_rows:
+                for nested in source_row.css("table"):
+                    ancestor = nested.parent
+                    while ancestor is not None and ancestor.tag != "table":
+                        ancestor = ancestor.parent
+                    if ancestor is not None and ancestor.mem_id == node.mem_id:
+                        nested_parts.append(self._render_table(nested, source_dir=source_dir))
+            return [part for part in nested_parts if part]
 
-        return self._render_grid_as_table(grid, header_row_count)
+        def render_segment(segment, source_rows):
+            header_count = 0
+            for row_node in source_rows:
+                cells = [c for c in self._child_nodes(row_node) if c.tag in {"th", "td"}]
+                if cells and all(c.tag == "th" for c in cells):
+                    header_count += 1
+                else:
+                    break
+            threshold = self.config.get("table_options", {}).get("transpose_wider_than")
+            if threshold is not None and segment and len(segment[0]) > threshold:
+                segment = self._transpose_grid(segment, header_count)
+                header_count = 1
+            result = self._render_grid_as_table(segment, header_count)
+            return "\n\n".join([result] + render_nested(source_rows))
+
+        # A full-width title row is a document section, not a data cell.
+        # Split only such rows; build the grid first so vertical span state and
+        # all remaining column relationships survive the section boundary.
+        parts = [c for c in captions if c]
+        start = 0
+        for index, row_node in enumerate(rows):
+            cells = [c for c in self._child_nodes(row_node) if c.tag in {"th", "td"}]
+            if len(cells) != 1 or not cells[0].css("h1, h2, h3, h4, h5, h6"):
+                continue
+            if int(cells[0].attributes.get("colspan", 1) or 1) < len(grid[0]):
+                continue
+            if index > start:
+                parts.append(render_segment(grid[start:index], rows[start:index]))
+            parts.append(self._render_cell_content(cells[0], source_dir=source_dir).strip())
+            parts.extend(render_nested([row_node]))
+            start = index + 1
+        if start < len(grid):
+            parts.append(render_segment(grid[start:], rows[start:]))
+        return "\n\n".join(part for part in parts if part)
+
+    def _direct_table_rows(self, node):
+        """Include browser-created row groups without collecting nested rows."""
+        rows = []
+        for child in self._child_nodes(node):
+            if child.tag == "tr":
+                rows.append(child)
+            elif child.tag in {"thead", "tbody", "tfoot"}:
+                rows.extend(c for c in self._child_nodes(child) if c.tag == "tr")
+        return rows
 
     # ------------------------------------------------------------------
     # Inline rendering
@@ -779,7 +822,7 @@ class HtmlToMarkdownConverter:
         if text is None:
             return ""
         collapsed = re.sub(r"\s+", " ", text)
-        return collapsed.strip()
+        return collapsed.strip().replace("<", r"\<").replace(">", r"\>")
 
     def _has_block_children(self, node) -> bool:
         return any(child.tag in self._BLOCK_TAGS for child in self._child_nodes(node))
@@ -964,4 +1007,3 @@ def apply_post_conversion_ops(md: str, extraction_rules: dict) -> str:
             )
 
     return md.strip()
-
