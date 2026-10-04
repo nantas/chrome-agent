@@ -376,6 +376,81 @@ class HtmlToMarkdownConverter:
             nested.decompose()
         return self._render_inline_children(clone, source_dir=source_dir) or ""
 
+    def _merged_icon_label(self, image) -> str:
+        """Resolve a projection label without inferring names from asset paths."""
+        alt = (image.attributes.get("alt") or "").strip()
+        labels = self.config.get("table_options", {}).get("merged_cell_icon_labels", {})
+        if alt in labels:
+            return labels[alt]
+        for name in (alt, (image.attributes.get("title") or "").strip()):
+            if (name and name.lower() not in {"image", "icon"}
+                    and not re.search(r"(?:^[a-z][a-z0-9+.-]*:|^//|\.(?:png|jpe?g|gif|svg|webp|avif|ico)(?:[?#].*)?$)", name, re.I)):
+                return name
+        return "（未命名图标）"
+
+    def _adjacent_icon_label(self, image, cell, label):
+        """Find an exact neighboring label without crossing content or blocks."""
+        for direction in ("next", "prev"):
+            current = image
+            while current != cell:
+                neighbor = getattr(current, direction)
+                while neighbor is not None and neighbor.tag == "-text" and not neighbor.text().strip():
+                    neighbor = getattr(neighbor, direction)
+                if neighbor is not None:
+                    if (neighbor.tag not in self._BLOCK_TAGS and neighbor.tag not in {"br", "img"}
+                            and not neighbor.css("img, br")
+                            and self._normalize_text(neighbor.text(separator=" ", strip=True)) == label):
+                        return neighbor
+                    break
+                current = current.parent
+                if current is None or current.tag in self._BLOCK_TAGS:
+                    break
+        return None
+
+    def _render_cell_continuation(self, cell, source_dir: str) -> str:
+        """Keep semantic icon labels in span copies, leaving the source intact."""
+        tree = HTMLParser("<table><tr>" + cell.html + "</tr></table>")
+        clone = tree.css_first(cell.tag)
+        # Decide using the original clone, not labels inserted for earlier icons.
+        plans = []
+        for image in clone.css("img"):
+            label = self._merged_icon_label(image)
+            ancestor = image.parent
+            while ancestor is not None and ancestor != clone and ancestor.tag != "a":
+                ancestor = ancestor.parent
+            link = ancestor if ancestor is not None and ancestor.tag == "a" else None
+            same_link = (link is not None and len(link.css("img")) == 1
+                         and self._normalize_text(link.text(separator=" ", strip=True)) == label)
+            neighbor = None if same_link else self._adjacent_icon_label(image, clone, label)
+            plans.append((image, label, link, same_link, neighbor))
+        replacement_trees = []
+        consumed = set()
+        for image, label, link, same_link, neighbor in plans:
+            if not self._render_image(image) or same_link:
+                image.decompose()
+                continue
+            if neighbor is not None and neighbor.mem_id not in consumed:
+                neighbor_links = ([neighbor] if neighbor.tag == "a" else neighbor.css("a"))
+                if neighbor_links:
+                    # A separate destination must not disappear in deduplication.
+                    if link is None or all(n.attributes.get("href") == link.attributes.get("href") for n in neighbor_links):
+                        image.decompose()
+                        continue
+                else:
+                    # Move the existing label/formatting into the icon's link,
+                    # retaining the destination as well as the source wording.
+                    replacement = HTMLParser("<div>" + neighbor.html + "</div>")
+                    replacement_trees.append(replacement)
+                    image.replace_with(replacement.css_first("div").child)
+                    consumed.add(neighbor.mem_id)
+                    neighbor.decompose()
+                    continue
+            # Numeric entities survive the shared post-op escape cleanup and
+            # remain literal text in Markdown, including inside link labels.
+            text = "".join(f"&#{ord(char)};" if char in "&<>[]*_`\\|!" else char for char in label)
+            image.replace_with(" " + text + " ")
+        return self._render_cell_content(clone, source_dir=source_dir) or ""
+
     def _build_table_grid(self, node, source_dir: str = "") -> list[list[str]]:
         """Parse a <table> node into a normalized 2D grid, expanding colspan/rowspan."""
         MAX_COLS = 200
@@ -442,11 +517,7 @@ class HtmlToMarkdownConverter:
                 # HTML rather than stripping Markdown URLs with a fragile regex.
                 continuation = content
                 if (colspan > 1 or rowspan > 1) and cell.css("img"):
-                    clone_tree = HTMLParser("<table><tr>" + cell.html + "</tr></table>")
-                    clone = clone_tree.css_first(cell.tag)
-                    for image in clone.css("img"):
-                        image.decompose()
-                    continuation = self._render_cell_content(clone, source_dir=source_dir) or ""
+                    continuation = self._render_cell_continuation(cell, source_dir)
 
                 for span_index in range(colspan):
                     if len(row) < MAX_COLS:

@@ -188,3 +188,13 @@ P-1～P-4 已随 `4c781e3` 归档。后续 change `fix-conversion-structure-and-
 - 仍明确保留 Crypt Keeper 的合并单元格图标去重引起的 S5 重复候选，及来源/锚点映射缺口；不宣称 collection 全检查通过。细节见下列 verification。
 
 实施与证据：[verification](../../openspec/changes/fix-conversion-structure-and-audit-fidelity/verification.md)。
+
+## 2026-10-04 Crypt Keeper 后续修复
+
+`fix-merged-cell-icon-semantics` 已实施并验证，尚未归档/提交。补充准确归因：旧转换器对合并格副本删图但保留连接词，导致 `or or`；这是副本可读语义缺失，不能仅因图片总数、旧产物一致便称为审计误报。
+
+现保留首槽图片，副本使用可靠名称或显式未命名占位。首次全量重放发现相邻图标/文字造成17页同名重复，经用户确认扩展精确邻接去重后消除；不修改 S5、不设页面白名单。最后209页 S5全部通过、无失败，图片/标题/行列/表外内容一致、无原有链接目的丢失。Python295、Node152、站点13/13通过；revision8使旧转换缓存失效。
+
+仍有996个副本位置无可靠名称而显示“未命名图标”；既有锚点、跨DD1映射缺口未处理。正式collection未重写。证据见 [verification](../../openspec/changes/archive/2026-10-04-fix-merged-cell-icon-semantics/verification.md)，原历史现场保留。
+
+归档补记（2026-10-04）：`fix-merged-cell-icon-semantics` 已归档到 `openspec/changes/archive/2026-10-04-fix-merged-cell-icon-semantics/`，永久规范已同步，相关实现/测试/样本/治理文档一并整理提交。

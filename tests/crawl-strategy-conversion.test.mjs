@@ -9,8 +9,8 @@ import {resolveAppPython} from '../scripts/lib/python-resolver.mjs';
 import {buildScraplingExtractionArgs} from '../scripts/lib/scrapling-extraction-args.mjs';
 const root = process.cwd();
 const source = fs.readFileSync('scripts/chrome-agent-cli.mjs','utf8');
-const html = '<nav><a href="/login">Create account</a></nav><main><p>Body</p><div><span class="ordinary"><img src="https://example.invalid/canary.png"></span><h2>Structural canary</h2></div><ul><big><li>List canary</li></big></ul><h3><span class="mw-headline"><div style="display:none">Group</div></span></h3><div class="group">Group</div><div class="remove">REMOVE</div><table><tr><th>Skill</th><th>Value</th></tr><tr><td>Heal</td><td><table><tr><th>Rank</th></tr><tr><td>42</td></tr></table></td></tr></table></main>';
-const rules = {selectors:{content:'main'},cleanup_selectors:['.remove'],cleanup:['unwrap_list_item_wrappers'],heading_normalization:[{heading_selector:'h3:has(.mw-headline)',label_selector:'.group'}]};
+const html = '<nav><a href="/login">Create account</a></nav><main><p>Body</p><div><span class="ordinary"><img src="https://example.invalid/canary.png"></span><h2>Structural canary</h2></div><ul><big><li>List canary</li></big></ul><h3><span class="mw-headline"><div style="display:none">Group</div></span></h3><div class="group">Group</div><div class="remove">REMOVE</div><table><tr><th>Skill</th><th>Value</th></tr><tr><td>Heal</td><td><table><tr><th>Rank</th></tr><tr><td>42</td></tr></table></td></tr></table><table><tr><th>A</th><th>B</th></tr><tr><td colspan="2">Gain<img src="https://example.invalid/status.png" alt="status.png"></td></tr></table></main>';
+const rules = {table_options:{merged_cell_icon_labels:{"status.png":"Blind"}},selectors:{content:'main'},cleanup_selectors:['.remove'],cleanup:['unwrap_list_item_wrappers'],heading_normalization:[{heading_selector:'h3:has(.mw-headline)',label_selector:'.group'}]};
 function harness(t, overrides={}) {
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'crawl-convert-'));
   t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
@@ -41,6 +41,7 @@ test('matched crawl renders full strategy through shared kernel regardless of ac
   assert.match(md,/\n\n## Structural canary\n/);
   assert.match(md,/- List canary/);
   assert.match(md,/### Group/);
+  assert.match(md,/\| Gain Blind \|/);
   assert.equal(calls.length,1);
 });
 

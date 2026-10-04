@@ -10,7 +10,7 @@
 
 | Duelist | Duelist | Duelist | Duelist | Duelist | Duelist |
 | --- | --- | --- | --- | --- | --- |
-| ![Duelist heroic.png](https://darkestdungeon.wiki.gg/images/thumb/Duelist_heroic.png/250px-Duelist_heroic.png?9b06df) |  |  |  |  |  |
+| ![Duelist heroic.png](https://darkestdungeon.wiki.gg/images/thumb/Duelist_heroic.png/250px-Duelist_heroic.png?9b06df) | （未命名图标） | （未命名图标） | （未命名图标） | （未命名图标） | （未命名图标） |
 | Stats [[Compare]](https://darkestdungeon.wiki.gg/wiki/Heroes_(Darkest_Dungeon)#Comparison_Table) | Stats [[Compare]](https://darkestdungeon.wiki.gg/wiki/Heroes_(Darkest_Dungeon)#Comparison_Table) | Stats [[Compare]](https://darkestdungeon.wiki.gg/wiki/Heroes_(Darkest_Dungeon)#Comparison_Table) | Stats [[Compare]](https://darkestdungeon.wiki.gg/wiki/Heroes_(Darkest_Dungeon)#Comparison_Table) | Stats [[Compare]](https://darkestdungeon.wiki.gg/wiki/Heroes_(Darkest_Dungeon)#Comparison_Table) | Stats [[Compare]](https://darkestdungeon.wiki.gg/wiki/Heroes_(Darkest_Dungeon)#Comparison_Table) |
 | [Armor](https://darkestdungeon.wiki.gg/wiki/Armor) | 1 | 2 | 3 | 4 | 5 |
 | [MAX HP](https://darkestdungeon.wiki.gg/wiki/Combat_Mechanics_(Darkest_Dungeon)#Health) | 21 | 25 | 29 | 33 | 37 |
@@ -61,7 +61,7 @@ The Duelist's seven skills are divided between her two stances: each stance has 
 |  |  |  |  |  |
 | --- | --- | --- | --- | --- |
 | ![Duelist-anticipation.png](https://darkestdungeon.wiki.gg/images/Duelist-anticipation.png?b6307d) | Rank | Target | Effect | Self |
-|  | ![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81) | Self |  | Activates Riposte (2 rds) Change to mode: Aggressive +3% CRT while Riposte active (4 rds) |
+| （未命名图标） | ![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81) | Self |  | Activates Riposte (2 rds) Change to mode: Aggressive +3% CRT while Riposte active (4 rds) |
 |  |  |  |  |  |
 
 | Further levels | Further levels | Further levels | Further levels |
@@ -80,7 +80,7 @@ The Duelist's seven skills are divided between her two stances: each stance has 
 |  |  |  |  |  |  |  |  |  |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | ![Duelist-touche.png](https://darkestdungeon.wiki.gg/images/Duelist-touche.png?ebc18a) | Range | Rank | Target | Damage | Accuracy | Crit mod | Effect | Self |
-|  | Melee | ![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81) | ![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2) | +0% | 90 | 1% |  | Back 1 +40 DODGE until next Dodge (4 rds) |
+| （未命名图标） | Melee | ![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81) | ![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2) | +0% | 90 | 1% |  | Back 1 +40 DODGE until next Dodge (4 rds) |
 |  |  |  |  |  |  |  |  |  |
 
 | Further levels | Further levels | Further levels | Further levels | Further levels | Further levels |
@@ -99,7 +99,7 @@ The Duelist's seven skills are divided between her two stances: each stance has 
 |  |  |  |  |  |  |  |  |  |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | ![Duelist-feint.png](https://darkestdungeon.wiki.gg/images/Duelist-feint.png?b68854) | Range | Rank | Target | Damage | Accuracy | Crit mod | Effect | Self |
-|  | Melee | ![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81) | ![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2) | -50% | 95 | 8% | -10 ACC vs Marked (110% Base) -20% PROT (110% Base) | Mark Self (2 rds) Riposte: +25% DMG (4 rds) |
+| （未命名图标） | Melee | ![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81) | ![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2) | -50% | 95 | 8% | -10 ACC vs Marked (110% Base) -20% PROT (110% Base) | Mark Self (2 rds) Riposte: +25% DMG (4 rds) |
 |  |  |  |  |  |  |  |  |  |
 
 | Further levels | Further levels | Further levels | Further levels | Further levels | Further levels |
@@ -118,7 +118,7 @@ The Duelist's seven skills are divided between her two stances: each stance has 
 |  |  |  |  |  |  |  |  |  |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | ![Duelist-disengage.png](https://darkestdungeon.wiki.gg/images/Duelist-disengage.png?67ca39) | Range | Rank | Target | Damage | Accuracy | Crit mod | Effect | Self |
-|  | Melee | ![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81) | ![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2) | -50% | 95 | -1% |  | Back 3 +6 SPD (4 rds) +10 ACC (4 rds) Attacks usable in any position / Attacks can target any position (2 rds) +30 DODGE if in Position 4 (3 rds) |
+| （未命名图标） | Melee | ![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81) | ![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2) | -50% | 95 | -1% |  | Back 3 +6 SPD (4 rds) +10 ACC (4 rds) Attacks usable in any position / Attacks can target any position (2 rds) +30 DODGE if in Position 4 (3 rds) |
 |  |  |  |  |  |  |  |  |  |
 
 | Further levels | Further levels | Further levels | Further levels | Further levels | Further levels |
@@ -139,7 +139,7 @@ The Duelist's seven skills are divided between her two stances: each stance has 
 |  |  |  |  |  |
 | --- | --- | --- | --- | --- |
 | ![Duelist-anticipation.png](https://darkestdungeon.wiki.gg/images/Duelist-anticipation.png?b6307d) | Rank | Target | Effect | Self |
-|  | ![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81) | Self |  | Activates Riposte (2 rds) Change to mode: Defensive +3 DODGE while Riposte active (4 rds) |
+| （未命名图标） | ![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81) | Self |  | Activates Riposte (2 rds) Change to mode: Defensive +3 DODGE while Riposte active (4 rds) |
 |  |  |  |  |  |
 
 | Further levels | Further levels | Further levels | Further levels |
@@ -158,7 +158,7 @@ The Duelist's seven skills are divided between her two stances: each stance has 
 |  |  |  |  |  |  |  |  |  |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | ![Duelist-fleche.png](https://darkestdungeon.wiki.gg/images/Duelist-fleche.png?496487) | Range | Rank | Target | Damage | Accuracy | Crit mod | Effect | Self |
-|  | Melee | ![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2) | ![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2) | +25% | 90 | 9% |  | Forward 2 Mark Self (2 rds) |
+| （未命名图标） | Melee | ![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2) | ![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2) | +25% | 90 | 9% |  | Forward 2 Mark Self (2 rds) |
 |  |  |  |  |  |  |  |  |  |
 
 | Further levels | Further levels | Further levels | Further levels | Further levels | Further levels |
@@ -177,7 +177,7 @@ The Duelist's seven skills are divided between her two stances: each stance has 
 |  |  |  |  |  |  |  |  |  |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | ![Duelist-coup-de-grace.png](https://darkestdungeon.wiki.gg/images/Duelist-coup-de-grace.png?9f08c4) | Range | Rank | Target | Damage | Accuracy | Crit mod | Effect | Self |
-|  | Ranged | ![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81) | ![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7) | -60% | 95 | 7% | Armor Piercing +100% CRT vs Stunned | On Kill: +1 Actions |
+| （未命名图标） | Ranged | ![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81) | ![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7) | -60% | 95 | 7% | Armor Piercing +100% CRT vs Stunned | On Kill: +1 Actions |
 |  |  |  |  |  |  |  |  |  |
 
 | Further levels | Further levels | Further levels | Further levels | Further levels | Further levels |
@@ -196,7 +196,7 @@ The Duelist's seven skills are divided between her two stances: each stance has 
 |  |  |  |  |  |  |  |  |  |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | ![Duelist-the-boot.png](https://darkestdungeon.wiki.gg/images/Duelist-the-boot.png?f7858d) | Range | Rank | Target | Damage | Accuracy | Crit mod | Effect | Self |
-|  | Melee | ![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81) | ![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2) | -40% | 95 | 1% | Stun (100% base) Knockback 1 (110% base) | Forward 1 |
+| （未命名图标） | Melee | ![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81)![Yellow dot.png](https://darkestdungeon.wiki.gg/images/Yellow_dot.png?c55d81) | ![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Red dot.png](https://darkestdungeon.wiki.gg/images/Red_dot.png?9efde7)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2)![Grey dot.png](https://darkestdungeon.wiki.gg/images/Grey_dot.png?5326d2) | -40% | 95 | 1% | Stun (100% base) Knockback 1 (110% base) | Forward 1 |
 |  |  |  |  |  |  |  |  |  |
 
 | Further levels | Further levels | Further levels | Further levels | Further levels | Further levels |
@@ -236,40 +236,40 @@ The Duelist's seven skills are divided between her two stances: each stance has 
 | Meditation | Meditation | Meditation | Meditation |
 | --- | --- | --- | --- |
 | ![Camp skill meditation.png](https://darkestdungeon.wiki.gg/images/Camp_skill_meditation.png?f329f2) | **Time Cost** | **Target** | **Description** |
-|  | **3** | Self | +15 ACC while Riposte active (4 Battles) +15 DODGE while Riposte active (4 Battles) |
-|  | **Bark** | *"Focus, clear the mind."* | *"Focus, clear the mind."* |
+| （未命名图标） | **3** | Self | +15 ACC while Riposte active (4 Battles) +15 DODGE while Riposte active (4 Battles) |
+| （未命名图标） | **Bark** | *"Focus, clear the mind."* | *"Focus, clear the mind."* |
 |  |  |  |  |
 | Preparation | Preparation | Preparation | Preparation |
 | ![Camp skill preparation.png](https://darkestdungeon.wiki.gg/images/Camp_skill_preparation.png?40c1bb) | **Time Cost** | **Target** | **Description** |
-|  | **3** | Self | +25% DMG on First Round (4 Battles) +20 DODGE on First Round (4 Battles) +2 SPD on First Round (4 Battles) |
-|  | **Bark** | *"I shall attack with explosive fury!"* | *"I shall attack with explosive fury!"* |
+| （未命名图标） | **3** | Self | +25% DMG on First Round (4 Battles) +20 DODGE on First Round (4 Battles) +2 SPD on First Round (4 Battles) |
+| （未命名图标） | **Bark** | *"I shall attack with explosive fury!"* | *"I shall attack with explosive fury!"* |
 |  |  |  |  |
 | Ruthless Instruction | Ruthless Instruction | Ruthless Instruction | Ruthless Instruction |
 | ![Camp skill ruthless instruction.png](https://darkestdungeon.wiki.gg/images/Camp_skill_ruthless_instruction.png?ad4ef9) | **Time Cost** | **Target** | **Description** |
-|  | **2** | One Companion | +7% CRT (4 Battles) +2 SPD (4 Battles) +10 **Stress** (50% chance) +5 **Stress** |
-|  | **Bark** | *"Look, listen. Do as I do."* | *"Look, listen. Do as I do."* |
+| （未命名图标） | **2** | One Companion | +7% CRT (4 Battles) +2 SPD (4 Battles) +10 **Stress** (50% chance) +5 **Stress** |
+| （未命名图标） | **Bark** | *"Look, listen. Do as I do."* | *"Look, listen. Do as I do."* |
 |  |  |  |  |
 | Again! | Again! | Again! | Again! |
 | ![Camp skill again.png](https://darkestdungeon.wiki.gg/images/Camp_skill_again.png?edf832) | **Time Cost** | **Target** | **Description** |
-|  | **1** | One Companion | Refresh Camping Skill Uses +15 **Stress** |
-|  | **Bark** | *"Do it again! Do it better!"* | *"Do it again! Do it better!"* |
+| （未命名图标） | **1** | One Companion | Refresh Camping Skill Uses +15 **Stress** |
+| （未命名图标） | **Bark** | *"Do it again! Do it better!"* | *"Do it again! Do it better!"* |
 |  |  |  |  |
 
 | Encourage | Encourage | Encourage | Encourage |
 | --- | --- | --- | --- |
 | ![Encourage.png](https://darkestdungeon.wiki.gg/images/Encourage.png?6c9e74) | **Time Cost** | **Target** | **Description** |
-|  | **2** | One Companion | -15 **Stress** |
-|  | **Bark** | *"Loosen your shoulders, you'll strike faster."* *"Your stance is solid; you move well."* " *You'd have bested your share at the Académie."* | *"Loosen your shoulders, you'll strike faster."* *"Your stance is solid; you move well."* " *You'd have bested your share at the Académie."* |
+| （未命名图标） | **2** | One Companion | -15 **Stress** |
+| （未命名图标） | **Bark** | *"Loosen your shoulders, you'll strike faster."* *"Your stance is solid; you move well."* " *You'd have bested your share at the Académie."* | *"Loosen your shoulders, you'll strike faster."* *"Your stance is solid; you move well."* " *You'd have bested your share at the Académie."* |
 |  |  |  |  |
 | Wound Care | Wound Care | Wound Care | Wound Care |
 | ![Wound Care.png](https://darkestdungeon.wiki.gg/images/Wound_Care.png?d2faeb) | **Time Cost** | **Target** | **Description** |
-|  | **2** | One Companion | Heal 15% HP Removes Bleeding Removes Blight |
-|  | **Bark** | *"Let me tend that for you."* *"Looks worse than it is."* *"There, better already."* | *"Let me tend that for you."* *"Looks worse than it is."* *"There, better already."* |
+| （未命名图标） | **2** | One Companion | Heal 15% HP Removes Bleeding Removes Blight |
+| （未命名图标） | **Bark** | *"Let me tend that for you."* *"Looks worse than it is."* *"There, better already."* | *"Let me tend that for you."* *"Looks worse than it is."* *"There, better already."* |
 |  |  |  |  |
 | Pep Talk | Pep Talk | Pep Talk | Pep Talk |
 | ![Pep Talk.png](https://darkestdungeon.wiki.gg/images/Pep_Talk.png?343052) | **Time Cost** | **Target** | **Description** |
-|  | **2** | One Companion | -15% **Stress** (4 Battles) |
-|  | **Bark** | *"Keep your composure when the fighting starts."* *"Do not simply react. Instead, anticipate."* *"Hardship sharpens our edge, that we win any contest."* | *"Keep your composure when the fighting starts."* *"Do not simply react. Instead, anticipate."* *"Hardship sharpens our edge, that we win any contest."* |
+| （未命名图标） | **2** | One Companion | -15% **Stress** (4 Battles) |
+| （未命名图标） | **Bark** | *"Keep your composure when the fighting starts."* *"Do not simply react. Instead, anticipate."* *"Hardship sharpens our edge, that we win any contest."* | *"Keep your composure when the fighting starts."* *"Do not simply react. Instead, anticipate."* *"Hardship sharpens our edge, that we win any contest."* |
 |  |  |  |  |
 
 ## Equipment
@@ -284,14 +284,14 @@ A hero's [weapons](https://darkestdungeon.wiki.gg/wiki/Weapons) and [armor](http
 | Rapier → Level 1 | Rapier → Level 1 | Rapier → Level 1 | Rapier → Level 2 | Rapier → Level 2 | Rapier → Level 2 | Rapier → Level 3 | Rapier → Level 3 | Rapier → Level 3 | Rapier → Level 4 | Rapier → Level 4 | Rapier → Level 4 | Rapier → Level 5 | Rapier → Level 5 | Rapier → Level 5 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | ![Eqp weapon 0dul.png](https://darkestdungeon.wiki.gg/images/Eqp_weapon_0dul.png?700876) | Practice Rapier | Practice Rapier | ![Eqp weapon 1dul.png](https://darkestdungeon.wiki.gg/images/Eqp_weapon_1dul.png?9f1fbf) | Student's Rapier | Student's Rapier | ![Eqp weapon 2dul.png](https://darkestdungeon.wiki.gg/images/Eqp_weapon_2dul.png?1efd9a) | Balanced Rapier | Balanced Rapier | ![Eqp weapon 3dul.png](https://darkestdungeon.wiki.gg/images/Eqp_weapon_3dul.png?7e99f1) | Master's Rapier | Master's Rapier | ![Eqp weapon 4dul.png](https://darkestdungeon.wiki.gg/images/Eqp_weapon_4dul.png?8176cc) | ***Heartpiercer*** | ***Heartpiercer*** |
-|  | DMG base: | 5-7 |  | DMG base: | 6-8 |  | DMG base: | 7-10 |  | DMG base: | 7-11 |  | DMG base: | 8-13 |
-|  | CRT base: | 5.0% |  | CRT base: | 6.0% |  | CRT base: | 7.0% |  | CRT base: | 8.0% |  | CRT base: | 9.0% |
-|  | SPD base: | 6 |  | SPD base: | 6 |  | SPD base: | 7 |  | SPD base: | 7 |  | SPD base: | 8 |
+| （未命名图标） | DMG base: | 5-7 | （未命名图标） | DMG base: | 6-8 | （未命名图标） | DMG base: | 7-10 | （未命名图标） | DMG base: | 7-11 | （未命名图标） | DMG base: | 8-13 |
+| （未命名图标） | CRT base: | 5.0% | （未命名图标） | CRT base: | 6.0% | （未命名图标） | CRT base: | 7.0% | （未命名图标） | CRT base: | 8.0% | （未命名图标） | CRT base: | 9.0% |
+| （未命名图标） | SPD base: | 6 | （未命名图标） | SPD base: | 6 | （未命名图标） | SPD base: | 7 | （未命名图标） | SPD base: | 7 | （未命名图标） | SPD base: | 8 |
 | Doublet & Cloak | Doublet & Cloak | Doublet & Cloak | Doublet & Cloak | Doublet & Cloak | Doublet & Cloak | Doublet & Cloak | Doublet & Cloak | Doublet & Cloak | Doublet & Cloak | Doublet & Cloak | Doublet & Cloak | Doublet & Cloak | Doublet & Cloak | Doublet & Cloak |
 | Level 1 | Level 1 | Level 1 | Level 2 | Level 2 | Level 2 | Level 3 | Level 3 | Level 3 | Level 4 | Level 4 | Level 4 | Level 5 | Level 5 | Level 5 |
 | ![Eqp armour 0dul.png](https://darkestdungeon.wiki.gg/images/Eqp_armour_0dul.png?a91f9f) | Second-hand Doublet | Second-hand Doublet | ![Eqp armour 1dul.png](https://darkestdungeon.wiki.gg/images/Eqp_armour_1dul.png?189c7e) | Refurbished Doublet | Refurbished Doublet | ![Eqp armour 2dul.png](https://darkestdungeon.wiki.gg/images/Eqp_armour_2dul.png?496589) | Fine Doublet | Fine Doublet | ![Eqp armour 3dul.png](https://darkestdungeon.wiki.gg/images/Eqp_armour_3dul.png?478691) | Master-Crafter Doublet | Master-Crafter Doublet | ![Eqp armour 4dul.png](https://darkestdungeon.wiki.gg/images/Eqp_armour_4dul.png?1553ab) | ***Lover's Embrace*** | ***Lover's Embrace*** |
-|  | DODGE base: | 5 |  | DODGE base: | 10 |  | DODGE base: | 15 |  | DODGE base: | 20 |  | DODGE base: | 25 |
-|  | HP base: | 21 |  | HP base: | 25 |  | HP base: | 29 |  | HP base: | 33 |  | HP base: | 37 |
+| （未命名图标） | DODGE base: | 5 | （未命名图标） | DODGE base: | 10 | （未命名图标） | DODGE base: | 15 | （未命名图标） | DODGE base: | 20 | （未命名图标） | DODGE base: | 25 |
+| （未命名图标） | HP base: | 21 | （未命名图标） | HP base: | 25 | （未命名图标） | HP base: | 29 | （未命名图标） | HP base: | 33 | （未命名图标） | HP base: | 37 |
 
 Each hero has a number of unique [trinkets](https://darkestdungeon.wiki.gg/wiki/Trinkets_(Darkest_Dungeon)):
 
@@ -323,8 +323,8 @@ Each hero has a unique **trinket set** consisting of two hero-exclusive trinkets
 | Districts → Name and Image | Districts → Effects | Districts → Costs | Districts |
 | --- | --- | --- | --- |
 | ![District Academie.png](https://darkestdungeon.wiki.gg/images/thumb/District_Academie.png/170px-District_Academie.png?10f98f)![Exclusive to The Fire's Edge DLC](https://darkestdungeon.wiki.gg/images/thumb/Poptext_burn.png/20px-Poptext_burn.png?af0b4e) Académie Duello | Riposte: +10 ACC +3 DODGE Duelist: +1 SPD | ![Icon Crest.png](https://darkestdungeon.wiki.gg/images/thumb/Icon_Crest.png/40px-Icon_Crest.png?e1e20c) 300 |  |
-| Académie Duello | Riposte: +10 ACC +3 DODGE Duelist: +1 SPD | ![Icon Deed.png](https://darkestdungeon.wiki.gg/images/thumb/Icon_Deed.png/40px-Icon_Deed.png?39b0f9) 25 |  |
-| Académie Duello | Riposte: +10 ACC +3 DODGE Duelist: +1 SPD | ![Currency.blueprint.icon.png](https://darkestdungeon.wiki.gg/images/Currency.blueprint.icon.png?fe6a7d) 1 |  |
+| （未命名图标） Exclusive to The Fire's Edge DLC Académie Duello | Riposte: +10 ACC +3 DODGE Duelist: +1 SPD | ![Icon Deed.png](https://darkestdungeon.wiki.gg/images/thumb/Icon_Deed.png/40px-Icon_Deed.png?39b0f9) 25 |  |
+| （未命名图标） Exclusive to The Fire's Edge DLC Académie Duello | Riposte: +10 ACC +3 DODGE Duelist: +1 SPD | ![Currency.blueprint.icon.png](https://darkestdungeon.wiki.gg/images/Currency.blueprint.icon.png?fe6a7d) 1 |  |
 
 ## Trivia
 

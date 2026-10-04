@@ -281,3 +281,11 @@ Key diagnostic: render individual blocks independently and compare to combined o
 `unwrap_list_item_wrappers` 通过严格减少包装节点的迭代处理任意有限深度，尊重最近列表所属关系与嵌套编号。DD2 不再启用 strip_empty_inline_tags、strip_empty_paragraphs、unwrap_nowrap_spans 作为块边界绕过；这些可选操作仍兼容，空 id/name 锚点与媒体必须保留。标题规范化在隐藏清理前运行。测试覆盖真实 convert_page_full 及 explore/pipeline/crawl 镜像。
 
 [验证与限制](../../openspec/changes/fix-conversion-structure-and-audit-fidelity/verification.md)。
+
+## 合并格图标语义（2026-10-04）
+
+合并格首槽保留图片，colspan/rowspan 延续槽位将图片替换为可读标签。名称顺序为 `table_options.merged_cell_icon_labels` 精确 alt 映射、可靠 alt、可靠 title、`（未命名图标）`；不从图片文件名猜测名称，不复活过滤图片。
+
+同一链接内或同一单元格紧邻的同名标签只保留一次，原文字格式和链接目的保留；不同目的链接、其他内容、换行和块边界阻止合并。替换前先规划匹配，避免新插入文字影响后续判定。特殊字符经文本转义，不注入表格/链接结构。revision 8 使旧转换缓存失效。
+
+Crypt Keeper 的 `or or` 是既有副本语义丢失，已修复；209 页离线重放 S5 全通过，996 个缺少可靠名称的副本位置仍显式占位。详见 [验证记录](../../openspec/changes/archive/2026-10-04-fix-merged-cell-icon-semantics/verification.md)。

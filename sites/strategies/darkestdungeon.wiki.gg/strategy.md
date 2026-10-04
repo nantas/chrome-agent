@@ -3,6 +3,10 @@ domain: darkestdungeon.wiki.gg
 description: 暗黑地牢系列（一代及六项DLC、二代）：按确认清单通过正文HTML采集，遵循 robots 排除API
 protection_level: high
 extraction:
+  table_options:
+    merged_cell_icon_labels:
+      Dd2 token vulnerable.png: Vulnerable
+      Dd2 token daze.png: Daze
   heading_normalization:
     - heading_selector: "h3:has(.mw-headline > div[style*='display:none'])"
       label_selector: ".headerdd2"

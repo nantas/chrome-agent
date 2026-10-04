@@ -40,6 +40,7 @@ TITLE = "Bloody Gust"
 RULES = {
     "image_handling": {"base_url": f"https://{DOMAIN}"},
     "cleanup": ["strip_footer", "unwrap_list_item_wrappers"],
+    "table_options": {"merged_cell_icon_labels": {"status.png": "Blind"}},
     "heading_normalization": [{"heading_selector": "h3:has(.mw-headline)", "label_selector": ".group"}],
 }
 
@@ -57,7 +58,7 @@ See <a href="https://example.com/guide">the guide</a> for details.</p>
 <table class="wikitable">
 <tr><th>Name</th><th>Damage</th><th>Notes</th></tr>
 <tr><td rowspan="2">Gust</td><td>10</td><td>+10% | speed</td></tr>
-<tr><td colspan="2">Sweeping</td></tr>
+<tr><td colspan="2">Sweeping <img src="/images/status.png" alt="status.png"></td></tr>
 </table>
 <ul><big><li>First effect</li><li>Second effect</li></big></ul>
 <div><span class="ordinary"><img src="/images/canary.png"/></span><h2>Structural canary</h2></div>
@@ -169,6 +170,7 @@ class TestConvertMirrorEquivalence(unittest.TestCase):
         """explore/sample_converter._apply_extraction ≡ convert_page_full."""
         via_explore = _apply_extraction(HTML, RULES, set())
         via_kernel = convert_page_full(HTML, RULES)
+        self.assertIn("| Sweeping Blind |", via_kernel)
         self.assertEqual(
             via_explore,
             via_kernel,

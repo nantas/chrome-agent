@@ -56,3 +56,7 @@
 ## 不回写的内容
 
 不复制完整 specs/design/tasks；不更改无关 active change；不执行跨仓治理页写入，不声称跨仓治理闭环完成；不覆盖正式 collection。归档时同步三份 delta 与永久规范，当前保持 active。
+
+## 2026-10-04 前置规范同步记录
+
+在 fix-merged-cell-icon-semantics 归档时，本 change 的 delta 已同步至永久规范；本目录仍 active。后续归档应保留已同步结果。merged-cell-asset-retention 已被后续 change 更新为副本语义标签契约，不得用早期 block 回退；其余未提及场景保持。

@@ -557,3 +557,19 @@ MediaWiki extraction cleanup/text_normalization are supported string lists. Lazy
 配对仅限同父节点的下一元素兄弟（忽略注释/空白）；标签规范化后相等或命中显式别名，源节点须为 h1–h6 且包含隐藏语义文本。保留源 heading 层级/id，使用可见标签文本及其图片/链接；不匹配则不改内容并在来源审计中记录。DD2 配置声明 4 个 label_aliases，不做模糊匹配。对既有重复显示标签去重，重复预处理不重复标题。
 
 [验证与限制](../../openspec/changes/fix-conversion-structure-and-audit-fidelity/verification.md)。
+
+## 合并单元格图标名称映射（2026-10-04）
+
+可选配置 `extraction.table_options.merged_cell_icon_labels`：
+
+```yaml
+extraction:
+  table_options:
+    merged_cell_icon_labels:
+      Dd2 token vulnerable.png: Vulnerable
+      Dd2 token daze.png: Daze
+```
+
+键为源 img alt 的精确值（源值只 trim 首尾空白，大小写敏感），值为纯文本名称。键和值必须是非空、无首尾空白/换行的字符串；非法配置显式报错。缺省或空映射使用共享名称解析。只影响合并格副本，原格图片与普通单元格不变，`transpose_wider_than` 继续兼容。frontmatter 为真源，能力声明见 capability-registry 的 merged_cell_icon_labels。
+
+[行为与验证](../../openspec/changes/archive/2026-10-04-fix-merged-cell-icon-semantics/verification.md)。

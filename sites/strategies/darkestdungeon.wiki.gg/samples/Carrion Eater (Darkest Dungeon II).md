@@ -1,6 +1,6 @@
 | Carrion Eater | Carrion Eater |
 | --- | --- |
-| ![Carrion eater new.png](https://darkestdungeon.wiki.gg/images/thumb/Carrion_eater_new.png/250px-Carrion_eater_new.png?e7c02c) |  |
+| ![Carrion eater new.png](https://darkestdungeon.wiki.gg/images/thumb/Carrion_eater_new.png/250px-Carrion_eater_new.png?e7c02c) | （未命名图标） |
 | Links | Links |
 | [[Compare Stats]](https://darkestdungeon.wiki.gg/wiki/Enemies_(Darkest_Dungeon_II)/Stats#Carrion_Eater) [[View/Edit Data]](https://darkestdungeon.wiki.gg/wiki/Data:Carrion_Eater_(Darkest_Dungeon_II)) | [[Compare Stats]](https://darkestdungeon.wiki.gg/wiki/Enemies_(Darkest_Dungeon_II)/Stats#Carrion_Eater) [[View/Edit Data]](https://darkestdungeon.wiki.gg/wiki/Data:Carrion_Eater_(Darkest_Dungeon_II)) |
 | Stats | Stats |

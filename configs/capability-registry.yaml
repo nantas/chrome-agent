@@ -4,6 +4,9 @@
 
 convert:
   normalizations:
+    - name: merged_cell_icon_labels
+      implemented_in: scripts/lib/extraction/converter.py
+      strategy_field: extraction.table_options.merged_cell_icon_labels
     - name: semantic_heading_pairs
       implemented_in: scripts/lib/extraction/preprocessor.py
       strategy_field: extraction.heading_normalization

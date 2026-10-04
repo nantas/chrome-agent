@@ -69,7 +69,7 @@ def validate_extraction(config):
                     fail(path + '.' + key, value, 'valid CSS selector')
     maps = {'lazyload': {'enabled','placeholder_pattern','real_src_attr'},
             'url_conversion': {'enabled'}, 'youtube_cleanup': {'enabled'},
-            'image_filtering': {'skip_patterns'}, 'table_options': {'transpose_wider_than'}}
+            'image_filtering': {'skip_patterns'}, 'table_options': {'transpose_wider_than', 'merged_cell_icon_labels'}}
     for key, names in maps.items():
         if key not in config: continue
         value = config[key]
@@ -77,6 +77,15 @@ def validate_extraction(config):
             fail(key, value, 'map'); continue
         for name, item in value.items():
             if name not in names: fail(key + '.' + name, item, 'supported field')
+        if key == 'table_options' and 'merged_cell_icon_labels' in value:
+            labels = value['merged_cell_icon_labels']
+            if not isinstance(labels, dict) or not all(
+                isinstance(text, str) and text and text == text.strip()
+                and not any(char in text for char in '\r\n')
+                for pair in labels.items() for text in pair
+            ):
+                fail(key + '.merged_cell_icon_labels', labels,
+                     'map of nonempty single-line strings without surrounding whitespace')
         if key == 'lazyload' and value.get('enabled'):
             for name in ('placeholder_pattern','real_src_attr'):
                 if not isinstance(value.get(name), str) or not value[name]:

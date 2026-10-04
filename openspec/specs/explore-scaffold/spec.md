@@ -1,5 +1,10 @@
 # Specification Delta
 
+## Purpose
+
+Define sample recommendations and structural quality checks for the explore workflow.
+
+
 ## Capability 对齐（已确认）
 
 - Capability: `explore-scaffold`
@@ -13,7 +18,7 @@
 - design / tasks / verification 必须引用本文件
 - 项目页面回写不得替代本文件
 
-## MODIFIED Requirements
+## Requirements
 
 ### Requirement: Sample recommendation during explore
 The explore workflow SHALL provide a sample recommendation step where `scope_confirmer.recommend_samples()` analyzes discovered page structure characteristics and presents a recommended sample list to the user.
@@ -34,3 +39,19 @@ The explore workflow SHALL provide a sample recommendation step where `scope_con
 #### Scenario: Samples written to strategy (manual)
 - **WHEN** the user confirms the sample list
 - **THEN** the user SHALL write the `samples` field to `sites/strategies/<domain>/strategy.md` frontmatter based on the recommendation
+
+### Requirement: self-check-precision
+S5 SHALL 按完整词或有界完整短语检测重复，不匹配相邻单词的局部字符。S6 SHALL 逐表计直接结构行，避免嵌套双计数，不能因 mw-collapsible 而排除游戏数据。
+
+#### Scenario: precision-and-loss
+- WHEN 输入 with the / This is
+- THEN S5 通过；hero hero 仍失败。
+- WHEN 嵌套等级子表在转换中丢失
+- THEN S6 失败。
+
+### Requirement: rendered-structure-checks
+S6 SHALL 比较可见内容结构，排除空白／纯嵌套布局行并计入多行表头折叠；真实数据行损失仍须失败。S8 SHALL 对照渲染后的标题文本，不能因链接语法或标点空白误报缺节。S5 版本格式扫描 SHALL 排除 URL 编号，但原文重复不能静默删改。
+
+#### Scenario: linked-heading-and-url
+- WHEN 标题含超链接、标点，正文链接带字母数字散列
+- THEN 标题与格式检查通过；真实缺标题和未分隔版本仍失败。

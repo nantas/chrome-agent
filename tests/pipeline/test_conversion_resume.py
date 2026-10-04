@@ -65,6 +65,16 @@ class ConversionResumeTests(unittest.TestCase):
         self.assertNotIn('skipped', results['Apple'])
         self.assertIn('changed', self.file.read_text())
 
+    def test_pre_icon_semantics_cache_is_invalidated(self):
+        from unittest.mock import patch
+        raw = {'title': 'Apple', 'html': '<table><tr><th>A</th><th>B</th></tr><tr><td colspan="2"><img src="/a.png" alt="Blind"></td></tr></table>', 'content_acquisition': 'html_rendered'}
+        cache.save_page_cache(*self.args, raw)
+        with patch('scripts.pipeline.pipeline.phases.convert.CONVERTER_CONTRACT_REVISION', 7):
+            self.run_conversion()
+        self.assertNotIn('skipped', self.run_conversion()[0]['Apple'])
+        self.assertIn('| Blind |', self.file.read_text())
+        self.assertTrue(self.run_conversion()[0]['Apple']['skipped'])
+
     def test_context_changes_and_failed_write_invalidate_completion(self):
         from unittest.mock import patch
         raw = {'title': 'Apple', 'html': '<p>new</p>', 'content_acquisition': 'html_rendered'}

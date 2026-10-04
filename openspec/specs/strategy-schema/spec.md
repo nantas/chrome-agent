@@ -1,5 +1,10 @@
 # Specification Delta
 
+## Purpose
+
+Define validated strategy frontmatter fields and shared configuration contracts for extraction and conversion.
+
+
 ## Capability 对齐（已确认）
 
 - Capability: `strategy-schema`
@@ -13,7 +18,7 @@
 - design / tasks / verification 必须引用本文件
 - 项目页面回写不得替代本文件
 
-## MODIFIED Requirements
+## Requirements
 
 ### Requirement: REST Platform Type
 
@@ -97,3 +102,44 @@ The subsection SHALL cover:
 #### Scenario: Developer reads TDD conventions
 - **WHEN** a developer reads `08-tech-stack.md` §4
 - **THEN** a "TDD 约定" subsection SHALL be present with the four principles listed above
+
+### Requirement: semantic-heading-normalization-config
+Extraction configuration SHALL accept optional heading_normalization, a list of mappings containing required nonempty heading_selector and label_selector CSS strings. An optional label_aliases map SHALL declare exact source-to-visible label pairs using nonempty strings; no fuzzy matching SHALL occur. Omitted or empty configuration SHALL disable pairing. Unknown keys, malformed mappings and invalid selectors SHALL be rejected explicitly through the shared extraction validation boundary. Pairing SHALL use the heading's immediate next element sibling with the same parent, ignoring whitespace/comments; the source heading supplies level and identifier. This configuration SHALL be consumed identically by shared preprocessing and source-audit expectation construction without a site-name branch.
+
+#### Scenario: valid-dd2-pair-rule
+- **WHEN** rules declare heading_selector selecting semantic h3 nodes and label_selector selecting .headerdd2 visible labels
+- **THEN** validation SHALL admit the rule and shared conversion/audit SHALL apply the same declared pairing contract.
+
+#### Scenario: absent-and-invalid-rules
+- **WHEN** heading_normalization is absent or empty
+- **THEN** legacy behavior SHALL remain; a present malformed rule SHALL instead fail explicitly rather than being ignored.
+
+### Requirement: heading-config-registration-and-samples
+Frontmatter SHALL remain authoritative over registry mirrors. Heading normalization and any retained cleanup capabilities SHALL be discoverable by existing validation/capability gates, with supported fields and behavior documented. DD2 configuration changes SHALL include representative hidden-heading and structural regression fixtures; golden updates SHALL be justified by independently verified semantic corrections, never solely by new output.
+
+#### Scenario: configuration-through-all-entry-points
+- **WHEN** strategy loading, explore freeze validation, pipeline or matched-strategy crawl reads a valid heading rule
+- **THEN** the rule SHALL remain available unchanged to shared conversion and SHALL NOT be silently discarded or rejected as an unknown capability.
+
+#### Scenario: sample-update-with-evidence
+- **WHEN** corrected heading or block structure changes a DD2 sample
+- **THEN** the diff SHALL show intended semantic changes with independent image/link/table checks, and the site-samples suite SHALL pass after reviewed baseline changes.
+
+#### Scenario: explicitly-aliased-label
+- **WHEN** a configured label_aliases entry exactly maps the hidden label to the adjacent visible label
+- **THEN** the pair SHALL preserve the visible label text/assets and source heading level/identifier; any other mismatch SHALL remain unmatched.
+
+### Requirement: merged-cell-icon-label-map
+策略 SHALL 支持可选 `extraction.table_options.merged_cell_icon_labels`，类型为非空字符串键值的映射。键为源 img alt（只 trim 首尾空白）的精确值，值为纯文本语义名称；配置键值 SHALL 不含首尾空白或换行，禁止空名称，拒绝非映射/非字符串值，错误 SHALL 标明字段路径并显式失败，不降级通用转换。缺省或空映射 SHALL 使用共享内核默认名称解析。该字段 SHALL 只影响合并格延续槽位，frontmatter 为真源，所有共享转换路径 SHALL 接收相同配置。既有 table_options 字段 SHALL 保持兼容，未知键 SHALL 继续被拒绝。
+
+#### Scenario: exact-mapping
+- **WHEN** 配置 `Dd2 token vulnerable.png: Vulnerable` 和 `Dd2 token daze.png: Daze`
+- **THEN** 仅精确命中的 alt 使用对应名称，大小写变化或相似文件名不命中。
+
+#### Scenario: invalid-map
+- **WHEN** 映射为列表、含空键值、非字符串、首尾空白或换行
+- **THEN** 策略校验返回具体字段错误，不进入转换或静默忽略。
+
+#### Scenario: absent-map-and-shared-paths
+- **WHEN** 字段缺省或为空，或同一有效映射经 explore/pipeline/crawl 进入共享内核
+- **THEN** 缺省行为有效，等价 HTML/config/context 的 core 输出一致。
