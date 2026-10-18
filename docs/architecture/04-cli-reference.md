@@ -111,6 +111,10 @@ chrome-agent fetch <url> [--report] [--no-report]
 
 **行为**：Scrapling-first 单页内容获取。匹配站点策略时走对应 fetcher，否则使用 `scrapling-get`。
 
+**MediaWiki 请求身份**：匹配 MediaWiki 策略的普通页面仍输出原有路径；`?action=history` 输出 `history.json`（默认最多 50 条，可用 `limit=1..50`），只查询修订 ID、时间、说明与大小，不查询贡献者、不自动分页。下一页将响应 `continue.rvcontinue` URL 编码后追加为同页的 `rvcontinue`。`?oldid=<正整数>` 输出指定修订的 `content.html`，并核对服务端修订号与页面标题；未知 action、重复参数及未支持查询参数明确拒绝，不能静默替换成当前正文。
+
+显式 `/api.php` 或 `/w/api.php?action=parse&page=<单页>&prop=text%7Crevid&format=json` 不要求新增站点策略，直接经共享 ApiClient 获取同源端点；也支持用 `oldid` 替代 `page`，两者互斥。仅接受完整正文 parse，不接受任意 API action、section 或批量参数。原 HTML 从 API `text['*']` 保存，经共享准入但不做 Markdown 转换。`mediawiki-response.json` 保留完整解析后的 API JSON（不是 HTTP 原始字节）；manifest 的 `target` 保持原请求 URL，`mediawiki.page_title/page_id/revision_id` 来自响应，`response_path` 指向该响应。历史结果包含多个修订，故顶层 `revision_id` 为 null，使用 `revision_count` 与 `continue`。canonical 来源绑定由消费者处理。
+
 **提取参数**：当匹配策略声明 `extraction.selectors.content` 时，fetch 通过 scrapling `-s <selector>` 精确提取主内容；未声明选择器时回退 `--ai-targeted` 启发式。该决策由共享 helper `buildScraplingExtractionArgs(strategy, fetcher)`（`scripts/lib/scrapling-extraction-args.mjs`）统一封装，`crawl` 命令的提取循环与 `--phase convert` 缓存转换复用同一 helper。`mediawiki-api` fetcher 保留 `[strategy.path]` 传递；`cloakbrowser` fetcher 保留既有 `--ai-targeted` 透传（其 CLI 不接受 `-s`）。
 
 **实现**：`runFetch()`（`chrome-agent-cli.mjs:1766`）

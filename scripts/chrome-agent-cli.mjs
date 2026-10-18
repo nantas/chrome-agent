@@ -897,80 +897,124 @@ function runCloakbrowserFetch(repoRoot, targetUrl, outputPath, extraArgs = []) {
  *
  * Spec: fetch-kernel / fetch-via-pipeline-kernel
  */
-function runMediawikiApiFetch(repoRoot, targetUrl, outputPath, extraArgs = []) {
-  // extraArgs[0] is expected to be the strategy path (passed from runEngineFetch)
-  const strategyPath = extraArgs[0];
-  if (!strategyPath) {
-    return { ok: false, summary: "runMediawikiApiFetch requires a strategy path in extraArgs[0].", stderr: "Missing strategy path." };
-  }
-
-  let strategy;
+function isMediawikiApiTarget(targetUrl) {
   try {
-    strategy = readFrontmatter(strategyPath);
-  } catch (err) {
-    return { ok: false, summary: `Failed to read strategy frontmatter: ${err.message}`, stderr: err.message };
-  }
+    return ["/api.php", "/w/api.php"].includes(new URL(targetUrl).pathname);
+  } catch { return false; }
+}
 
-  const apiConfig = strategy?.api;
-  if (!apiConfig?.base_url) {
-    return { ok: false, summary: "Strategy has no api.base_url configured.", stderr: "Missing api.base_url in strategy." };
+function resolveMediawikiFetchRequest(targetUrl, strategyPath) {
+  const url = new URL(targetUrl);
+  if (!["https:", "http:"].includes(url.protocol) || url.username || url.password) {
+    throw new Error("MediaWiki requires an HTTP(S) URL without credentials.");
   }
-
-  // Extract page title from URL (strip /wiki/ prefix, decode underscores to spaces)
-  let pageTitle;
-  try {
-    const url = new URL(targetUrl);
-    const pathParts = url.pathname.split("/");
-    const wikiIdx = pathParts.indexOf("wiki");
-    if (wikiIdx >= 0 && wikiIdx + 1 < pathParts.length) {
-      pageTitle = decodeURIComponent(pathParts[wikiIdx + 1].replace(/_/g, " "));
-    } else {
-      pageTitle = decodeURIComponent(pathParts[pathParts.length - 1].replace(/_/g, " "));
+  const explicitApi = isMediawikiApiTarget(targetUrl);
+  const allowed = new Set(explicitApi ? ["action", "page", "oldid", "prop", "format"] : ["action", "oldid", "title", "limit", "rvcontinue"]);
+  for (const key of url.searchParams.keys()) {
+    if (!allowed.has(key) || url.searchParams.getAll(key).length !== 1) {
+      throw new Error(`Unsupported or duplicate MediaWiki parameter: ${key}`);
     }
-  } catch {
-    return { ok: false, summary: `Invalid target URL: ${targetUrl}`, stderr: "Invalid URL." };
   }
+  let baseUrl;
+  let pageTitle;
+  const oldid = url.searchParams.get("oldid");
+  if (oldid !== null && (!/^[1-9]\d*$/.test(oldid) || !Number.isSafeInteger(Number(oldid)))) throw new Error("oldid must be a positive safe integer.");
+  if (explicitApi) {
+    if (url.searchParams.get("action") !== "parse") throw new Error("Explicit MediaWiki API requires action=parse.");
+    if (url.searchParams.has("format") && url.searchParams.get("format") !== "json") throw new Error("Only JSON API responses are supported.");
+    if (url.searchParams.has("prop") && !["text", "text|revid", "revid|text"].includes(url.searchParams.get("prop"))) throw new Error("Only complete text/revid parse properties are supported.");
+    baseUrl = url.origin + url.pathname;
+    pageTitle = url.searchParams.get("page");
+    if (oldid && pageTitle !== null) throw new Error("API parse requires page or oldid, not both.");
+  } else {
+    if (!strategyPath) throw new Error("Missing strategy path.");
+    baseUrl = readFrontmatter(strategyPath)?.api?.base_url;
+    if (!baseUrl) throw new Error("Missing api.base_url in strategy.");
+    const endpoint = new URL(baseUrl);
+    if (endpoint.origin !== url.origin || endpoint.search || endpoint.hash || endpoint.username || endpoint.password) throw new Error("MediaWiki API endpoint must be same-origin and have no credentials/query/fragment.");
+    const action = url.searchParams.get("action");
+    if (action !== null && !["view", "history"].includes(action)) throw new Error(`Unsupported MediaWiki action: ${action}`);
+    const parts = url.pathname.split("/");
+    const wikiIndex = parts.indexOf("wiki");
+    if (url.searchParams.has("title") && parts.at(-1) !== "index.php") throw new Error("title parameter requires index.php.");
+    pageTitle = parts.at(-1) === "index.php" ? url.searchParams.get("title") : decodeURIComponent((wikiIndex >= 0 ? parts.slice(wikiIndex + 1).join("/") : parts.at(-1)).replace(/_/g, " "));
+  }
+  if ((!pageTitle && !(explicitApi && oldid)) || pageTitle?.includes("|")) throw new Error("A single nonempty page title is required.");
+  if (!explicitApi && url.searchParams.get("action") === "history") {
+    if (oldid) throw new Error("history cannot be combined with oldid.");
+    const limit = url.searchParams.get("limit") ?? "50";
+    if (!/^\d+$/.test(limit) || Number(limit) < 1 || Number(limit) > 50) throw new Error("History limit must be 1..50.");
+    const continuation = url.searchParams.get("rvcontinue");
+    if (continuation !== null && !/^\d{14}\|\d+$/.test(continuation)) throw new Error("Invalid revisions continuation token.");
+    return {mode:"history", base_url:baseUrl, page_title:pageTitle, output_name:"history.json",
+      params:{prop:"revisions", titles:pageTitle, rvprop:"ids|timestamp|comment|size", rvlimit:Number(limit),
+        ...(continuation ? {rvcontinue:continuation, continue:"||"} : {})}};
+  }
+  if (url.searchParams.has("limit") || url.searchParams.has("rvcontinue")) throw new Error("History parameters require action=history.");
+  if (oldid) return {mode:"revision", base_url:baseUrl, page_title:pageTitle, output_name:"content.html",
+    params:{action:"parse", oldid:Number(oldid), prop:"text|revid"}};
+  return {mode: "parse", base_url: baseUrl, page_title: pageTitle,
+    output_name: explicitApi ? "content.html" : null,
+    params: {action: "parse", page: pageTitle, prop: "text|revid", ...(!explicitApi ? {redirects:true} : {})}};
+}
 
-  // Delegate to pipeline's shared fetch kernel (ApiClient via Python subprocess)
+function runMediawikiApiFetch(repoRoot, targetUrl, outputPath, extraArgs = []) {
+  let request;
+  try { request = resolveMediawikiFetchRequest(targetUrl, extraArgs[0]); }
+  catch (error) { return {ok:false, summary:"MediaWiki request rejected.", stderr:error.message}; }
+  const actualOutputPath = request.output_name ? path.join(path.dirname(outputPath), request.output_name) : outputPath;
+  const responsePath = path.join(path.dirname(outputPath), "mediawiki-response.json");
   const python = resolveAppPython(repoRoot);
   const fetchScript = [
     "from scripts.pipeline.client import ApiClient",
-    "import sys, json, os",
-    `base_url = ${JSON.stringify(apiConfig.base_url)}`,
-    `page_title = ${JSON.stringify(pageTitle)}`,
-    `output_path = ${JSON.stringify(outputPath)}`,
+    "from scripts.lib.content_admission import classify_html",
+    "import sys, json, os, hashlib",
+    "request = json.loads(sys.argv[1])",
+    "output_path, response_path = sys.argv[2:4]",
     "try:",
-    "    c = ApiClient(base_url)",
-    "    d = c.parse(page=page_title, prop='text', redirects=True)",
-    "    h = d.get('parse',{}).get('text',{}).get('*','')",
-    "    if not h: raise RuntimeError('Empty HTML from MediaWiki API')",
-    "    os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)",
-    "    open(output_path, 'w', encoding='utf-8').write(h)",
+    "    c = ApiClient(request['base_url'])",
+    "    d = c.query(**request['params'])",
+    "    os.makedirs(os.path.dirname(response_path) or '.', exist_ok=True)",
+    "    with open(response_path, 'w', encoding='utf-8') as f: json.dump(d, f, ensure_ascii=False, indent=2)",
+    "    if request['mode'] == 'history':",
+    "        pages = list(d.get('query', {}).get('pages', {}).values())",
+    "        if len(pages) != 1: raise RuntimeError('History response must contain exactly one page')",
+    "        page = pages[0]",
+    "        title, pageid = page.get('title'), page.get('pageid')",
+    "        revisions = page.get('revisions')",
+    "        if not isinstance(title, str) or not isinstance(pageid, int) or pageid <= 0 or not isinstance(revisions, list) or not revisions or len(revisions) > request['params']['rvlimit']: raise RuntimeError('Invalid history page or revisions metadata')",
+    "        if title.replace('_', ' ') != request['page_title'].replace('_', ' '): raise RuntimeError('History page identity mismatch')",
+    "        if any(not isinstance(r.get('revid'), int) or r['revid'] <= 0 for r in revisions): raise RuntimeError('Missing revision identity in history')",
+    "        with open(output_path, 'w', encoding='utf-8') as f: json.dump(d, f, ensure_ascii=False, indent=2)",
+    "        print(json.dumps({'page_title':title, 'page_id':pageid, 'revision_id':None, 'revision_count':len(revisions), 'continue':d.get('continue')}))",
+    "        sys.exit(0)",
+    "    parsed = d.get('parse', {})",
+    "    title, pageid, revid = parsed.get('title'), parsed.get('pageid'), parsed.get('revid')",
+    "    if not isinstance(title, str) or not title or not isinstance(pageid, int) or pageid <= 0 or not isinstance(revid, int) or revid <= 0: raise RuntimeError('Missing authoritative MediaWiki page/revision identity')",
+    "    if request['mode'] == 'revision':",
+    "        if revid != request['params']['oldid']: raise RuntimeError('MediaWiki revision identity mismatch')",
+    "        if request['page_title'] and title.replace('_', ' ') != request['page_title'].replace('_', ' '): raise RuntimeError('MediaWiki revision page identity mismatch')",
+    "    h = parsed.get('text', {}).get('*', '')",
+    "    admission = classify_html(h)",
+    "    if not admission['admitted']: raise RuntimeError('MediaWiki HTML rejected: ' + admission['reason'])",
+    "    with open(output_path, 'w', encoding='utf-8') as f: f.write(h)",
+    "    print(json.dumps({'page_title':title, 'page_id':pageid, 'revision_id':revid, 'admission':admission, 'content_sha256':hashlib.sha256(h.encode('utf-8')).hexdigest()}))",
     "except Exception as e:",
     "    print(str(e), file=sys.stderr)",
     "    sys.exit(1)",
   ].join("\n");
-
-  const result = spawnSync(python, ["-c", fetchScript], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  });
-
+  const result = spawnSync(python, ["-c", fetchScript, JSON.stringify(request), actualOutputPath, responsePath], {cwd:repoRoot, encoding:"utf8"});
   if (result.status !== 0) {
-    return {
-      ok: false,
-      summary: `Pipeline fetch failed for "${pageTitle}".`,
-      stderr: result.stderr || "Python ApiClient fetch failed.",
-    };
+    return {ok:false, summary:"Pipeline MediaWiki fetch failed.", stderr:result.stderr || "Python ApiClient fetch failed.", diagnostic_path:fs.existsSync(responsePath) ? responsePath : null};
   }
-
-  return {
-    ok: true,
-    stdout: `Fetched "${pageTitle}" via pipeline shared fetch kernel`,
-    stderr: "",
-    command: `${python} -m scripts.pipeline (ApiClient.parse)`,
-    page_title: pageTitle,
-  };
+  let identity;
+  try { identity = JSON.parse(result.stdout); }
+  catch { return {ok:false, summary:"Invalid MediaWiki bridge result.", stderr:"Missing identity from Python bridge."}; }
+  const {admission, ...mediawiki} = identity;
+  return {ok:true, stdout:`Fetched "${mediawiki.page_title}" via pipeline shared fetch kernel`, stderr:"",
+    command:`${python} -m scripts.pipeline (ApiClient.query)`, page_title:mediawiki.page_title,
+    output_path:actualOutputPath, admission,
+    mediawiki:{...mediawiki, response_path:path.resolve(responsePath), request_params:request.params, api_endpoint:request.base_url, mode:request.mode}};
 }
 
 /** Route to the appropriate engine based on fetcher name */
@@ -2106,16 +2150,17 @@ function buildFetchReport({
 function runFetch(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride) {
   const { runDir, reportPath } = buildRunPaths(repoRoot, "fetch", targetUrl);
   ensureDir(runDir);
-  const outputPath = path.join(runDir, "content.md");
+  let outputPath = path.join(runDir, "content.md");
   const logPath = path.join(runDir, "scrapling.stderr.log");
   const manifestPath = path.join(runDir, "manifest.json");
   const { strategy } = findStrategy(repoRoot, targetUrl);
   const matchingPage = strategy ? findMatchingPage(strategy.document, targetUrl) : null;
-  const fetcher = selectFetcher(strategy, matchingPage);
+  const fetcher = isMediawikiApiTarget(targetUrl) ? "mediawiki-api" : selectFetcher(strategy, matchingPage);
   // Strategy-sourced selector (if declared) is passed via -s; otherwise the
   // helper falls back to --ai-targeted. mediawiki-api keeps strategy.path.
   const fetchExtraArgs = buildScraplingExtractionArgs(strategy, fetcher);
   const fetchResult = runEngineFetch(repoRoot, fetcher, targetUrl, outputPath, fetchExtraArgs);
+  outputPath = fetchResult.output_path || outputPath;
 
   if (fetchResult.stderr) {
     writeTextFile(logPath, fetchResult.stderr);
@@ -2146,6 +2191,7 @@ function runFetch(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride) 
     page_id: matchingPage?.id ?? null,
     preflight_status: fetchResult.preflight?.status ?? null,
     admission: fetchResult.admission ?? null,
+    mediawiki: fetchResult.mediawiki ?? null,
     diagnostic_path: fetchResult.diagnostic_path ?? null,
     output: path.resolve(outputPath),
   };
@@ -2157,6 +2203,9 @@ function runFetch(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride) 
   }
   if (fetchResult.ok && fs.existsSync(outputPath)) {
     artifacts.push(absoluteArtifact(outputPath, "disposable", "Extracted content"));
+  }
+  if (fetchResult.mediawiki?.response_path) {
+    artifacts.push(absoluteArtifact(fetchResult.mediawiki.response_path, "disposable", "MediaWiki API response"));
   }
   if (fs.existsSync(logPath)) {
     artifacts.push(absoluteArtifact(logPath, "disposable", "Scrapling stderr log"));
@@ -2197,12 +2246,12 @@ function runFetch(repoRoot, repoRef, resolutionMode, targetUrl, reportOverride) 
     );
   }
 
-  const title = summarizeContent(outputPath);
+  const title = fetchResult.mediawiki?.page_title ?? summarizeContent(outputPath);
   return makeResult(
     "fetch",
     targetUrl,
     repoRef,
-    `Fetched content with scrapling ${fetcher}${title ? ` and identified "${title}"` : ""}.`,
+    `Fetched ${fetchResult.mediawiki?.mode === "history" ? "revision metadata" : "content"} with ${fetcher}${title ? ` and identified "${title}"` : ""}.`,
     artifacts,
     strategy ? "Review the extracted content or continue to crawl if bounded traversal is required." : "Consider running explore to add a site strategy if this domain should support bounded crawl later.",
     "success",
